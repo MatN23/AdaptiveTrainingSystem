@@ -1,8 +1,18 @@
-# CUDA Operations Documentation
+# CUDA Acceleration for MoE / MoD Transformers
 
-**Adaptive Training System - Custom CUDA Kernels**
+This document covers the custom CUDA kernels powering high-performance
+Mixture-of-Experts (MoE/MoD) transformer training.
 
-Version 1.0 | Last Updated: January 2025
+These kernels replace critical PyTorch ops with hand-optimized GPU code,
+delivering **2–7× speedups** while preserving full autograd compatibility,
+numerical stability, and drop-in usability.
+
+### Who this is for
+
+- You are training large transformers and MoE/MoD models
+- PyTorch kernels are now your bottleneck
+- You care about throughput, memory bandwidth, and GPU occupancy
+- You want CUDA speed **without** rewriting your training loop
 
 ---
 

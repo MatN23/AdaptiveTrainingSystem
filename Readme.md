@@ -1598,11 +1598,10 @@ Demo notebook and local installation for evaluation purposes. 30-day evaluation 
 - Best practices for scaling and debugging
 
 **MoE/MoD Tutorial:** `docs/cuda_acceleration.md`
-- CUDA kernel design for MoE/MoD workloads
-- Expert routing and dispatch on GPU
-- Memory layout, fusion, and bandwidth optimization
+- These kernels replace high-frequency transformer primitives that dominate runtime in dense and MoE models.
+- These kernels implement the full MoE routing pipeline entirely on GPU:routing → dispatch → expert compute → recombination.
+- These kernels eliminate synchronization points by collapsing multi-step training operations into single GPU passes.
 - Mixed precision, streams, and overlap strategies
-- Profiling + common perf bottlenecks (and how to fix them)
 
 ---
 
