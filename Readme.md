@@ -1584,13 +1584,6 @@ Demo notebook and local installation for evaluation purposes. 30-day evaluation 
 - Debugging sparse models
 - CUDA-accelerated MoE operations
 
-**MoE/MoD Tutorial:** `docs/sparse_architectures.md`
-- Sparse architecture theory
-- Implementation details
-- Training best practices
-- Debugging sparse models
-- CUDA-accelerated MoE operations
-
 **MoE/MoD Tutorial:** `docs/adapters.md`
 - Deep dive into architecture + implementation details
 - Step-by-step guides for building, training, and plugging in adapters
