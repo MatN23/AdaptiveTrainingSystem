@@ -105,14 +105,15 @@ def export_model(model, config, output_path):
         else:
             f.write(struct.pack('i', 0))
             f.write(struct.pack('i', 0))
-        
-        # MoE layer pattern
+
+        # Write moe_layers vector SIZE first (as int32_t), then the bools
+        f.write(struct.pack('i', config.num_layers))  # Add this line - SIZE FIRST
         for i in range(config.num_layers):
             is_moe = False
             if use_moe and hasattr(model.layers[i], 'use_moe'):
                 is_moe = model.layers[i].use_moe
             f.write(struct.pack('?', is_moe))
-        
+
         # MoD config
         use_mod = getattr(config, 'use_mod', False)
         f.write(struct.pack('?', use_mod))
@@ -120,8 +121,9 @@ def export_model(model, config, output_path):
             f.write(struct.pack('f', getattr(config, 'mod_capacity_factor', 0.5)))
         else:
             f.write(struct.pack('f', 0.0))
-        
-        # MoD layer pattern
+
+        # Write mod_layers vector SIZE first (as int32_t), then the bools
+        f.write(struct.pack('i', config.num_layers))  # Add this line - SIZE FIRST
         for i in range(config.num_layers):
             is_mod = False
             if use_mod and hasattr(model.layers[i].ffn, 'use_mod'):
