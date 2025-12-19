@@ -18,8 +18,6 @@ bitsandbytes>=0.41.1
 
 # DeepSpeed & Performance
 deepspeed>=0.11.0
-triton>=2.1.0
-
 # Experiment Tracking / Logging
 wandb>=0.15.0
 PyYAML>=6.0
@@ -63,3 +61,5 @@ sentencepiece
 google
 protobuf
 transformers==4.36.2
+
+triton

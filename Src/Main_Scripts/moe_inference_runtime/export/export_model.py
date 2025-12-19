@@ -15,12 +15,44 @@ import os
 # Add parent directory to import your model
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+
+# Also add the actual location where we're running from
+sys.path.insert(0, os.getcwd())
+
 try:
-    from model import DeepSeekTransformer, DeepSeekConfig
-    from tokenizer import ConversationTokenizer
-except ImportError:
-    print("⚠️  Could not import model.py - using standalone export")
+    from core.model import DeepSeekTransformer, DeepSeekConfig
+    from core.tokenizer import ConversationTokenizer
+    print("✓ Successfully imported model classes")
+except ImportError as e:
+    print(f"⚠️  Could not import model.py: {e}")
     DeepSeekTransformer = None
+    DeepSeekConfig = None
+
+# Create dummy classes to allow unpickling
+try:
+    from config.config_manager import Config
+except ImportError:
+    print("⚠️  Could not import config module - creating dummy")
+    import types
+    
+    # Create dummy config module structure
+    config = types.ModuleType('config')
+    config_manager = types.ModuleType('config.config_manager')
+    
+    # Create dummy Config class
+    class Config:
+        def __init__(self, *args, **kwargs):
+            self.__dict__.update(kwargs)
+    
+    config_manager.Config = Config
+    config.config_manager = config_manager
+    
+    # Register in sys.modules
+    sys.modules['config'] = config
+    sys.modules['config.config_manager'] = config_manager
 
 
 def export_tensor(f, tensor):
@@ -194,11 +226,15 @@ def main():
     
     # Load checkpoint
     print(f"📦 Loading checkpoint: {args.model}")
-    checkpoint = torch.load(args.model, map_location='cpu')
+    checkpoint = torch.load(args.model, map_location='cpu', weights_only=False)
     
     # Extract model and config
     if isinstance(checkpoint, dict):
-        if 'model' in checkpoint:
+        # Check for nested structure first (your checkpoint uses this!)
+        if 'model_state_dict' in checkpoint:
+            model_state = checkpoint['model_state_dict']
+            config = checkpoint.get('config', None)
+        elif 'model' in checkpoint:
             model_state = checkpoint['model']
             config = checkpoint.get('config', None)
         elif 'state_dict' in checkpoint:
@@ -211,13 +247,23 @@ def main():
         model_state = checkpoint.state_dict()
         config = None
     
-    # Load config from file if provided
+    # Load config from file if provided (this overrides checkpoint config)
     if args.config:
         import json
         with open(args.config) as f:
             config_dict = json.load(f)
-        if DeepSeekConfig:
+        
+        if DeepSeekConfig is not None:
             config = DeepSeekConfig(**config_dict)
+        else:
+            # Create a simple config object
+            class SimpleConfig:
+                def __init__(self, **kwargs):
+                    self.__dict__.update(kwargs)
+            config = SimpleConfig(**config_dict)
+    elif config is not None:
+        # Use config from checkpoint if no external config provided
+        print("✓ Using config from checkpoint")
     
     # Create model
     if config is None:

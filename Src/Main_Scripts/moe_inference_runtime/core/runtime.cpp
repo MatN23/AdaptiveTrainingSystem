@@ -5,7 +5,9 @@
 #include "kernels.hpp"
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <cstring>
+#include <cassert>
 #include <algorithm>
 #include <random>
 
@@ -28,15 +30,56 @@ void InferenceEngine::load_model(const std::string& path) {
         throw std::runtime_error("Failed to open model: " + path);
     }
     
-    // Read header
-    ModelHeader header;
-    file.read(reinterpret_cast<char*>(&header), sizeof(ModelHeader));
+    // Read magic and version
+    uint32_t magic, version;
+    file.read(reinterpret_cast<char*>(&magic), sizeof(uint32_t));
+    file.read(reinterpret_cast<char*>(&version), sizeof(uint32_t));
     
-    if (header.magic != 0x4D4F4549) {
-        throw std::runtime_error("Invalid model file");
+    if (magic != 0x4D4F4549) {
+        throw std::runtime_error("Invalid model file (bad magic)");
     }
     
-    config_ = header.config;
+    if (version != 1) {
+        throw std::runtime_error("Unsupported model version");
+    }
+    
+    // Read config fields individually (not as a block!)
+    file.read(reinterpret_cast<char*>(&config_.vocab_size), sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(&config_.hidden_size), sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(&config_.num_layers), sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(&config_.num_heads), sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(&config_.num_kv_heads), sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(&config_.intermediate_size), sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(&config_.max_seq_len), sizeof(int32_t));
+    
+    file.read(reinterpret_cast<char*>(&config_.use_moe), sizeof(bool));
+    file.read(reinterpret_cast<char*>(&config_.num_experts), sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(&config_.moe_top_k), sizeof(int32_t));
+    
+    // Read moe_layers vector
+    int32_t moe_layers_size;
+    file.read(reinterpret_cast<char*>(&moe_layers_size), sizeof(int32_t));
+    config_.moe_layers.resize(moe_layers_size);
+    for (int32_t i = 0; i < moe_layers_size; ++i) {
+        bool val;
+        file.read(reinterpret_cast<char*>(&val), sizeof(bool));
+        config_.moe_layers[i] = val;
+    }
+    
+    file.read(reinterpret_cast<char*>(&config_.use_mod), sizeof(bool));
+    file.read(reinterpret_cast<char*>(&config_.mod_capacity), sizeof(float));
+    
+    // Read mod_layers vector
+    int32_t mod_layers_size;
+    file.read(reinterpret_cast<char*>(&mod_layers_size), sizeof(int32_t));
+    config_.mod_layers.resize(mod_layers_size);
+    for (int32_t i = 0; i < mod_layers_size; ++i) {
+        bool val;
+        file.read(reinterpret_cast<char*>(&val), sizeof(bool));
+        config_.mod_layers[i] = val;
+    }
+    
+    file.read(reinterpret_cast<char*>(&config_.rope_theta), sizeof(float));
     
 #ifdef USE_CUDA
     std::cout << "✓ Loaded config (CUDA mode): " << config_.num_layers << " layers, "
@@ -137,14 +180,14 @@ void InferenceEngine::load_model(const std::string& path) {
 
 void InferenceEngine::init_buffers() {
     // Pre-allocate activation buffers
-    buffers_.resize(10);  // Generous buffer count
+    buffers_.resize(12);  // Increased for q,k,v buffers
     
     int32_t max_batch_seq = config_.max_seq_len;
     int32_t hidden = config_.hidden_size;
     int32_t intermediate = config_.intermediate_size;
     
-    // Common buffer shapes
-    for (int i = 0; i < 5; ++i) {
+    // Common buffer shapes (x, residual, attn_out, ffn_out, normed, q, k, v)
+    for (int i = 0; i < 8; ++i) {
         buffers_[i].shape = {1, max_batch_seq, hidden};
         size_t bytes = max_batch_seq * hidden * sizeof(float);
         
@@ -156,8 +199,8 @@ void InferenceEngine::init_buffers() {
         buffers_[i].owns_memory = true;
     }
     
-    // Intermediate buffers for FFN
-    for (int i = 5; i < 10; ++i) {
+    // Intermediate buffers for FFN (gate_out, up_out, temp, temp2)
+    for (int i = 8; i < 12; ++i) {
         buffers_[i].shape = {1, max_batch_seq, intermediate};
         size_t bytes = max_batch_seq * intermediate * sizeof(float);
         
@@ -318,26 +361,32 @@ void InferenceEngine::linear(const Tensor& x, const Tensor& w, Tensor& out) {
 void InferenceEngine::attention_layer(int32_t layer_idx, const Tensor& x, Tensor& out) {
     auto& layer = weights_.layers[layer_idx];
     
-    // Simplified attention - full implementation in kernels
+    // Use pre-allocated buffers
     Tensor& normed = buffers_[4];
+    Tensor& q = buffers_[5];
+    Tensor& k = buffers_[6];
+    Tensor& v = buffers_[7];
+    
     rms_norm(x, layer.attn_norm_weight, normed);
     
     // Q, K, V projections
-    Tensor q, k, v;
     linear(normed, layer.attn_q, q);
     linear(normed, layer.attn_k, k);
     linear(normed, layer.attn_v, v);
     
     // Apply RoPE
-    kernels::apply_rope(q.data, k.data, weights_.rope_cos.data, weights_.rope_sin.data,
+    int32_t head_dim = config_.hidden_size / config_.num_heads;
+    kernels::apply_rope(q.data, k.data, 
+                        static_cast<const float*>(weights_.rope_cos.data), 
+                        static_cast<const float*>(weights_.rope_sin.data),
                         x.shape[1], config_.num_heads, config_.num_kv_heads, 
-                        config_.hidden_size / config_.num_heads, cache_pos_);
+                        head_dim, cache_pos_);
     
     // Attention + KV cache
     kernels::attention(q.data, k.data, v.data, out.data,
                        kv_cache_k_[layer_idx].data, kv_cache_v_[layer_idx].data,
                        x.shape[1], config_.num_heads, config_.num_kv_heads,
-                       config_.hidden_size / config_.num_heads, cache_pos_);
+                       head_dim, cache_pos_);
     
     // Output projection
     linear(out, layer.attn_o, out);
@@ -347,8 +396,8 @@ void InferenceEngine::ffn_layer(int32_t layer_idx, const Tensor& x, Tensor& out)
     auto& layer = weights_.layers[layer_idx];
     
     Tensor& normed = buffers_[4];
-    Tensor& gate_out = buffers_[5];
-    Tensor& up_out = buffers_[6];
+    Tensor& gate_out = buffers_[8];
+    Tensor& up_out = buffers_[9];
     
     rms_norm(x, layer.ffn_norm_weight, normed);
     
@@ -383,23 +432,25 @@ void InferenceEngine::moe_layer(int32_t layer_idx, const Tensor& x, Tensor& out)
     // Execute experts
     std::memset(out.data, 0, seq_len * config_.hidden_size * sizeof(float));
     
+    // Use buffer for expert output
+    Tensor& expert_out = buffers_[8];
+    
     for (int32_t t = 0; t < seq_len; ++t) {
         for (int32_t k = 0; k < config_.moe_top_k; ++k) {
             int32_t expert_id = expert_ids[t * config_.moe_top_k + k];
             float weight = expert_weights[t * config_.moe_top_k + k];
             
             float* token_in = normed.data + t * config_.hidden_size;
-            float* token_out = buffers_[5].data;
             
             // SwiGLU through expert
-            kernels::expert_forward(token_in, token_out,
+            kernels::expert_forward(token_in, expert_out.data,
                                     layer.expert_gate[expert_id].data,
                                     layer.expert_up[expert_id].data,
                                     layer.expert_down[expert_id].data,
                                     config_.hidden_size, config_.intermediate_size);
             
             // Accumulate weighted output
-            kernels::add_scaled(out.data + t * config_.hidden_size, token_out,
+            kernels::add_scaled(out.data + t * config_.hidden_size, expert_out.data,
                                 weight, config_.hidden_size);
         }
     }
@@ -488,14 +539,58 @@ void InferenceEngine::reset_cache() {
 // MAIN ENTRY POINT
 // ============================================================================
 
+std::vector<int32_t> read_token_file(const std::string& path) {
+    std::vector<int32_t> tokens;
+    std::ifstream file(path);
+    
+    if (!file) {
+        std::cerr << "Warning: Could not open token file: " << path << std::endl;
+        return {1, 2, 3};  // Fallback to dummy tokens
+    }
+    
+    std::string content;
+    std::getline(file, content);
+    
+    // Parse comma-separated integers
+    std::stringstream ss(content);
+    std::string token_str;
+    
+    while (std::getline(ss, token_str, ',')) {
+        try {
+            // Trim whitespace
+            token_str.erase(0, token_str.find_first_not_of(" \t\n\r"));
+            token_str.erase(token_str.find_last_not_of(" \t\n\r") + 1);
+            
+            if (!token_str.empty()) {
+                int32_t token = std::stoi(token_str);
+                tokens.push_back(token);
+            }
+        } catch (...) {
+            std::cerr << "Warning: Failed to parse token: '" << token_str << "'" << std::endl;
+        }
+    }
+    
+    if (tokens.empty()) {
+        std::cerr << "Warning: No valid tokens found, using dummy tokens" << std::endl;
+        return {1, 2, 3};
+    }
+    
+    return tokens;
+}
+
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::cout << "Usage: " << argv[0] << " <model.bin> <prompt>" << std::endl;
+    if (argc < 2) {
+        std::cout << "Usage: " << argv[0] << " <model.bin> [tokens_file|prompt]" << std::endl;
+        std::cout << "\nModes:" << std::endl;
+        std::cout << "  Interactive: " << argv[0] << " model.bin" << std::endl;
+        std::cout << "  Token file:  " << argv[0] << " model.bin tokens.txt" << std::endl;
+        std::cout << "  Text prompt: " << argv[0] << " model.bin \"Hello!\"" << std::endl;
+        std::cout << "\nNote: For proper tokenization, use chat_integrated.py wrapper" << std::endl;
         return 1;
     }
     
     std::string model_path = argv[1];
-    std::string prompt = argv[2];
+    bool interactive = (argc == 2);
     
     try {
 #ifdef USE_CUDA
@@ -508,13 +603,70 @@ int main(int argc, char** argv) {
         
         InferenceEngine engine(model_path);
         
-        // Tokenize prompt (simplified - use proper tokenizer)
-        std::vector<int32_t> input_ids = {1, 2, 3};  // Dummy tokens
-        
-        std::cout << "Generating..." << std::endl;
-        auto output = engine.generate(input_ids, 100, 1.0f);
-        
-        std::cout << "Generated " << output.size() << " tokens" << std::endl;
+        if (interactive) {
+            // Interactive chat mode
+            std::cout << "\n💬 Interactive Chat Mode" << std::endl;
+            std::cout << "Type token file path (or 'quit' to exit)\n" << std::endl;
+            
+            std::string line;
+            while (true) {
+                std::cout << "Token file: ";
+                std::getline(std::cin, line);
+                
+                if (line.empty()) continue;
+                if (line == "quit" || line == "exit" || line == "q") break;
+                
+                // Read tokens from file
+                std::vector<int32_t> input_ids = read_token_file(line);
+                
+                std::cout << "Loaded " << input_ids.size() << " tokens" << std::endl;
+                std::cout << "Generating..." << std::endl;
+                
+                auto output = engine.generate(input_ids, 100, 1.0f);
+                
+                // Print token IDs for Python to decode
+                std::cout << "Token IDs: ";
+                for (size_t i = 0; i < output.size(); ++i) {
+                    std::cout << output[i];
+                    if (i < output.size() - 1) std::cout << ", ";
+                }
+                std::cout << std::endl << std::endl;
+            }
+            
+            std::cout << "Goodbye!" << std::endl;
+            
+        } else {
+            // Single prompt/file mode
+            std::string input_arg = argv[2];
+            std::vector<int32_t> input_ids;
+            
+            // Check if it's a file or text prompt
+            std::ifstream test_file(input_arg);
+            if (test_file.good()) {
+                test_file.close();
+                // It's a file
+                input_ids = read_token_file(input_arg);
+                std::cout << "Loaded " << input_ids.size() << " tokens from file" << std::endl;
+            } else {
+                // It's a text prompt - use dummy tokens
+                std::cout << "Text prompt (no tokenizer): using dummy tokens" << std::endl;
+                std::cout << "⚠️  For proper tokenization, use: python chat_integrated.py" << std::endl;
+                input_ids = {1, 2, 3};
+            }
+            
+            std::cout << "Generating..." << std::endl;
+            
+            auto output = engine.generate(input_ids, 100, 1.0f);
+            
+            std::cout << "\n✓ Generated " << output.size() << " tokens" << std::endl;
+            std::cout << "\nToken IDs: ";
+            for (size_t i = 0; i < output.size(); ++i) {
+                std::cout << output[i];
+                if (i < output.size() - 1) std::cout << ", ";
+                if (i > 0 && i % 20 == 0) std::cout << "\n           ";
+            }
+            std::cout << std::endl;
+        }
         
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

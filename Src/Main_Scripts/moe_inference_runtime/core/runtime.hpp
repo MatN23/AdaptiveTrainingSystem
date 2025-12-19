@@ -27,15 +27,56 @@ struct Tensor {
         return n;
     }
     
+    // Destructor
     ~Tensor() {
         if (owns_memory && data) {
 #ifdef USE_CUDA
             cudaFree(data);
 #else
-            delete[] static_cast<float*>(data);
+            delete[] data;
 #endif
+            data = nullptr;
         }
     }
+    
+    // Delete copy constructor and assignment to prevent double-free
+    Tensor(const Tensor&) = delete;
+    Tensor& operator=(const Tensor&) = delete;
+    
+    // Move constructor
+    Tensor(Tensor&& other) noexcept 
+        : data(other.data)
+        , shape(std::move(other.shape))
+        , owns_memory(other.owns_memory) {
+        other.data = nullptr;
+        other.owns_memory = false;
+    }
+    
+    // Move assignment
+    Tensor& operator=(Tensor&& other) noexcept {
+        if (this != &other) {
+            // Clean up existing data
+            if (owns_memory && data) {
+#ifdef USE_CUDA
+                cudaFree(data);
+#else
+                delete[] data;
+#endif
+            }
+            
+            // Transfer ownership
+            data = other.data;
+            shape = std::move(other.shape);
+            owns_memory = other.owns_memory;
+            
+            other.data = nullptr;
+            other.owns_memory = false;
+        }
+        return *this;
+    }
+    
+    // Default constructor
+    Tensor() = default;
 };
 
 // ============================================================================
@@ -167,12 +208,12 @@ private:
 // MODEL FILE FORMAT
 // ============================================================================
 
-struct ModelHeader {
-    uint32_t magic = 0x4D4F4549;  // "MOEI"
-    uint32_t version = 1;
-    ModelConfig config;
-};
-
-// File layout:
-// [Header] [Weights...] [RoPE cache]
-// All weights stored as float32 arrays
+// File layout (all fields are binary, little-endian):
+// [Magic: uint32_t = 0x4D4F4549 "MOEI"]
+// [Version: uint32_t = 1]
+// [Config fields - see load_model() for order]
+// [Weights as float32 arrays...]
+// [RoPE cache]
+//
+// Note: Config is written field-by-field, not as a struct block,
+// because ModelConfig contains std::vector which can't be memcpy'd

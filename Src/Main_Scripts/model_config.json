@@ -1,0 +1,15 @@
+{
+  "vocab_size": 100352,
+  "hidden_size": 128,
+  "num_layers": 2,
+  "num_heads": 2,
+  "num_kv_heads": 1,
+  "intermediate_size": 256,
+  "seq_length": 256,
+  "use_moe": true,
+  "num_experts": 8,
+  "moe_top_k": 2,
+  "use_mod": false,
+  "mod_capacity_factor": 0.5,
+  "rope_theta": 10000.0
+}

@@ -8,6 +8,11 @@ BINARY=${1:-moe_inference_cpu}
 MODEL=${2:-model.bin}
 PROMPT=${3:-"Once upon a time"}
 
+# Add ./ prefix if not already present
+if [[ ! "$BINARY" =~ ^[./] ]]; then
+    BINARY="./$BINARY"
+fi
+
 if [[ ! -f "$BINARY" ]]; then
     echo "❌ Binary not found: $BINARY"
     echo "Run ./compile.sh first"
