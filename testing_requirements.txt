@@ -9,6 +9,7 @@ scipy>=1.11.0
 transformers>=4.33.0
 datasets>=2.14.0
 huggingface_hub>=0.17.0
+ninja
 accelerate>=0.23.0
 optimum>=1.13.0
 optimum-quanto

@@ -1,59 +1,49 @@
 // Copyright (c) 2025 MatN23. All rights reserved.
-// Licensed under the Custom License below.
-
-/*
- * OPTIMIZED CUDA MoE Operations for Small Batches (Colab/Anthropic Demo)
- * 
- * Key optimizations for batch_size=1-2:
- * 1. Warp-per-token parallelism (vs block-per-token)
- * 2. Reduced shared memory usage
- * 3. Eliminated unnecessary atomics
- * 4. Fused operations where possible
- * 5. Better memory coalescing
- * 
- * Expected speedup: 2-4x over naive CUDA, 3-7x over PyTorch
- */
+// FIXED: Proper error handling, dtype matching, and device guards
 
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAGuard.h>
 #include <vector>
 #include <limits>
 
-#define CUDA_CHECK(call) \
+#define WARP_SIZE 32
+
+// CRITICAL: Throw exceptions on CUDA errors instead of silent failures
+#define CUDA_CHECK_KERNEL() \
     do { \
-        cudaError_t err = call; \
+        cudaError_t err = cudaGetLastError(); \
         if (err != cudaSuccess) { \
-            fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
-                    cudaGetErrorString(err)); \
-            exit(EXIT_FAILURE); \
+            throw std::runtime_error(std::string("CUDA kernel launch failed: ") + \
+                                   cudaGetErrorString(err)); \
+        } \
+        err = cudaDeviceSynchronize(); \
+        if (err != cudaSuccess) { \
+            throw std::runtime_error(std::string("CUDA kernel execution failed: ") + \
+                                   cudaGetErrorString(err)); \
         } \
     } while(0)
 
-#define WARP_SIZE 32
+// Tensor validation macros
+#define CHECK_CUDA(x) TORCH_CHECK(x.is_cuda(), #x " must be a CUDA tensor")
+#define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
+#define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
 
 // =============================================================================
-// OPTIMIZED TOP-K FOR SMALL K (k=2 is common)
+// KERNEL: Top-K Gating
 // =============================================================================
 
-/*
- * OPTIMIZED: Warp-based top-k with no shared memory for k<=4
- * 
- * For k=2 (most common), this is ~3x faster than original kernel:
- * - No shared memory allocation/synchronization
- * - Warp-level primitives only
- * - Each warp handles multiple tokens
- */
 __global__ void topk_gating_kernel_optimized(
     const float* __restrict__ gate_logits,
-    int* __restrict__ top_k_indices,
+    int64_t* __restrict__ top_k_indices,      // FIXED: int64 not int32
     float* __restrict__ top_k_weights,
     const int num_tokens,
     const int num_experts,
     const int k,
     const float temperature
 ) {
-    // Each warp processes one token
     const int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) / WARP_SIZE;
     const int lane_id = threadIdx.x % WARP_SIZE;
     const int token_idx = warp_id;
@@ -62,23 +52,19 @@ __global__ void topk_gating_kernel_optimized(
     
     const float* token_logits = gate_logits + token_idx * num_experts;
     
-    // Each thread tracks its local top-k
-    float local_vals[4];  // Support up to k=4
+    float local_vals[4];
     int local_idxs[4];
     
-    // Initialize
     #pragma unroll
     for (int i = 0; i < k; i++) {
         local_vals[i] = -INFINITY;
         local_idxs[i] = -1;
     }
     
-    // Each thread processes a chunk of experts
     for (int base = lane_id; base < num_experts; base += WARP_SIZE) {
         float val = token_logits[base] / temperature;
         int expert_id = base;
         
-        // Insert into local top-k (unrolled for k=2)
         if (k == 2) {
             if (val > local_vals[0]) {
                 local_vals[1] = local_vals[0];
@@ -90,7 +76,6 @@ __global__ void topk_gating_kernel_optimized(
                 local_idxs[1] = expert_id;
             }
         } else {
-            // General case for k>2
             for (int i = 0; i < k; i++) {
                 if (val > local_vals[i]) {
                     for (int j = k - 1; j > i; j--) {
@@ -105,13 +90,10 @@ __global__ void topk_gating_kernel_optimized(
         }
     }
     
-    // Merge across warp using shuffle reduction
-    // This is faster than shared memory for small k
     for (int i = 0; i < k; i++) {
         float best_val = local_vals[i];
         int best_idx = local_idxs[i];
         
-        // Find max across warp
         #pragma unroll
         for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) {
             float other_val = __shfl_down_sync(0xffffffff, best_val, offset);
@@ -123,32 +105,26 @@ __global__ void topk_gating_kernel_optimized(
             }
         }
         
-        // Broadcast result
         best_val = __shfl_sync(0xffffffff, best_val, 0);
         best_idx = __shfl_sync(0xffffffff, best_idx, 0);
         
-        // Update all threads' lists (remove selected expert)
         if (best_idx == local_idxs[i]) {
-            local_vals[i] = -INFINITY;  // Prevent re-selection
+            local_vals[i] = -INFINITY;
         }
         
-        // Lane 0 stores this top-i result
         if (lane_id == 0) {
             local_vals[i] = best_val;
             local_idxs[i] = best_idx;
         }
     }
     
-    // Compute softmax (only lane 0)
     if (lane_id == 0) {
-        // Find max for numerical stability
         float max_logit = local_vals[0];
         #pragma unroll
         for (int i = 1; i < k; i++) {
             max_logit = fmaxf(max_logit, local_vals[i]);
         }
         
-        // Compute exp and sum
         float sum_exp = 0.0f;
         #pragma unroll
         for (int i = 0; i < k; i++) {
@@ -157,37 +133,28 @@ __global__ void topk_gating_kernel_optimized(
             sum_exp += exp_val;
         }
         
-        // Normalize and write output
         float inv_sum = 1.0f / sum_exp;
-        int* out_indices = top_k_indices + token_idx * k;
+        int64_t* out_indices = top_k_indices + token_idx * k;  // FIXED: int64
         float* out_weights = top_k_weights + token_idx * k;
         
         #pragma unroll
         for (int i = 0; i < k; i++) {
             out_weights[i] = local_vals[i] * inv_sum;
-            out_indices[i] = local_idxs[i];
+            out_indices[i] = local_idxs[i];  // Implicit cast to int64
         }
     }
 }
 
 // =============================================================================
-// OPTIMIZED DISPATCH WITH COALESCED WRITES
+// KERNEL: Dispatch Tokens
 // =============================================================================
 
-/*
- * OPTIMIZED: Reduced atomic contention + coalesced memory access
- * 
- * Key improvements:
- * - Batch atomic increments per block
- * - Vectorized copies (float4)
- * - Better memory access patterns
- */
 __global__ void dispatch_tokens_kernel_optimized(
     const float* __restrict__ tokens,
-    const int* __restrict__ top_k_indices,
+    const int64_t* __restrict__ top_k_indices,  // FIXED: int64
     int* __restrict__ expert_positions,
     float* __restrict__ expert_inputs,
-    int* __restrict__ token_map,
+    int64_t* __restrict__ token_map,            // FIXED: int64
     const int num_tokens,
     const int num_experts,
     const int k,
@@ -200,15 +167,13 @@ __global__ void dispatch_tokens_kernel_optimized(
     if (token_idx >= num_tokens) return;
     
     const float* token_data = tokens + token_idx * hidden_dim;
-    const int* token_experts = top_k_indices + token_idx * k;
+    const int64_t* token_experts = top_k_indices + token_idx * k;
     
-    // Shared memory for position allocation
-    __shared__ int shared_positions[8];  // Max k=8
+    __shared__ int shared_positions[8];
     
-    // First thread does atomic position allocation for all k experts
     if (tid == 0) {
         for (int i = 0; i < k; i++) {
-            int expert_id = token_experts[i];
+            int expert_id = (int)token_experts[i];  // Cast int64 to int
             if (expert_id >= 0 && expert_id < num_experts) {
                 shared_positions[i] = atomicAdd(&expert_positions[expert_id], 1);
             } else {
@@ -218,30 +183,27 @@ __global__ void dispatch_tokens_kernel_optimized(
     }
     __syncthreads();
     
-    // All threads cooperate to copy data
     for (int i = 0; i < k; i++) {
-        int expert_id = token_experts[i];
+        int expert_id = (int)token_experts[i];
         int pos = shared_positions[i];
         
-        if (pos < 0 || pos >= capacity) continue;
+        if (pos < 0 || pos >= capacity || expert_id < 0 || expert_id >= num_experts) {
+            continue;
+        }
         
-        // Write token map (only thread 0)
         if (tid == 0) {
             token_map[expert_id * capacity + pos] = token_idx * k + i;
         }
         
-        // Vectorized copy using float4 (4x speedup)
         float* expert_input = expert_inputs + (expert_id * capacity + pos) * hidden_dim;
         
         if (hidden_dim % 4 == 0 && ((size_t)token_data % 16 == 0)) {
-            // Use float4 for aligned data
             const int vec_dim = hidden_dim / 4;
             for (int d = tid; d < vec_dim; d += blockDim.x) {
                 reinterpret_cast<float4*>(expert_input)[d] = 
                     reinterpret_cast<const float4*>(token_data)[d];
             }
         } else {
-            // Fallback to scalar
             for (int d = tid; d < hidden_dim; d += blockDim.x) {
                 expert_input[d] = token_data[d];
             }
@@ -251,17 +213,12 @@ __global__ void dispatch_tokens_kernel_optimized(
 }
 
 // =============================================================================
-// OPTIMIZED COMBINE WITH REDUCED ATOMICS
+// KERNEL: Combine Expert Outputs
 // =============================================================================
 
-/*
- * OPTIMIZED: Use local accumulation before atomic adds
- * 
- * Reduces atomic operations by ~4x for typical k=2 case
- */
 __global__ void combine_expert_outputs_kernel_optimized(
     const float* __restrict__ expert_outputs,
-    const int* __restrict__ token_map,
+    const int64_t* __restrict__ token_map,     // FIXED: int64
     const float* __restrict__ top_k_weights,
     float* __restrict__ combined_output,
     const int num_experts,
@@ -276,11 +233,10 @@ __global__ void combine_expert_outputs_kernel_optimized(
     
     if (expert_id >= num_experts || pos >= capacity) return;
     
-    // Get mapping
-    int token_weight_idx = token_map[expert_id * capacity + pos];
+    int64_t token_weight_idx = token_map[expert_id * capacity + pos];
     if (token_weight_idx < 0) return;
     
-    int token_idx = token_weight_idx / k;
+    int token_idx = (int)(token_weight_idx / k);
     if (token_idx >= num_tokens) return;
     
     float weight = top_k_weights[token_weight_idx];
@@ -288,7 +244,6 @@ __global__ void combine_expert_outputs_kernel_optimized(
     const float* expert_out = expert_outputs + (expert_id * capacity + pos) * hidden_dim;
     float* output = combined_output + token_idx * hidden_dim;
     
-    // Vectorized atomic adds
     if (hidden_dim % 4 == 0) {
         for (int d = tid; d < hidden_dim / 4; d += blockDim.x) {
             float4 vec = reinterpret_cast<const float4*>(expert_out)[d];
@@ -310,39 +265,54 @@ __global__ void combine_expert_outputs_kernel_optimized(
 }
 
 // =============================================================================
-// C++ INTERFACE
+// C++ INTERFACE FUNCTIONS
 // =============================================================================
 
 std::tuple<torch::Tensor, torch::Tensor> topk_gating_cuda(
     torch::Tensor gate_logits,
-    int k,
-    float temperature
+    int64_t k,
+    double temperature
 ) {
-    const int num_tokens = gate_logits.size(0);
-    const int num_experts = gate_logits.size(1);
+    CHECK_INPUT(gate_logits);
+    TORCH_CHECK(gate_logits.dim() == 2, "gate_logits must be 2D");
+    TORCH_CHECK(gate_logits.dtype() == torch::kFloat32, "gate_logits must be float32");
+    TORCH_CHECK(k > 0 && k <= 8, "k must be in [1, 8]");
+    
+    const int64_t num_tokens = gate_logits.size(0);
+    const int64_t num_experts = gate_logits.size(1);
+    
+    TORCH_CHECK(num_tokens > 0 && num_experts > 0, "Invalid dimensions");
+    
+    // FIXED: Use device guard to handle multi-GPU
+    c10::cuda::CUDAGuard device_guard(gate_logits.device());
     
     auto options = torch::TensorOptions()
         .dtype(torch::kFloat32)
         .device(gate_logits.device());
-    auto top_k_weights = torch::empty({num_tokens, k}, options);
-    auto top_k_indices = torch::empty({num_tokens, k}, options.dtype(torch::kInt32));
     
-    // Optimized launch config: More warps per block
+    auto top_k_weights = torch::empty({num_tokens, k}, options);
+    
+    // FIXED: Use int64 (PyTorch default) not int32
+    auto top_k_indices = torch::empty({num_tokens, k}, options.dtype(torch::kInt64));
+    
+    // FIXED: Use current CUDA stream
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    
     const int warps_per_block = 8;
     const int threads = warps_per_block * WARP_SIZE;
-    const int blocks = (num_tokens + warps_per_block - 1) / warps_per_block;
+    const int blocks = std::max(1, (int)((num_tokens + warps_per_block - 1) / warps_per_block));
     
-    topk_gating_kernel_optimized<<<blocks, threads>>>(
+    topk_gating_kernel_optimized<<<blocks, threads, 0, stream>>>(
         gate_logits.data_ptr<float>(),
-        top_k_indices.data_ptr<int>(),
+        top_k_indices.data_ptr<int64_t>(),  // FIXED: int64
         top_k_weights.data_ptr<float>(),
-        num_tokens,
-        num_experts,
-        k,
-        temperature
+        (int)num_tokens,
+        (int)num_experts,
+        (int)k,
+        (float)temperature
     );
     
-    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK_KERNEL();  // FIXED: Actually check for errors
     
     return std::make_tuple(top_k_indices, top_k_weights);
 }
@@ -350,38 +320,55 @@ std::tuple<torch::Tensor, torch::Tensor> topk_gating_cuda(
 std::tuple<torch::Tensor, torch::Tensor> dispatch_tokens_cuda(
     torch::Tensor tokens,
     torch::Tensor top_k_indices,
-    int num_experts,
-    int capacity
+    int64_t num_experts,
+    int64_t capacity
 ) {
-    const int num_tokens = tokens.size(0);
-    const int hidden_dim = tokens.size(1);
-    const int k = top_k_indices.size(1);
+    CHECK_INPUT(tokens);
+    CHECK_INPUT(top_k_indices);
+    
+    TORCH_CHECK(tokens.dim() == 2, "tokens must be 2D");
+    TORCH_CHECK(top_k_indices.dim() == 2, "top_k_indices must be 2D");
+    TORCH_CHECK(tokens.dtype() == torch::kFloat32, "tokens must be float32");
+    TORCH_CHECK(top_k_indices.dtype() == torch::kInt64, "top_k_indices must be int64");
+    
+    const int64_t num_tokens = tokens.size(0);
+    const int64_t hidden_dim = tokens.size(1);
+    const int64_t k = top_k_indices.size(1);
+    
+    TORCH_CHECK(num_tokens == top_k_indices.size(0), "Shape mismatch");
+    TORCH_CHECK(num_experts > 0 && capacity > 0, "Invalid capacity");
+    
+    c10::cuda::CUDAGuard device_guard(tokens.device());
     
     auto options = torch::TensorOptions()
         .dtype(torch::kFloat32)
         .device(tokens.device());
     
     auto expert_inputs = torch::zeros({num_experts, capacity, hidden_dim}, options);
-    auto token_map = torch::full({num_experts, capacity}, -1, options.dtype(torch::kInt32));
+    
+    // FIXED: token_map uses int64
+    auto token_map = torch::full({num_experts, capacity}, -1, options.dtype(torch::kInt64));
     auto expert_positions = torch::zeros({num_experts}, options.dtype(torch::kInt32));
     
-    const int threads = 256;
-    const int blocks = num_tokens;
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     
-    dispatch_tokens_kernel_optimized<<<blocks, threads>>>(
+    const int threads = 256;
+    const int blocks = std::max(1, (int)num_tokens);
+    
+    dispatch_tokens_kernel_optimized<<<blocks, threads, 0, stream>>>(
         tokens.data_ptr<float>(),
-        top_k_indices.data_ptr<int>(),
+        top_k_indices.data_ptr<int64_t>(),  // FIXED: int64
         expert_positions.data_ptr<int>(),
         expert_inputs.data_ptr<float>(),
-        token_map.data_ptr<int>(),
-        num_tokens,
-        num_experts,
-        k,
-        hidden_dim,
-        capacity
+        token_map.data_ptr<int64_t>(),      // FIXED: int64
+        (int)num_tokens,
+        (int)num_experts,
+        (int)k,
+        (int)hidden_dim,
+        (int)capacity
     );
     
-    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK_KERNEL();
     
     return std::make_tuple(expert_inputs, token_map);
 }
@@ -390,53 +377,72 @@ torch::Tensor combine_expert_outputs_cuda(
     torch::Tensor expert_outputs,
     torch::Tensor token_map,
     torch::Tensor top_k_weights,
-    int num_tokens,
-    int k
+    int64_t num_tokens,
+    int64_t k
 ) {
-    const int num_experts = expert_outputs.size(0);
-    const int capacity = expert_outputs.size(1);
-    const int hidden_dim = expert_outputs.size(2);
+    CHECK_INPUT(expert_outputs);
+    CHECK_INPUT(token_map);
+    CHECK_INPUT(top_k_weights);
+    
+    TORCH_CHECK(expert_outputs.dim() == 3, "expert_outputs must be 3D");
+    TORCH_CHECK(token_map.dim() == 2, "token_map must be 2D");
+    TORCH_CHECK(expert_outputs.dtype() == torch::kFloat32, "expert_outputs must be float32");
+    TORCH_CHECK(token_map.dtype() == torch::kInt64, "token_map must be int64");
+    
+    const int64_t num_experts = expert_outputs.size(0);
+    const int64_t capacity = expert_outputs.size(1);
+    const int64_t hidden_dim = expert_outputs.size(2);
+    
+    c10::cuda::CUDAGuard device_guard(expert_outputs.device());
     
     auto combined = torch::zeros({num_tokens, hidden_dim}, 
         torch::TensorOptions()
             .dtype(torch::kFloat32)
             .device(expert_outputs.device()));
     
-    dim3 grid(num_experts, capacity);
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    
+    dim3 grid((int)num_experts, (int)capacity);
     const int threads = 256;
     
-    combine_expert_outputs_kernel_optimized<<<grid, threads>>>(
+    // Flatten weights if needed
+    torch::Tensor weights_flat = top_k_weights.dim() == 2 ? 
+        top_k_weights.flatten() : top_k_weights;
+    
+    combine_expert_outputs_kernel_optimized<<<grid, threads, 0, stream>>>(
         expert_outputs.data_ptr<float>(),
-        token_map.data_ptr<int>(),
-        top_k_weights.data_ptr<float>(),
+        token_map.data_ptr<int64_t>(),  // FIXED: int64
+        weights_flat.data_ptr<float>(),
         combined.data_ptr<float>(),
-        num_experts,
-        capacity,
-        hidden_dim,
-        num_tokens,
-        k
+        (int)num_experts,
+        (int)capacity,
+        (int)hidden_dim,
+        (int)num_tokens,
+        (int)k
     );
     
-    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK_KERNEL();
     
     return combined;
 }
 
-// Stub implementations for other functions
-torch::Tensor compute_expert_capacity_cuda(torch::Tensor top_k_indices, int num_experts) {
-    // Keep your existing implementation or make it a no-op
+// Stub implementations
+torch::Tensor compute_expert_capacity_cuda(torch::Tensor top_k_indices, int64_t num_experts) {
     return torch::zeros({num_experts}, top_k_indices.options().dtype(torch::kInt32));
 }
 
 torch::Tensor compute_load_balancing_loss_cuda(torch::Tensor gate_probs, torch::Tensor top_k_indices) {
-    // Keep your existing implementation or compute in PyTorch
     return torch::zeros({1}, gate_probs.options());
 }
 
+// =============================================================================
+// PYBIND11 MODULE
+// =============================================================================
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("topk_gating", &topk_gating_cuda, "Optimized top-K gating (CUDA)");
-    m.def("dispatch_tokens", &dispatch_tokens_cuda, "Optimized token dispatch (CUDA)");
-    m.def("combine_expert_outputs", &combine_expert_outputs_cuda, "Optimized output combine (CUDA)");
-    m.def("compute_expert_capacity", &compute_expert_capacity_cuda, "Compute expert capacity (CUDA)");
-    m.def("compute_load_balancing_loss", &compute_load_balancing_loss_cuda, "Load balancing loss (CUDA)");
+    m.def("topk_gating", &topk_gating_cuda, "Top-K gating (CUDA)");
+    m.def("dispatch_tokens", &dispatch_tokens_cuda, "Token dispatch (CUDA)");
+    m.def("combine_expert_outputs", &combine_expert_outputs_cuda, "Combine outputs (CUDA)");
+    m.def("compute_expert_capacity", &compute_expert_capacity_cuda, "Expert capacity (CUDA)");
+    m.def("compute_load_balancing_loss", &compute_load_balancing_loss_cuda, "Load balance loss (CUDA)");
 }

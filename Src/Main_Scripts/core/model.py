@@ -75,13 +75,18 @@ except ImportError:
     HAS_TRITON = False
     logging.debug("Triton not available - some optimizations disabled")
 
+# Replace lines 77-85 with this single try block:
 try:
-    from core.moe_cuda_wrapper import MoECUDAOps
-    HAS_CUDA_OPS = True
+    from core.moe_cuda_wrapper import MoECUDAOps, HAS_CUDA_OPS
     logging.info("✓ CUDA MoE operations available - 2-5x speedup enabled!")
 except ImportError:
-    HAS_CUDA_OPS = False
-    logging.info("CUDA MoE operations not available - using PyTorch fallback")
+    try:
+        # Fallback: try direct import (when running from core/)
+        from moe_cuda_wrapper import MoECUDAOps, HAS_CUDA_OPS
+        logging.info("✓ CUDA MoE operations available - 2-5x speedup enabled!")
+    except ImportError:
+        HAS_CUDA_OPS = False
+        logging.info("CUDA MoE operations not available - using PyTorch fallback")
 
 
 # ============================================================================
@@ -1251,7 +1256,7 @@ class MoEFFNLayer(nn.Module):
         expert_usage = torch.zeros(self.num_experts, device=gate_probs.device)
         for k in range(self.top_k):
             expert_counts = torch.bincount(
-                top_k_indices[:, k], 
+                top_k_indices[:, k].flatten().long(),  # Ensure int64 and 1D
                 minlength=self.num_experts
             )
             expert_usage += expert_counts.float()
