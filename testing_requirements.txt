@@ -4,7 +4,6 @@ torchvision>=0.16.0
 torchaudio>=2.1.0
 numpy>=1.25.0
 scipy>=1.11.0
-pyobjc-framework-Metal
 
 # HuggingFace / Transformers
 transformers>=4.33.0
