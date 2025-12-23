@@ -1272,7 +1272,7 @@ class MoEFFNLayer(nn.Module):
         with torch.no_grad():
             for k in range(self.top_k):
                 expert_counts = torch.bincount(
-                    top_k_indices[:, k].cpu(), 
+                    top_k_indices[:, k].cpu().flatten().long(),  # ✅ Flatten + ensure int64
                     minlength=self.num_experts
                 )
                 self._routing_stats['expert_usage'] += expert_counts.float()
