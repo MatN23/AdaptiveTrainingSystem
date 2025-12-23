@@ -156,7 +156,7 @@ class SimplifiedMoELayer(nn.Module):
         if self.use_cuda_ops and CUDA_AVAILABLE and x.is_cuda:
             # Check if should use CUDA based on thresholds
             try:
-                from core.moe_cuda_wrapper import MoECUDAOps
+                from Main_Scripts.core.wrappers.moe_cuda_wrapper import MoECUDAOps
                 should_use = MoECUDAOps.should_use_cuda(
                     total_tokens, 
                     self.num_experts, 
@@ -445,7 +445,7 @@ def debug_moe_performance(config):
     
     # Check thresholds
     try:
-        from core.moe_cuda_wrapper import MoECUDAOps
+        from Main_Scripts.core.wrappers.moe_cuda_wrapper import MoECUDAOps
         total_tokens = batch_size * seq_len
         should_use = MoECUDAOps.should_use_cuda(
             total_tokens,

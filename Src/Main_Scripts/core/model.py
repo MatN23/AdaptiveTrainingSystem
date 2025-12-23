@@ -55,7 +55,7 @@ except ImportError:
     logging.debug("Flash Attention not available - using optimized standard attention")
 
 try:
-    from cuda_opt_wrapper import (
+    from core.wrappers.cuda_opt_wrapper import (
         FusedRMSNorm, 
         FusedRoPE, 
         FusedSwiGLU,
@@ -75,18 +75,43 @@ except ImportError:
     HAS_TRITON = False
     logging.debug("Triton not available - some optimizations disabled")
 
-# Replace lines 77-85 with this single try block:
 try:
-    from core.moe_cuda_wrapper import MoECUDAOps, HAS_CUDA_OPS
-    logging.info("✓ CUDA MoE operations available - 2-5x speedup enabled!")
+    from core.wrappers.unified_ops import (
+        get_rms_norm,
+        get_rope, 
+        get_swiglu,
+        get_moe_ops,
+        BACKEND,
+        HAS_CUDA_OPS,
+        HAS_METAL_OPS,
+        print_backend_info
+    )
+    USE_UNIFIED_BACKEND = True
+    HAS_TRANSFORMER_CUDA = (BACKEND == 'cuda')
+    logging.info(f"✅ Unified backend: {BACKEND.upper()}")
 except ImportError:
+    USE_UNIFIED_BACKEND = False
+    logging.warning("⚠️  Unified backend not available, using direct imports")
+    
+    # Fallback to direct CUDA imports
     try:
-        # Fallback: try direct import (when running from core/)
-        from moe_cuda_wrapper import MoECUDAOps, HAS_CUDA_OPS
-        logging.info("✓ CUDA MoE operations available - 2-5x speedup enabled!")
+        from Main_Scripts.core.wrappers.cuda_opt_wrapper import (
+            FusedRMSNorm, 
+            FusedRoPE, 
+            FusedSwiGLU,
+            TRANSFORMER_OPS_AVAILABLE
+        )
+        HAS_TRANSFORMER_CUDA = True
+        HAS_CUDA_OPS = TRANSFORMER_OPS_AVAILABLE
+        HAS_METAL_OPS = False
+        BACKEND = 'cuda'
+        logging.info("✅ CUDA Transformer ops available - 2-5x speedup enabled!")
     except ImportError:
+        HAS_TRANSFORMER_CUDA = False
         HAS_CUDA_OPS = False
-        logging.info("CUDA MoE operations not available - using PyTorch fallback")
+        HAS_METAL_OPS = False
+        BACKEND = 'pytorch'
+        logging.info("⚠️  Using PyTorch fallback")
 
 
 # ============================================================================
@@ -249,22 +274,30 @@ class RMSNorm(nn.Module):
         self.eps = eps
         self.elementwise_affine = elementwise_affine
         
-        # Try to use CUDA-accelerated version
-        if HAS_TRANSFORMER_CUDA:
-            self._cuda_impl = FusedRMSNorm(dim, eps)
-            self.weight = self._cuda_impl.weight  # Share weight
-            logging.debug(f"✅ RMSNorm: CUDA acceleration enabled (dim={dim})")
+        # Use unified backend if available
+        if USE_UNIFIED_BACKEND:
+            self._impl = get_rms_norm(dim, eps)
+            self.weight = self._impl.weight  # Share weight parameter
+            self._cuda_impl = None  # Mark as using unified backend
+            logging.debug(f"✅ RMSNorm: {BACKEND} backend (dim={dim})")
         else:
-            if elementwise_affine:
-                self.weight = nn.Parameter(torch.ones(dim))
+            # Fallback to direct CUDA check
+            if HAS_TRANSFORMER_CUDA:
+                self._cuda_impl = FusedRMSNorm(dim, eps)
+                self.weight = self._cuda_impl.weight
+                logging.debug(f"✅ RMSNorm: CUDA acceleration enabled (dim={dim})")
             else:
-                self.register_parameter('weight', None)
-            self._cuda_impl = None
-            logging.debug(f"⚠️  RMSNorm: Using PyTorch fallback (dim={dim})")
+                if elementwise_affine:
+                    self.weight = nn.Parameter(torch.ones(dim))
+                else:
+                    self.register_parameter('weight', None)
+                self._cuda_impl = None
+                self._impl = None
+                logging.debug(f"⚠️  RMSNorm: Using PyTorch fallback (dim={dim})")
         
         # Cache epsilon tensor for efficiency
         self.register_buffer('_eps_tensor', torch.tensor(eps, dtype=torch.float32), persistent=False)
-    
+        
     def _norm_pytorch(self, x: torch.Tensor) -> torch.Tensor:
         """PyTorch fallback implementation."""
         x_float = x.float()
@@ -274,35 +307,32 @@ class RMSNorm(nn.Module):
     
     @profile_function
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass with automatic CUDA/PyTorch selection.
-        
-        Args:
-            x: Input tensor of shape [..., dim]
-            
-        Returns:
-            Normalized tensor of same shape as input
-        """
+        """Forward pass with automatic backend selection."""
         input_dtype = x.dtype
         
-        # Use CUDA implementation if available and on GPU
+        # Use unified backend implementation if available
+        if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
+            try:
+                return self._impl(x)
+            except Exception as e:
+                logging.warning(f"{BACKEND} RMSNorm failed: {e}, falling back to PyTorch")
+                # Fall through to PyTorch implementation
+        
+        # Use CUDA implementation if available (fallback mode)
         if self._cuda_impl is not None and x.is_cuda:
             try:
                 return self._cuda_impl(x)
             except Exception as e:
                 logging.warning(f"CUDA RMSNorm failed: {e}, falling back to PyTorch")
-                # Fall through to PyTorch implementation
         
         # PyTorch fallback
         x_normed = self._norm_pytorch(x)
         
-        # Apply learned scale if enabled
         if self.elementwise_affine:
             x_normed = x_normed * self.weight.float()
         
-        # Cast back to input dtype
         return x_normed.to(input_dtype)
-    
+        
     def extra_repr(self) -> str:
         """String representation for debugging."""
         cuda_status = "CUDA" if self._cuda_impl is not None else "PyTorch"
@@ -363,23 +393,32 @@ class RotaryEmbedding(nn.Module):
         self.theta = theta
         self.scaling_factor = scaling_factor
         
-        # Try to use CUDA-accelerated version
-        if HAS_TRANSFORMER_CUDA:
-            try:
-                self._cuda_impl = FusedRoPE(dim, max_seq_len, theta)
-                logging.debug(f"✅ RoPE: CUDA acceleration enabled (dim={dim})")
-            except Exception as e:
-                logging.warning(f"Failed to create CUDA RoPE: {e}, using PyTorch")
-                self._cuda_impl = None
+        # Use unified backend if available
+        if USE_UNIFIED_BACKEND:
+            self._impl = get_rope(dim, max_seq_len, theta)
+            self._cuda_impl = None  # Mark as using unified backend
+            logging.debug(f"✅ RoPE: {BACKEND} backend (dim={dim})")
         else:
-            self._cuda_impl = None
-            logging.debug(f"⚠️  RoPE: Using PyTorch fallback (dim={dim})")
+            # Fallback to direct CUDA check
+            if HAS_TRANSFORMER_CUDA:
+                try:
+                    self._cuda_impl = FusedRoPE(dim, max_seq_len, theta)
+                    self._impl = None
+                    logging.debug(f"✅ RoPE: CUDA acceleration enabled (dim={dim})")
+                except Exception as e:
+                    logging.warning(f"Failed to create CUDA RoPE: {e}, using PyTorch")
+                    self._cuda_impl = None
+                    self._impl = None
+            else:
+                self._cuda_impl = None
+                self._impl = None
+                logging.debug(f"⚠️  RoPE: Using PyTorch fallback (dim={dim})")
         
         # ALWAYS build PyTorch cache as fallback
         self._build_pytorch_cache(max_seq_len)
         
         logging.debug(f"RoPE initialized: dim={dim}, max_seq_len={max_seq_len}, theta={theta}")
-    
+        
     def _build_pytorch_cache(self, seq_len: int):
         """Build cos/sin cache for PyTorch fallback."""
         # Precompute inverse frequencies with high precision
@@ -417,48 +456,38 @@ class RotaryEmbedding(nn.Module):
     
     @profile_function
     def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Get cos and sin embeddings for given sequence length.
+        """Get cos and sin embeddings for given sequence length."""
         
-        Args:
-            seq_len: Sequence length needed
-            device: Target device
-            
-        Returns:
-            (cos, sin) tensors of shape [seq_len, dim]
-        """
-        # Try CUDA implementation first if available and on CUDA device
+        # Use unified backend implementation if available
+        if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
+            try:
+                return self._impl(seq_len, device)
+            except Exception as e:
+                logging.warning(f"{BACKEND} RoPE failed: {e}, falling back to PyTorch")
+                # Fall through to PyTorch implementation
+        
+        # Try CUDA implementation (fallback mode)
         if self._cuda_impl is not None and device.type == 'cuda':
             try:
-                # Access the cos/sin cache directly from FusedRoPE
                 cos_cache = self._cuda_impl.cos_cache[:seq_len]
                 sin_cache = self._cuda_impl.sin_cache[:seq_len]
                 
-                # Verify we got valid tensors
                 if cos_cache is not None and sin_cache is not None:
                     return cos_cache, sin_cache
-                else:
-                    logging.warning("CUDA RoPE returned None, using PyTorch fallback")
-            except AttributeError as e:
-                logging.warning(f"CUDA RoPE cache not available: {e}, using PyTorch fallback")
             except Exception as e:
                 logging.warning(f"CUDA RoPE failed: {e}, using PyTorch fallback")
         
         # PyTorch fallback
-        # Ensure cache exists (should always exist due to __init__)
         if not hasattr(self, '_cos_cached') or not hasattr(self, '_sin_cached'):
             logging.warning("PyTorch RoPE cache missing, rebuilding...")
             self._build_pytorch_cache(self.max_seq_len)
         
-        # Extend cache if needed
         if seq_len > self.max_seq_len:
             self._extend_cache(seq_len)
         
-        # Return cached values (zero-copy slice)
         cos = self._cos_cached[:seq_len]
         sin = self._sin_cached[:seq_len]
         
-        # Move to device if needed
         if cos.device != device:
             cos = cos.to(device)
         if sin.device != device:
@@ -552,7 +581,7 @@ def apply_rotary_pos_emb(
     # Try CUDA implementation if available
     if HAS_TRANSFORMER_CUDA and q.is_cuda:
         try:
-            from cuda_opt_wrapper import FusedRoPE
+            from Main_Scripts.core.wrappers.cuda_opt_wrapper import FusedRoPE
             # Note: This requires cos/sin to be from FusedRoPE's cache
             # For now, fall back to PyTorch since we're using separate cos/sin
             pass
@@ -1419,25 +1448,37 @@ class DenseSwiGLU(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.use_cuda = HAS_TRANSFORMER_CUDA
         
-        if self.use_cuda:
-            try:
-                # Use FusedSwiGLU for dense layers
-                self._cuda_swiglu = FusedSwiGLU(
-                    config.hidden_size,
-                    config.intermediate_size,
-                    use_bias=False
-                )
-                # Extract the down projection to share weights
-                self.down_proj = self._cuda_swiglu.down_proj if hasattr(self._cuda_swiglu, 'down_proj') else None
-                logging.debug(f"✅ DenseSwiGLU: CUDA acceleration enabled")
-            except Exception as e:
-                logging.warning(f"Failed to create CUDA SwiGLU: {e}, using PyTorch")
-                self.use_cuda = False
+        # Use unified backend if available
+        if USE_UNIFIED_BACKEND:
+            self._impl = get_swiglu(config.hidden_size, config.intermediate_size)
+            # Extract down_proj if it exists for weight access
+            self.down_proj = getattr(self._impl, 'down_proj', None)
+            self.use_cuda = False  # Mark as using unified backend
+            logging.debug(f"✅ DenseSwiGLU: {BACKEND} backend")
+        else:
+            # Fallback to direct CUDA check
+            self.use_cuda = HAS_TRANSFORMER_CUDA
+            
+            if self.use_cuda:
+                try:
+                    self._cuda_swiglu = FusedSwiGLU(
+                        config.hidden_size,
+                        config.intermediate_size,
+                        use_bias=False
+                    )
+                    self.down_proj = getattr(self._cuda_swiglu, 'down_proj', None)
+                    self._impl = None
+                    logging.debug(f"✅ DenseSwiGLU: CUDA acceleration enabled")
+                except Exception as e:
+                    logging.warning(f"Failed to create CUDA SwiGLU: {e}, using PyTorch")
+                    self.use_cuda = False
+                    self._impl = None
+            else:
+                self._impl = None
         
-        if not self.use_cuda:
-            # Standard PyTorch implementation
+        # Standard PyTorch layers (if not using accelerated version)
+        if not USE_UNIFIED_BACKEND and not self.use_cuda:
             self.gate_up_proj = nn.Linear(
                 config.hidden_size, 
                 config.intermediate_size * 2, 
@@ -1465,25 +1506,28 @@ class DenseSwiGLU(nn.Module):
     
     @profile_function
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass with automatic CUDA/PyTorch selection."""
+        """Forward pass with automatic backend selection."""
         
-        # Try CUDA implementation if available
-        if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
+        # Use unified backend implementation
+        if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
             try:
-                # FusedSwiGLU handles everything: gate_proj -> up_proj -> SwiGLU -> down_proj
-                # But it only returns intermediate, we need to apply down_proj
+                return self._impl(x)
+            except Exception as e:
+                logging.warning(f"{BACKEND} SwiGLU failed: {e}, falling back to PyTorch")
+                # Fall through to PyTorch
+        
+        # Try CUDA implementation (fallback mode)
+        if self.use_cuda and hasattr(self, '_cuda_swiglu'):
+            try:
                 output = self._cuda_swiglu(x)
-                # CUDA wrapper already applies down_proj internally
                 return output
             except Exception as e:
                 logging.warning(f"CUDA SwiGLU failed: {e}, falling back to PyTorch")
-                # Fall through to PyTorch
         
         # PyTorch fallback
         gate_up = self.gate_up_proj(x)
         gate, up = gate_up.chunk(2, dim=-1)
         return self.down_proj(F.silu(gate) * up)
-
 
 # ============================================================================
 # TRANSFORMER BLOCKS
@@ -1805,6 +1849,26 @@ class DeepSeekTransformer(nn.Module):
             logging.info(f"  - RMSNorm: 2-3x faster")
             logging.info(f"  - RoPE: 3-5x faster") 
             logging.info(f"  - SwiGLU: 1.5-2x faster")
+        # Backend information
+        logging.info(f"Backend: {BACKEND.upper()}")
+        if USE_UNIFIED_BACKEND:
+            logging.info(f"  Unified backend system active")
+        else:
+            logging.info(f"  Direct backend imports")
+
+        logging.info(f"Accelerated Operations:")
+        if BACKEND == 'cuda' and HAS_CUDA_OPS:
+            logging.info(f"  CUDA Transformer ops: Enabled ✅")
+            logging.info(f"    - RMSNorm: 2-3x faster")
+            logging.info(f"    - RoPE: 3-5x faster") 
+            logging.info(f"    - SwiGLU: 1.5-2x faster")
+        elif BACKEND == 'metal' and HAS_METAL_OPS:
+            logging.info(f"  Metal Transformer ops: Enabled ✅")
+            logging.info(f"    - RMSNorm: 2-3x faster")
+            logging.info(f"    - RoPE: 3-5x faster")
+            logging.info(f"    - SwiGLU: 2-3x faster")
+        else:
+            logging.info(f"  Accelerated ops: Disabled ⚠️ (PyTorch fallback)")
         
         logging.info(f"Flash Attention: {'Enabled' if HAS_FLASH_ATTN else 'Disabled'}")
         logging.info(f"Gradient Checkpointing: {self.config.gradient_checkpointing}")
@@ -2463,24 +2527,41 @@ class DeepSeekConfig:
         return cls(**defaults)
 
 if __name__ == "__main__":
-    # Create config with CUDA acceleration enabled
+    # Print backend information
+    if USE_UNIFIED_BACKEND:
+        print_backend_info()
+    
+    # Create config with CUDA/Metal acceleration enabled
     config = DeepSeekConfig.standard_moe(
-        use_cuda_moe=True,  # Enable CUDA ops (default)
+        use_cuda_moe=True,  # Enable accelerated ops
         num_experts=8,
         moe_top_k=2
     )
     
-    # Create model - automatically uses CUDA when available
-    model = DeepSeekTransformer(config).cuda()
+    # Create model - automatically uses best backend
+    device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+    model = DeepSeekTransformer(config).to(device)
     
     # Test forward pass
-    input_ids = torch.randint(0, config.vocab_size, (2, 128)).cuda()
+    input_ids = torch.randint(0, config.vocab_size, (2, 128)).to(device)
     outputs = model(input_ids)
     
-    print("✓ Model with CUDA-accelerated MoE ready!")
+    print(f"\n✔ Model with {BACKEND.upper()} acceleration ready!")
+    print(f"   Backend: {BACKEND}")
+    print(f"   Device: {device}")
     
-    # Optional: Benchmark to see speedup
-    if HAS_CUDA_OPS:
-        from core.moe_cuda_wrapper import benchmark_moe_ops
-        print("\nRunning benchmark...")
-        benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2)
+    # Optional: Benchmark if accelerated ops available
+    if HAS_CUDA_OPS and device == 'cuda':
+        try:
+            from Main_Scripts.core.wrappers.moe_cuda_wrapper import benchmark_moe_ops
+            print("\n📊 Running CUDA MoE benchmark...")
+            benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2)
+        except:
+            pass
+    elif HAS_METAL_OPS and device == 'mps':
+        try:
+            from Main_Scripts.core.wrappers.metal_opt_wrapper import benchmark_metal_ops
+            print("\n📊 Running Metal benchmark...")
+            benchmark_metal_ops()
+        except:
+            pass

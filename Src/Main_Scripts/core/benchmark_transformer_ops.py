@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 # Import CUDA ops
 try:
-    from cuda_opt_wrapper import FusedRMSNorm, FusedRoPE, FusedSwiGLU, TRANSFORMER_OPS_AVAILABLE
+    from Main_Scripts.core.wrappers.cuda_opt_wrapper import FusedRMSNorm, FusedRoPE, FusedSwiGLU, TRANSFORMER_OPS_AVAILABLE
     HAS_CUDA_OPS = TRANSFORMER_OPS_AVAILABLE
 except ImportError:
     HAS_CUDA_OPS = False
