@@ -1654,10 +1654,10 @@ class TransformerBlock(nn.Module):
         
         if isinstance(ffn_result, tuple):
             ffn_out, aux_loss = ffn_result
-            x = x + ffn_out
+            x = x + ffn_out  # ← FIX: Use ffn_out, NOT ffn_result!
             return x, aux_loss
         else:
-            x = x + ffn_result
+            x = x + ffn_result  # ← This is fine for non-tuple returns
             return x, None
 
 
