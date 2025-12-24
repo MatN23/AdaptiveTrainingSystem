@@ -1775,6 +1775,7 @@ class DeepSeekTransformer(nn.Module):
         """Advanced weight initialization strategy."""
         # Embedding initialization
         nn.init.normal_(self.embed_tokens.weight, mean=0.0, std=self.config.init_std)
+        
         # LM head initialization (if not tied)
         if not self.config.tie_word_embeddings:
             nn.init.normal_(self.lm_head.weight, mean=0.0, std=self.config.init_std)
@@ -1794,11 +1795,15 @@ class DeepSeekTransformer(nn.Module):
                         expert_scale *= self.config.expert_output_scaling
                     
                     for expert in layer.ffn.experts:
-                        expert.down_proj.weight.data *= expert_scale
+                        # Check if down_proj exists and is not None
+                        if hasattr(expert, 'down_proj') and expert.down_proj is not None:
+                            expert.down_proj.weight.data *= expert_scale
                 else:
                     # Scale dense FFN output (with or without MoD)
-                    layer.ffn.down_proj.weight.data *= 0.8 * depth_scale
-    
+                    # Check if down_proj exists and is not None
+                    if hasattr(layer.ffn, 'down_proj') and layer.ffn.down_proj is not None:
+                        layer.ffn.down_proj.weight.data *= 0.8 * depth_scale
+        
     def _log_model_info(self):
         """Log comprehensive model information with HYBRID support."""
         total_params = sum(p.numel() for p in self.parameters())
