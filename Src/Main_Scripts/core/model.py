@@ -55,7 +55,7 @@ except ImportError:
     logging.debug("Flash Attention not available - using optimized standard attention")
 
 try:
-    from core.wrappers.cuda_opt_wrapper import (
+    from core.cuda_opt_wrapper import (
         FusedRMSNorm, 
         FusedRoPE, 
         FusedSwiGLU,
@@ -76,7 +76,7 @@ except ImportError:
     logging.debug("Triton not available - some optimizations disabled")
 
 try:
-    from core.wrappers.unified_ops import (
+    from core.unified_ops import (
         get_rms_norm,
         get_rope, 
         get_swiglu,
@@ -95,7 +95,7 @@ except ImportError:
     
     # Fallback to direct CUDA imports
     try:
-        from Main_Scripts.core.wrappers.cuda_opt_wrapper import (
+        from Main_Scripts.core.cuda_opt_wrapper import (
             FusedRMSNorm, 
             FusedRoPE, 
             FusedSwiGLU,
@@ -113,6 +113,13 @@ except ImportError:
         BACKEND = 'pytorch'
         logging.info("⚠️  Using PyTorch fallback")
 
+try:
+    from moe_cuda_wrapper import MoECUDAOps, HAS_CUDA_OPS as MOE_CUDA_AVAILABLE
+    logging.info("✅ MoE CUDA operations available")
+except ImportError:
+    MoECUDAOps = None
+    MOE_CUDA_AVAILABLE = False
+    logging.warning("⚠️  MoE CUDA operations not available - using PyTorch fallback")
 
 # ============================================================================
 # UTILITY FUNCTIONS AND DECORATORS
@@ -459,30 +466,62 @@ class RotaryEmbedding(nn.Module):
     
     @profile_function
     def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Get cos and sin embeddings for given sequence length."""
+        """
+        Get cos and sin embeddings for given sequence length.
         
+        Args:
+            seq_len: Sequence length to get embeddings for
+            device: Device to place embeddings on
+            
+        Returns:
+            Tuple of (cos, sin) embeddings [seq_len, head_dim]
+        """
+        
+        # ✅ ALWAYS use PyTorch cache during training for gradient compatibility
+        if self.training:
+            if not hasattr(self, '_cos_cached') or not hasattr(self, '_sin_cached'):
+                self._build_pytorch_cache(self.max_seq_len)
+            
+            if seq_len > self.max_seq_len:
+                self._extend_cache(seq_len)
+            
+            cos = self._cos_cached[:seq_len]
+            sin = self._sin_cached[:seq_len]
+            
+            if cos.device != device:
+                cos = cos.to(device)
+            if sin.device != device:
+                sin = sin.to(device)
+            
+            return cos, sin
+        
+        # ✅ INFERENCE: Try optimized backends
         # Use unified backend implementation if available
         if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
             try:
                 return self._impl(seq_len, device)
             except Exception as e:
-                logging.warning(f"{BACKEND} RoPE failed: {e}, falling back to PyTorch")
-                # Fall through to PyTorch implementation
+                logging.debug(f"{BACKEND} RoPE failed: {e}, falling back to PyTorch")
         
         # Try CUDA implementation (fallback mode)
         if self._cuda_impl is not None and device.type == 'cuda':
             try:
-                cos_cache = self._cuda_impl.cos_cache[:seq_len]
-                sin_cache = self._cuda_impl.sin_cache[:seq_len]
-                
-                if cos_cache is not None and sin_cache is not None:
-                    return cos_cache, sin_cache
+                # Access cached tensors properly
+                if hasattr(self._cuda_impl, 'cos_cached') and hasattr(self._cuda_impl, 'sin_cached'):
+                    cos_cache = self._cuda_impl.cos_cached[:seq_len]
+                    sin_cache = self._cuda_impl.sin_cached[:seq_len]
+                    
+                    if cos_cache is not None and sin_cache is not None:
+                        if cos_cache.device != device:
+                            cos_cache = cos_cache.to(device)
+                        if sin_cache.device != device:
+                            sin_cache = sin_cache.to(device)
+                        return cos_cache, sin_cache
             except Exception as e:
-                logging.warning(f"CUDA RoPE failed: {e}, using PyTorch fallback")
+                logging.debug(f"CUDA RoPE failed: {e}, using PyTorch fallback")
         
         # PyTorch fallback
         if not hasattr(self, '_cos_cached') or not hasattr(self, '_sin_cached'):
-            logging.warning("PyTorch RoPE cache missing, rebuilding...")
             self._build_pytorch_cache(self.max_seq_len)
         
         if seq_len > self.max_seq_len:
@@ -497,7 +536,7 @@ class RotaryEmbedding(nn.Module):
             sin = sin.to(device)
         
         return cos, sin
-    
+
     def extra_repr(self) -> str:
         """String representation for debugging."""
         cuda_status = "CUDA" if self._cuda_impl is not None else "PyTorch"
@@ -1056,8 +1095,12 @@ class MoEFFNLayer(nn.Module):
         self.hidden_size = config.hidden_size
         self.capacity_factor = getattr(config, 'capacity_factor', 1.25)
         
-        # Default to False for safety - user must opt-in
-        self.use_cuda_ops = getattr(config, 'use_cuda_moe', True) and HAS_CUDA_OPS
+        # ✅ FIX: Check if MoECUDAOps is actually available
+        self.use_cuda_ops = (
+            getattr(config, 'use_cuda_moe', True) and 
+            MoECUDAOps is not None and 
+            MOE_CUDA_AVAILABLE
+        )
         
         # Gating network
         self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
@@ -1085,11 +1128,10 @@ class MoEFFNLayer(nn.Module):
         
         self._init_weights()
         
-        # ✅ CORRECT: Log CUDA status
+        # ✅ Better logging
         op_type = "CUDA-accelerated" if self.use_cuda_ops else "PyTorch"
         logging.info(f"🔍 MoEFFNLayer initialized: {config.num_experts} experts, "
                     f"top-{config.moe_top_k} routing ({op_type})")
-        print(f"🔍 MoEFFNLayer init: use_cuda_ops={self.use_cuda_ops}, HAS_CUDA_OPS={HAS_CUDA_OPS}")
     
     def _init_weights(self):
         """Initialize gating network with small weights for stability."""
@@ -1097,9 +1139,7 @@ class MoEFFNLayer(nn.Module):
     
     @profile_function
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """
-        MoE forward pass with CUDA acceleration and gradient checkpointing compatibility.
-        """
+        """MoE forward pass with CUDA acceleration when available."""
         batch_size, seq_len, hidden_size = x.shape
         x_flat = x.view(-1, hidden_size)
         total_tokens = x_flat.shape[0]
@@ -1107,31 +1147,32 @@ class MoEFFNLayer(nn.Module):
         # === ROUTING ===
         gate_logits = self.gate(x_flat)
         
-        if self.use_cuda_ops and x.is_cuda:
-            # Only use CUDA ops during inference (no gradient checkpointing issues)
+        # ✅ FIX: Check if MoECUDAOps exists before using
+        if self.use_cuda_ops and MoECUDAOps is not None and x.is_cuda and not self.training:
             try:
                 top_k_indices, top_k_probs = MoECUDAOps.topk_gating(
                     gate_logits,
                     self.top_k,
-                    temperature=self.routing_temperature
+                    temperature=self.routing_temperature,
+                    use_cuda=True
                 )
             except Exception as e:
                 logging.warning(f"CUDA routing failed: {e}")
                 top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
         else:
-            # Use PyTorch for training (gradient checkpointing compatible)
+            # Always use PyTorch for training (gradient checkpointing compatible)
             top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
         
         # === EXPERT COMPUTATION ===
         output = self._compute_experts_vectorized(x_flat, top_k_indices, top_k_probs)
         
-        # === AUXILIARY LOSS (Pure PyTorch - always safe) ===
+        # === AUXILIARY LOSS ===
         gate_probs = F.softmax(gate_logits, dim=-1)
         aux_loss = self._compute_auxiliary_loss(gate_probs, top_k_indices, total_tokens)
         
         # === STATISTICS ===
         if self.training:
-            with torch.no_grad():  # Don't track stats in computation graph
+            with torch.no_grad():
                 self._update_routing_stats(top_k_indices, total_tokens)
         
         return output.view(batch_size, seq_len, hidden_size), aux_loss
@@ -2370,7 +2411,7 @@ class DeepSeekConfig:
     seq_length: int = 2048
 
     # CUDA MoE acceleration
-    use_cuda_moe: bool = False  # Enable CUDA-accelerated MoE operations
+    use_cuda_moe: bool = True  # Enable CUDA-accelerated MoE operations
     
     # Regularization
     dropout: float = 0.0
