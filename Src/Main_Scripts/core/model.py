@@ -466,47 +466,18 @@ class RotaryEmbedding(nn.Module):
     
     @profile_function
     def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Get cos and sin embeddings for given sequence length.
+        """Get cos and sin embeddings for given sequence length."""
         
-        Args:
-            seq_len: Sequence length to get embeddings for
-            device: Device to place embeddings on
-            
-        Returns:
-            Tuple of (cos, sin) embeddings [seq_len, head_dim]
-        """
-        
-        # ✅ ALWAYS use PyTorch cache during training for gradient compatibility
-        if self.training:
-            if not hasattr(self, '_cos_cached') or not hasattr(self, '_sin_cached'):
-                self._build_pytorch_cache(self.max_seq_len)
-            
-            if seq_len > self.max_seq_len:
-                self._extend_cache(seq_len)
-            
-            cos = self._cos_cached[:seq_len]
-            sin = self._sin_cached[:seq_len]
-            
-            if cos.device != device:
-                cos = cos.to(device)
-            if sin.device != device:
-                sin = sin.to(device)
-            
-            return cos, sin
-        
-        # ✅ INFERENCE: Try optimized backends
-        # Use unified backend implementation if available
+        # ✅ TRY CUDA/METAL FIRST (training or inference)
         if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
             try:
                 return self._impl(seq_len, device)
             except Exception as e:
                 logging.debug(f"{BACKEND} RoPE failed: {e}, falling back to PyTorch")
         
-        # Try CUDA implementation (fallback mode)
+        # Try CUDA implementation
         if self._cuda_impl is not None and device.type == 'cuda':
             try:
-                # Access cached tensors properly
                 if hasattr(self._cuda_impl, 'cos_cached') and hasattr(self._cuda_impl, 'sin_cached'):
                     cos_cache = self._cuda_impl.cos_cached[:seq_len]
                     sin_cache = self._cuda_impl.sin_cached[:seq_len]
@@ -1139,7 +1110,7 @@ class MoEFFNLayer(nn.Module):
     
     @profile_function
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """MoE forward pass with CUDA acceleration when available."""
+        """MoE forward pass with CUDA acceleration."""
         batch_size, seq_len, hidden_size = x.shape
         x_flat = x.view(-1, hidden_size)
         total_tokens = x_flat.shape[0]
@@ -1147,8 +1118,8 @@ class MoEFFNLayer(nn.Module):
         # === ROUTING ===
         gate_logits = self.gate(x_flat)
         
-        # ✅ FIX: Check if MoECUDAOps exists before using
-        if self.use_cuda_ops and MoECUDAOps is not None and x.is_cuda and not self.training:
+        # ✅ USE CUDA DURING TRAINING TOO!
+        if self.use_cuda_ops and MoECUDAOps is not None and x.is_cuda:
             try:
                 top_k_indices, top_k_probs = MoECUDAOps.topk_gating(
                     gate_logits,
@@ -1160,7 +1131,6 @@ class MoEFFNLayer(nn.Module):
                 logging.warning(f"CUDA routing failed: {e}")
                 top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
         else:
-            # Always use PyTorch for training (gradient checkpointing compatible)
             top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
         
         # === EXPERT COMPUTATION ===
@@ -1475,37 +1445,20 @@ class DenseSwiGLU(nn.Module):
         nn.init.normal_(self.down_proj.weight, mean=0.0, std=output_std)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward with guaranteed gradient flow.
+        """Forward with CUDA acceleration (training or inference)."""
         
-        TRAINING: Always use PyTorch (our registered parameters)
-        INFERENCE: Can use accelerated backends for speedup
-        """
-        
-        # ✅ TRAINING MODE: Use PyTorch to ensure gradients
-        if self.training:
-            gate_up = self.gate_up_proj(x)
-            gate, up = gate_up.chunk(2, dim=-1)
-            return self.down_proj(F.silu(gate) * up)
-        
-        # ✅ INFERENCE MODE: Try accelerated backends
-        # These have their own parameters, but we don't care about gradients
-        
+        # ✅ TRY CUDA/METAL FIRST
         if self.has_unified and hasattr(self, '_impl_backend'):
             try:
-                # Need to copy weights from our params to backend
-                self._sync_weights_to_backend('unified')
                 return self._impl_backend(x)
             except Exception as e:
-                logging.warning(f"Unified backend failed: {e}, falling back")
+                logging.debug(f"Unified backend failed: {e}, falling back")
         
         if self.has_cuda and hasattr(self, '_cuda_backend') and x.is_cuda:
             try:
-                # Need to copy weights from our params to backend
-                self._sync_weights_to_backend('cuda')
                 return self._cuda_backend(x)
             except Exception as e:
-                logging.warning(f"CUDA backend failed: {e}, falling back")
+                logging.debug(f"CUDA backend failed: {e}, falling back")
         
         # PyTorch fallback
         gate_up = self.gate_up_proj(x)
