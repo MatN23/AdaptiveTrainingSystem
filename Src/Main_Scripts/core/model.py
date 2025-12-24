@@ -1339,14 +1339,13 @@ class DenseSwiGLUWithMoD(nn.Module):
     """
     Dense SwiGLU FFN with Mixture of Depths (MoD) routing.
     
-    Similar to DenseSwiGLU but with token-level routing.
+    🔧 FIX: Ensure down_proj is ALWAYS accessible and used
     """
     
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.use_mod = getattr(config, 'use_mod', False)
-        self.use_cuda = HAS_TRANSFORMER_CUDA
         
         # MoD router (only if enabled)
         if self.use_mod:
@@ -1356,31 +1355,31 @@ class DenseSwiGLUWithMoD(nn.Module):
                 routing_temperature=getattr(config, 'mod_routing_temperature', 1.0)
             )
         
-        # Try to use CUDA-accelerated version
-        if self.use_cuda:
+        # 🔧 CRITICAL: Always create PyTorch layers first
+        self.gate_up_proj = nn.Linear(
+            config.hidden_size, 
+            config.intermediate_size * 2, 
+            bias=False
+        )
+        self.down_proj = nn.Linear(
+            config.intermediate_size, 
+            config.hidden_size, 
+            bias=False
+        )
+        
+        # Try to use CUDA-accelerated version (but keep PyTorch as fallback)
+        self.use_cuda = False
+        if HAS_TRANSFORMER_CUDA:
             try:
                 self._cuda_swiglu = FusedSwiGLU(
                     config.hidden_size,
                     config.intermediate_size,
                     use_bias=False
                 )
-                self.down_proj = self._cuda_swiglu.down_proj if hasattr(self._cuda_swiglu, 'down_proj') else None
+                self.use_cuda = True
                 logging.debug(f"✅ DenseSwiGLUWithMoD: CUDA acceleration enabled")
             except Exception as e:
                 logging.warning(f"Failed to create CUDA SwiGLU: {e}, using PyTorch")
-                self.use_cuda = False
-        
-        if not self.use_cuda:
-            self.gate_up_proj = nn.Linear(
-                config.hidden_size, 
-                config.intermediate_size * 2, 
-                bias=False
-            )
-            self.down_proj = nn.Linear(
-                config.intermediate_size, 
-                config.hidden_size, 
-                bias=False
-            )
         
         self._param_count = sum(p.numel() for p in self.parameters())
         self._init_weights()
@@ -1389,25 +1388,26 @@ class DenseSwiGLUWithMoD(nn.Module):
         """Initialize weights with depth scaling."""
         std = self.config.init_std
         
-        if not self.use_cuda and hasattr(self, 'gate_up_proj'):
-            nn.init.normal_(self.gate_up_proj.weight, mean=0.0, std=std)
+        # Always initialize PyTorch layers
+        nn.init.normal_(self.gate_up_proj.weight, mean=0.0, std=std)
         
-        if hasattr(self, 'down_proj') and self.down_proj is not None:
-            output_std = std / math.sqrt(2 * self.config.num_layers)
-            nn.init.normal_(self.down_proj.weight, mean=0.0, std=output_std)
+        output_std = std / math.sqrt(2 * self.config.num_layers)
+        nn.init.normal_(self.down_proj.weight, mean=0.0, std=output_std)
     
     @profile_function
     def forward(self, x: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]]]:
         """
         Forward pass with optional MoD routing and CUDA acceleration.
         
-        🔧 FIX: Ensure output dimensions always match input dimensions
+        🔧 FIX: ALWAYS return hidden_size, never intermediate_size
         """
         if not self.use_mod:
             # Standard dense FFN without MoD
             if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
                 try:
-                    return self._cuda_swiglu(x), None
+                    output = self._cuda_swiglu(x)
+                    assert output.shape[-1] == self.config.hidden_size
+                    return output, None
                 except Exception as e:
                     logging.warning(f"CUDA SwiGLU failed: {e}, falling back")
             
@@ -1415,12 +1415,13 @@ class DenseSwiGLUWithMoD(nn.Module):
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
             output = self.down_proj(F.silu(gate) * up)
+            assert output.shape[-1] == self.config.hidden_size
             return output, None
         
-        # 🔧 FIX: MoD routing - get routing decisions FIRST
+        # MoD routing
         routing_weights, routing_probs, aux_loss = self.router(x)
         
-        # Compute FFN output for all tokens (ensuring correct dimensions)
+        # Compute FFN for all tokens - MUST use down_proj
         if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
             try:
                 ffn_output = self._cuda_swiglu(x)
@@ -1428,21 +1429,24 @@ class DenseSwiGLUWithMoD(nn.Module):
                 logging.warning(f"CUDA SwiGLU failed: {e}, falling back")
                 gate_up = self.gate_up_proj(x)
                 gate, up = gate_up.chunk(2, dim=-1)
-                ffn_output = self.down_proj(F.silu(gate) * up)
+                ffn_output = self.down_proj(F.silu(gate) * up)  # 🔧 MUST call down_proj
         else:
             # PyTorch fallback
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
-            ffn_output = self.down_proj(F.silu(gate) * up)
+            ffn_output = self.down_proj(F.silu(gate) * up)  # 🔧 MUST call down_proj
         
-        # 🔧 CRITICAL FIX: Apply routing weights correctly
-        # ffn_output is [batch, seq_len, hidden_size]
-        # routing_weights is [batch, seq_len, 1]
-        # After multiplication, output should still be [batch, seq_len, hidden_size]
-        output = ffn_output * routing_weights  # Broadcasting handles dimensions correctly
+        # 🔧 VERIFY: ffn_output must be hidden_size
+        assert ffn_output.shape[-1] == self.config.hidden_size, \
+            f"FFN output wrong size: {ffn_output.shape[-1]} != {self.config.hidden_size}"
         
-        # 🔧 DEBUG: Verify dimensions match
-        assert output.shape == x.shape, f"MoD output shape {output.shape} != input shape {x.shape}"
+        # Apply routing weights
+        # routing_weights: [batch, seq, 1], ffn_output: [batch, seq, hidden]
+        output = ffn_output * routing_weights
+        
+        # 🔧 FINAL VERIFICATION
+        assert output.shape == x.shape, \
+            f"MoD output shape {output.shape} != input shape {x.shape}"
         
         return output, aux_loss
 
@@ -1450,54 +1454,48 @@ class DenseSwiGLU(nn.Module):
     """
     Standard Dense SwiGLU FFN with optional CUDA acceleration.
     
-    Since this is used for full forward passes (not MoE routing),
-    we CAN use FusedSwiGLU here.
+    🔧 FIX: Ensure down_proj is ALWAYS accessible and used
     """
     
     def __init__(self, config):
         super().__init__()
         self.config = config
         
-        # Use unified backend if available
-        if USE_UNIFIED_BACKEND:
-            self._impl = get_swiglu(config.hidden_size, config.intermediate_size)
-            # Extract down_proj if it exists for weight access
-            self.down_proj = getattr(self._impl, 'down_proj', None)
-            self.use_cuda = False  # Mark as using unified backend
-            logging.debug(f"✅ DenseSwiGLU: {BACKEND} backend")
-        else:
-            # Fallback to direct CUDA check
-            self.use_cuda = HAS_TRANSFORMER_CUDA
-            
-            if self.use_cuda:
-                try:
-                    self._cuda_swiglu = FusedSwiGLU(
-                        config.hidden_size,
-                        config.intermediate_size,
-                        use_bias=False
-                    )
-                    self.down_proj = getattr(self._cuda_swiglu, 'down_proj', None)
-                    self._impl = None
-                    logging.debug(f"✅ DenseSwiGLU: CUDA acceleration enabled")
-                except Exception as e:
-                    logging.warning(f"Failed to create CUDA SwiGLU: {e}, using PyTorch")
-                    self.use_cuda = False
-                    self._impl = None
-            else:
-                self._impl = None
+        # 🔧 CRITICAL: Always create PyTorch layers first as fallback
+        self.gate_up_proj = nn.Linear(
+            config.hidden_size, 
+            config.intermediate_size * 2, 
+            bias=False
+        )
+        self.down_proj = nn.Linear(
+            config.intermediate_size, 
+            config.hidden_size, 
+            bias=False
+        )
         
-        # Standard PyTorch layers (if not using accelerated version)
-        if not USE_UNIFIED_BACKEND and not self.use_cuda:
-            self.gate_up_proj = nn.Linear(
-                config.hidden_size, 
-                config.intermediate_size * 2, 
-                bias=False
-            )
-            self.down_proj = nn.Linear(
-                config.intermediate_size, 
-                config.hidden_size, 
-                bias=False
-            )
+        # Use unified backend if available (but keep PyTorch layers accessible)
+        self.use_unified = False
+        self.use_cuda = False
+        self._impl = None
+        
+        if USE_UNIFIED_BACKEND:
+            try:
+                self._impl = get_swiglu(config.hidden_size, config.intermediate_size)
+                self.use_unified = True
+                logging.debug(f"✅ DenseSwiGLU: {BACKEND} backend")
+            except Exception as e:
+                logging.warning(f"Failed to create unified SwiGLU: {e}, using PyTorch")
+        elif HAS_TRANSFORMER_CUDA:
+            try:
+                self._cuda_swiglu = FusedSwiGLU(
+                    config.hidden_size,
+                    config.intermediate_size,
+                    use_bias=False
+                )
+                self.use_cuda = True
+                logging.debug(f"✅ DenseSwiGLU: CUDA acceleration enabled")
+            except Exception as e:
+                logging.warning(f"Failed to create CUDA SwiGLU: {e}, using PyTorch")
         
         self._param_count = sum(p.numel() for p in self.parameters())
         self._init_weights()
@@ -1506,37 +1504,52 @@ class DenseSwiGLU(nn.Module):
         """Initialize weights with depth scaling."""
         std = self.config.init_std
         
-        if not self.use_cuda and hasattr(self, 'gate_up_proj'):
-            nn.init.normal_(self.gate_up_proj.weight, mean=0.0, std=std)
+        # Always initialize PyTorch layers
+        nn.init.normal_(self.gate_up_proj.weight, mean=0.0, std=std)
         
-        if hasattr(self, 'down_proj') and self.down_proj is not None:
-            output_std = std / math.sqrt(2 * self.config.num_layers)
-            nn.init.normal_(self.down_proj.weight, mean=0.0, std=output_std)
+        output_std = std / math.sqrt(2 * self.config.num_layers)
+        nn.init.normal_(self.down_proj.weight, mean=0.0, std=output_std)
     
     @profile_function
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass with automatic backend selection."""
+        """
+        Forward pass with automatic backend selection.
         
-        # Use unified backend implementation
-        if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
+        🔧 FIX: ALWAYS return hidden_size, never intermediate_size
+        """
+        
+        # Try unified backend implementation
+        if self.use_unified and self._impl is not None:
             try:
-                return self._impl(x)
+                output = self._impl(x)
+                # 🔧 VERIFY: Check output dimensions
+                assert output.shape[-1] == self.config.hidden_size, \
+                    f"Unified backend returned wrong size: {output.shape[-1]} != {self.config.hidden_size}"
+                return output
             except Exception as e:
                 logging.warning(f"{BACKEND} SwiGLU failed: {e}, falling back to PyTorch")
-                # Fall through to PyTorch
         
-        # Try CUDA implementation (fallback mode)
-        if self.use_cuda and hasattr(self, '_cuda_swiglu'):
+        # Try CUDA implementation
+        if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
             try:
                 output = self._cuda_swiglu(x)
+                # 🔧 VERIFY: Check output dimensions
+                assert output.shape[-1] == self.config.hidden_size, \
+                    f"CUDA backend returned wrong size: {output.shape[-1]} != {self.config.hidden_size}"
                 return output
             except Exception as e:
                 logging.warning(f"CUDA SwiGLU failed: {e}, falling back to PyTorch")
         
-        # PyTorch fallback
-        gate_up = self.gate_up_proj(x)
-        gate, up = gate_up.chunk(2, dim=-1)
-        return self.down_proj(F.silu(gate) * up)
+        # 🔧 PyTorch fallback - GUARANTEED to work
+        gate_up = self.gate_up_proj(x)  # [batch, seq, intermediate*2]
+        gate, up = gate_up.chunk(2, dim=-1)  # Each: [batch, seq, intermediate]
+        output = self.down_proj(F.silu(gate) * up)  # [batch, seq, hidden]
+        
+        # 🔧 FINAL VERIFICATION
+        assert output.shape[-1] == self.config.hidden_size, \
+            f"PyTorch output wrong size: {output.shape[-1]} != {self.config.hidden_size}"
+        
+        return output
 
 # ============================================================================
 # TRANSFORMER BLOCKS
