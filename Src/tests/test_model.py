@@ -143,9 +143,12 @@ class TestFullModel:
         assert not torch.isnan(logits).any()
     
     def test_model_backward(self, small_model):
-        """Test backward pass works."""
+        """Test backward pass works - with diagnostics."""
         input_ids = torch.randint(0, 1000, (2, 10))
         labels = torch.randint(0, 1000, (2, 10))
+        
+        # Ensure model is in training mode
+        small_model.train()
         
         output = small_model(input_ids)
         logits = output[0] if isinstance(output, tuple) else output
@@ -157,7 +160,39 @@ class TestFullModel:
         
         loss.backward()
         
-        # Check gradients exist
-        for param in small_model.parameters():
+        # 🔍 DIAGNOSTIC: Find parameters with None gradients
+        params_without_grad = []
+        for name, param in small_model.named_parameters():
+            if param.requires_grad and param.grad is None:
+                params_without_grad.append({
+                    'name': name,
+                    'shape': param.shape,
+                    'layer': name.split('.')[0:3]  # Get first 3 levels
+                })
+        
+        # Print diagnostics if any params have None grad
+        if params_without_grad:
+            print("\n" + "="*70)
+            print("❌ PARAMETERS WITH MISSING GRADIENTS:")
+            print("="*70)
+            for info in params_without_grad:
+                print(f"  Name: {info['name']}")
+                print(f"  Shape: {info['shape']}")
+                print(f"  Layer hierarchy: {' -> '.join(info['layer'])}")
+                print("-"*70)
+            
+            # Additional context
+            print("\n📊 GRADIENT STATISTICS:")
+            total_params = sum(1 for p in small_model.parameters() if p.requires_grad)
+            params_with_grad = sum(1 for p in small_model.parameters() 
+                                if p.requires_grad and p.grad is not None)
+            print(f"  Total parameters: {total_params}")
+            print(f"  Parameters with gradients: {params_with_grad}")
+            print(f"  Parameters without gradients: {len(params_without_grad)}")
+            print("="*70 + "\n")
+        
+        # Original assertion with better error message
+        for name, param in small_model.named_parameters():
             if param.requires_grad:
-                assert param.grad is not None
+                assert param.grad is not None, \
+                    f"Parameter '{name}' (shape {param.shape}) has no gradient!"
