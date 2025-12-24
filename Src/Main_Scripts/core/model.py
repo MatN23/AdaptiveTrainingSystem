@@ -1400,6 +1400,8 @@ class DenseSwiGLUWithMoD(nn.Module):
     def forward(self, x: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]]]:
         """
         Forward pass with optional MoD routing and CUDA acceleration.
+        
+        🔧 FIX: Ensure output dimensions always match input dimensions
         """
         if not self.use_mod:
             # Standard dense FFN without MoD
@@ -1409,16 +1411,16 @@ class DenseSwiGLUWithMoD(nn.Module):
                 except Exception as e:
                     logging.warning(f"CUDA SwiGLU failed: {e}, falling back")
             
-            # PyTorch fallback - THIS WAS THE BUG - was missing down_proj!
+            # PyTorch fallback
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
-            output = self.down_proj(F.silu(gate) * up)  # ← FIX: Added down_proj
+            output = self.down_proj(F.silu(gate) * up)
             return output, None
         
-        # MoD routing
+        # 🔧 FIX: MoD routing - get routing decisions FIRST
         routing_weights, routing_probs, aux_loss = self.router(x)
         
-        # Compute FFN for all tokens - ENSURE down_proj is ALWAYS called
+        # Compute FFN output for all tokens (ensuring correct dimensions)
         if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
             try:
                 ffn_output = self._cuda_swiglu(x)
@@ -1426,15 +1428,21 @@ class DenseSwiGLUWithMoD(nn.Module):
                 logging.warning(f"CUDA SwiGLU failed: {e}, falling back")
                 gate_up = self.gate_up_proj(x)
                 gate, up = gate_up.chunk(2, dim=-1)
-                ffn_output = self.down_proj(F.silu(gate) * up)  # ← Properly applies down_proj
+                ffn_output = self.down_proj(F.silu(gate) * up)
         else:
-            # PyTorch fallback - MUST include down_proj
+            # PyTorch fallback
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
-            ffn_output = self.down_proj(F.silu(gate) * up)  # ← FIX: Added down_proj
+            ffn_output = self.down_proj(F.silu(gate) * up)
         
-        # Apply routing AFTER down_proj (so dimensions match)
-        output = ffn_output * routing_weights
+        # 🔧 CRITICAL FIX: Apply routing weights correctly
+        # ffn_output is [batch, seq_len, hidden_size]
+        # routing_weights is [batch, seq_len, 1]
+        # After multiplication, output should still be [batch, seq_len, hidden_size]
+        output = ffn_output * routing_weights  # Broadcasting handles dimensions correctly
+        
+        # 🔧 DEBUG: Verify dimensions match
+        assert output.shape == x.shape, f"MoD output shape {output.shape} != input shape {x.shape}"
         
         return output, aux_loss
 
@@ -1652,12 +1660,13 @@ class TransformerBlock(nn.Module):
         # FFN with residual
         ffn_result = self.ffn(self.post_attn_norm(x))
         
+        # 🔧 CRITICAL FIX: Handle tuple returns properly
         if isinstance(ffn_result, tuple):
             ffn_out, aux_loss = ffn_result
-            x = x + ffn_out  # ← FIX: Use ffn_out, NOT ffn_result!
+            x = x + ffn_out  # ✅ Use ffn_out (tensor), NOT ffn_result (tuple)
             return x, aux_loss
         else:
-            x = x + ffn_result  # ← This is fine for non-tuple returns
+            x = x + ffn_result  # ✅ This is fine for non-tuple returns
             return x, None
 
 
