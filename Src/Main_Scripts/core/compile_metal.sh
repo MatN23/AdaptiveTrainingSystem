@@ -4,6 +4,8 @@
 
 set -e  # Exit on error
 
+export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+
 echo "🔨 Compiling Metal Shaders for Apple Silicon"
 echo "=============================================="
 echo ""
