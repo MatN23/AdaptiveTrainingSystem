@@ -1414,29 +1414,26 @@ class DenseSwiGLU(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward with guaranteed gradient flow."""
         
-        # ✅ FIX: Always compute PyTorch path in training mode as backup
-        # This ensures gradients are registered even if CUDA path is tried
-        
+        # ✅ Training mode: ALWAYS use PyTorch
         if self.training:
-            # Training mode: always use PyTorch for gradient safety
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
             return self.down_proj(F.silu(gate) * up)
         
-        # Inference mode: try optimized backends
+        # Inference: try optimized backends
         if self.use_unified and hasattr(self, '_impl'):
             try:
                 return self._impl(x)
             except Exception:
-                pass  # Fall through
+                pass
         
         if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
             try:
                 return self._cuda_swiglu(x)
             except Exception:
-                pass  # Fall through
+                pass
         
-        # Final PyTorch fallback
+        # PyTorch fallback
         gate_up = self.gate_up_proj(x)
         gate, up = gate_up.chunk(2, dim=-1)
         return self.down_proj(F.silu(gate) * up)
