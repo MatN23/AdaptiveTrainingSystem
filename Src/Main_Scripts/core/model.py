@@ -1173,9 +1173,10 @@ class MoEFFNLayer(nn.Module):
         probs: torch.Tensor
     ) -> torch.Tensor:
         """
-        ✅ FIX: Ensure all experts receive at least some gradient signal
-        even if not selected in this batch.
+        Vectorized expert computation with dtype safety.
+        ✅ Ensures all tensors have matching dtypes for fp16/bf16/fp32 training.
         """
+        # ✅ CRITICAL FIX: Use zeros_like to match input dtype exactly
         output = torch.zeros_like(x)
         
         # Track which experts were used
@@ -1190,7 +1191,19 @@ class MoEFFNLayer(nn.Module):
                 expert_inputs = x[token_indices]
                 expert_weights = probs[expert_mask].view(-1)
                 expert_outputs = self.experts[expert_id](expert_inputs)
+                
+                # ✅ CRITICAL: Ensure expert_outputs matches x.dtype
+                if expert_outputs.dtype != x.dtype:
+                    expert_outputs = expert_outputs.to(x.dtype)
+                
+                # ✅ CRITICAL: Ensure expert_weights matches x.dtype
+                if expert_weights.dtype != x.dtype:
+                    expert_weights = expert_weights.to(x.dtype)
+                
+                # Compute weighted outputs (all same dtype now)
                 weighted_outputs = expert_outputs * expert_weights.unsqueeze(-1)
+                
+                # ✅ Now both output and weighted_outputs have same dtype
                 output.index_add_(0, token_indices, weighted_outputs)
                 experts_used.add(expert_id)
         
@@ -1198,9 +1211,11 @@ class MoEFFNLayer(nn.Module):
         if self.training and len(experts_used) < self.num_experts:
             for expert_id in range(self.num_experts):
                 if expert_id not in experts_used:
-                    # Compute expert output with first token (tiny weight)
                     dummy_output = self.experts[expert_id](x[:1])
-                    # Add with near-zero weight to maintain gradients
+                    # Ensure dtype matches
+                    if dummy_output.dtype != x.dtype:
+                        dummy_output = dummy_output.to(x.dtype)
+                    # Add with near-zero weight (maintains dtype)
                     output[0] = output[0] + dummy_output[0] * 1e-8
         
         return output
@@ -1211,27 +1226,68 @@ class MoEFFNLayer(nn.Module):
         top_k_indices: torch.Tensor,
         total_tokens: int
     ) -> torch.Tensor:
-        """Compute load balancing auxiliary loss."""
+        """
+        Compute load balancing auxiliary loss.
+        ✅ Fixed: Properly handle indices regardless of shape
+        """
         expert_usage = torch.zeros(self.num_experts, device=gate_probs.device)
+        
+        # Debug print to see what we're getting
+        # print(f"DEBUG: top_k_indices shape: {top_k_indices.shape}, dtype: {top_k_indices.dtype}")
+        
         for k in range(self.top_k):
+            # ✅ ROBUST FIX: Handle any shape, ensure 1D int64
+            if top_k_indices.dim() == 1:
+                # Already 1D
+                indices_1d = top_k_indices.long()
+            elif top_k_indices.dim() == 2:
+                # 2D: extract column k and flatten
+                indices_1d = top_k_indices[:, k].contiguous().view(-1).long()
+            else:
+                # Higher dimensions: flatten everything
+                indices_1d = top_k_indices.contiguous().view(-1).long()
+            
+            # Ensure no negative values
+            indices_1d = torch.clamp(indices_1d, min=0, max=self.num_experts - 1)
+            
             expert_counts = torch.bincount(
-                top_k_indices[:, k].flatten().long(),  # Ensure int64 and 1D
+                indices_1d,
                 minlength=self.num_experts
             )
             expert_usage += expert_counts.float()
+        
+        # Normalize by total token-expert assignments
         expert_usage = expert_usage / (total_tokens * self.top_k + 1e-9)
         
+        # Gate importance (average probability assigned to each expert)
         gate_importance = gate_probs.mean(dim=0)
+        
+        # Auxiliary loss: encourages balanced expert usage
         aux_loss = torch.sum(expert_usage * gate_importance) * self.num_experts
         
+        # Clamp to prevent extremely large values
         return torch.clamp(aux_loss * self.load_balancing_weight, max=1.0)
     
     def _update_routing_stats(self, top_k_indices: torch.Tensor, total_tokens: int):
-        """Update routing statistics for monitoring."""
+        """
+        Update routing statistics for monitoring.
+        ✅ Fixed: Properly handle indices regardless of shape
+        """
         with torch.no_grad():
             for k in range(self.top_k):
+                # ✅ ROBUST FIX: Handle any shape, ensure 1D int64
+                if top_k_indices.dim() == 1:
+                    indices_1d = top_k_indices.cpu().long()
+                elif top_k_indices.dim() == 2:
+                    indices_1d = top_k_indices[:, k].contiguous().view(-1).cpu().long()
+                else:
+                    indices_1d = top_k_indices.contiguous().view(-1).cpu().long()
+                
+                # Ensure no negative values
+                indices_1d = torch.clamp(indices_1d, min=0, max=self.num_experts - 1)
+                
                 expert_counts = torch.bincount(
-                    top_k_indices[:, k].cpu().flatten().long(),  # ✅ Flatten + ensure int64
+                    indices_1d,
                     minlength=self.num_experts
                 )
                 self._routing_stats['expert_usage'] += expert_counts.float()
