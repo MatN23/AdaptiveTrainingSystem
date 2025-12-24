@@ -1356,13 +1356,22 @@ class DenseSwiGLUWithMoD(nn.Module):
         return output, aux_loss
 
 class DenseSwiGLU(nn.Module):
-    """Fixed DenseSwiGLU with guaranteed gradient flow."""
+    """
+    SwiGLU with CUDA/Metal acceleration that WORKS with gradients.
+    
+    KEY INSIGHT: We have TWO sets of parameters:
+    1. PyTorch parameters (self.gate_up_proj, self.down_proj) - for training
+    2. CUDA/Metal wrappers - for inference speedup only
+    
+    We ONLY use (1) during training to ensure gradients flow.
+    We can use (2) during inference for speed.
+    """
     
     def __init__(self, config):
         super().__init__()
         self.config = config
         
-        # ✅ ALWAYS create PyTorch layers (required for gradients)
+        # ✅ ALWAYS create PyTorch layers - these are our PRIMARY parameters
         self.gate_up_proj = nn.Linear(
             config.hidden_size, 
             config.intermediate_size * 2, 
@@ -1374,119 +1383,121 @@ class DenseSwiGLU(nn.Module):
             bias=False
         )
         
-        # Optimized backends are OPTIONAL
-        self.use_unified = False
-        self.use_cuda = False
+        self._param_count = sum(p.numel() for p in self.parameters())
+        self._init_weights()
+        
+        # ✅ Store accelerated backends as NON-MODULE attributes
+        # Key: We create them AFTER super().__init__() and we DON'T
+        # assign them like "self._cuda = Module()" which would register params
+        self._setup_accelerated_backends()
+    
+    def _setup_accelerated_backends(self):
+        """Setup accelerated backends WITHOUT registering their parameters."""
+        self.has_cuda = False
+        self.has_metal = False
+        self.has_unified = False
+        
+        # Option 1: Store as non-persistent attribute (won't be in state_dict)
+        # This works because we're NOT calling self.add_module()
         
         if USE_UNIFIED_BACKEND:
             try:
-                self._impl = get_swiglu(config.hidden_size, config.intermediate_size)
-                self.use_unified = True
-            except Exception:
-                self._impl = None
+                # Create wrapper but DON'T make it a submodule
+                impl = get_swiglu(self.config.hidden_size, self.config.intermediate_size)
+                # Store in a way that won't register parameters
+                object.__setattr__(self, '_impl_backend', impl)
+                self.has_unified = True
+                logging.debug(f"✅ DenseSwiGLU: Unified backend available (inference only)")
+            except Exception as e:
+                logging.debug(f"Unified backend unavailable: {e}")
         
-        if HAS_TRANSFORMER_CUDA and not self.use_unified:
+        elif HAS_TRANSFORMER_CUDA:
             try:
-                self._cuda_swiglu = FusedSwiGLU(
-                    config.hidden_size,
-                    config.intermediate_size,
+                # Create CUDA wrapper but DON'T make it a submodule
+                cuda_impl = FusedSwiGLU(
+                    self.config.hidden_size,
+                    self.config.intermediate_size,
                     use_bias=False
                 )
-                self.use_cuda = True
-            except Exception:
-                pass
-        
-        self._param_count = sum(p.numel() for p in self.parameters())
-        self._init_weights()
+                # Store in a way that won't register parameters
+                object.__setattr__(self, '_cuda_backend', cuda_impl)
+                self.has_cuda = True
+                logging.debug(f"✅ DenseSwiGLU: CUDA backend available (inference only)")
+            except Exception as e:
+                logging.debug(f"CUDA backend unavailable: {e}")
     
     def _init_weights(self):
-        """Initialize weights."""
+        """Initialize OUR parameters (not backend parameters)."""
         std = self.config.init_std
         nn.init.normal_(self.gate_up_proj.weight, mean=0.0, std=std)
         output_std = std / math.sqrt(2 * self.config.num_layers)
         nn.init.normal_(self.down_proj.weight, mean=0.0, std=output_std)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward with guaranteed gradient flow."""
+        """
+        Forward with guaranteed gradient flow.
         
-        # ✅ TRAINING: Always use PyTorch with our own parameters
+        TRAINING: Always use PyTorch (our registered parameters)
+        INFERENCE: Can use accelerated backends for speedup
+        """
+        
+        # ✅ TRAINING MODE: Use PyTorch to ensure gradients
         if self.training:
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
             return self.down_proj(F.silu(gate) * up)
         
-        # INFERENCE: Try optimized backends
-        if self.use_unified and hasattr(self, '_impl'):
-            try:
-                return self._impl(x)
-            except Exception:
-                pass
+        # ✅ INFERENCE MODE: Try accelerated backends
+        # These have their own parameters, but we don't care about gradients
         
-        if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
+        if self.has_unified and hasattr(self, '_impl_backend'):
             try:
-                return self._cuda_swiglu(x)
-            except Exception:
-                pass
+                # Need to copy weights from our params to backend
+                self._sync_weights_to_backend('unified')
+                return self._impl_backend(x)
+            except Exception as e:
+                logging.warning(f"Unified backend failed: {e}, falling back")
         
-        # Fallback
+        if self.has_cuda and hasattr(self, '_cuda_backend') and x.is_cuda:
+            try:
+                # Need to copy weights from our params to backend
+                self._sync_weights_to_backend('cuda')
+                return self._cuda_backend(x)
+            except Exception as e:
+                logging.warning(f"CUDA backend failed: {e}, falling back")
+        
+        # PyTorch fallback
         gate_up = self.gate_up_proj(x)
         gate, up = gate_up.chunk(2, dim=-1)
         return self.down_proj(F.silu(gate) * up)
-
-
-class MoEFFNLayer(nn.Module):
-    """Fixed MoE with guaranteed gradient flow to ALL experts."""
     
-    def _compute_experts_vectorized(self, x, indices, probs):
+    def _sync_weights_to_backend(self, backend_type: str):
         """
-        ✅ CRITICAL FIX: Ensure ALL experts receive gradients.
+        Copy weights from our PyTorch parameters to backend parameters.
         
-        Problem: If an expert is never selected in a batch, its parameters
-        won't receive gradients, causing param.grad = None.
+        This is needed because we have TWO sets of parameters:
+        - self.gate_up_proj.weight (PyTorch, used in training)
+        - backend.gate_proj.weight (CUDA/Metal, used in inference)
         
-        Solution: Always compute ALL experts, but use routing weights
-        to control their contribution.
+        We sync after training to use accelerated inference.
         """
-        batch_size = x.shape[0]
-        output = torch.zeros_like(x)
-        
-        if self.training:
-            # ✅ TRAINING MODE: Compute ALL experts to ensure gradients
-            # This prevents None gradients on unused experts
-            
-            for expert_id in range(self.num_experts):
-                # Find tokens routed to this expert
-                expert_mask = (indices == expert_id)
-                has_tokens = expert_mask.any()
-                
-                if has_tokens:
-                    # Normal path: tokens were routed here
-                    token_indices = expert_mask.any(dim=-1).nonzero(as_tuple=True)[0]
-                    expert_inputs = x[token_indices]
-                    expert_weights = probs[expert_mask].view(-1)
-                    expert_outputs = self.experts[expert_id](expert_inputs)
-                    weighted_outputs = expert_outputs * expert_weights.unsqueeze(-1)
-                    output.index_add_(0, token_indices, weighted_outputs)
-                else:
-                    # ✅ FIX: Expert not selected - give it tiny gradient signal
-                    # Use first token with near-zero weight to maintain gradient flow
-                    dummy_output = self.experts[expert_id](x[:1])
-                    output[0] = output[0] + dummy_output[0] * 1e-10
-        
+        if backend_type == 'unified' and hasattr(self, '_impl_backend'):
+            backend = self._impl_backend
+        elif backend_type == 'cuda' and hasattr(self, '_cuda_backend'):
+            backend = self._cuda_backend
         else:
-            # INFERENCE MODE: Only compute selected experts (faster)
-            for expert_id in range(self.num_experts):
-                expert_mask = (indices == expert_id)
-                token_indices = expert_mask.any(dim=-1).nonzero(as_tuple=True)[0]
-                
-                if token_indices.numel() > 0:
-                    expert_inputs = x[token_indices]
-                    expert_weights = probs[expert_mask].view(-1)
-                    expert_outputs = self.experts[expert_id](expert_inputs)
-                    weighted_outputs = expert_outputs * expert_weights.unsqueeze(-1)
-                    output.index_add_(0, token_indices, weighted_outputs)
+            return
         
-        return output
+        # Copy our trained weights to backend
+        with torch.no_grad():
+            if hasattr(backend, 'gate_proj') and hasattr(backend, 'up_proj'):
+                # Split our fused gate_up into separate gate and up
+                gate_weight, up_weight = self.gate_up_proj.weight.chunk(2, dim=0)
+                backend.gate_proj.weight.copy_(gate_weight)
+                backend.up_proj.weight.copy_(up_weight)
+            
+            if hasattr(backend, 'down_proj'):
+                backend.down_proj.weight.copy_(self.down_proj.weight)
 
 # ============================================================================
 # TRANSFORMER BLOCKS
