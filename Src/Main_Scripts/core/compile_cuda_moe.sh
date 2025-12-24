@@ -1,14 +1,16 @@
 #!/bin/bash
 
 ################################################################################
-# CUDA MoE Operations - Complete Build & Compilation Script
+# CUDA MoE Operations - Direct Compilation Script
 # 
-# This script does EVERYTHING needed to compile and install CUDA MoE ops:
-# 1. Detects environment and validates dependencies
-# 2. Creates proper Python extension setup
-# 3. Compiles CUDA kernels with optimal flags
-# 4. Installs the module for import
-# 5. Verifies everything works
+# This script compiles CUDA kernels directly using nvcc WITHOUT setup.py
+# Does EVERYTHING in one shot:
+# 1. Validates environment
+# 2. Compiles .cu to .o with nvcc
+# 3. Links into Python extension .so
+# 4. Verifies it works
+#
+# Output: moe_cuda_ext.so (directly importable from Python)
 #
 # Usage:
 #   chmod +x compile_cuda_moe.sh
@@ -29,6 +31,7 @@ DEBUG_MODE=0
 VERBOSE=0
 CLEAN_BUILD=0
 CUDA_FILE="moe_cuda_ops.cu"
+OUTPUT_FILE="moe_cuda_ext.so"
 
 ################################################################################
 # Helper Functions
@@ -46,7 +49,33 @@ print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 print_info() { echo -e "${BLUE}ℹ${NC} $1"; }
 
 show_help() {
-    head -n 15 "$0" | grep "^#" | sed 's/^# //' | sed 's/^#//'
+    cat << EOF
+CUDA MoE Direct Compiler
+
+Compiles CUDA MoE operations directly into moe_cuda_ext.so
+No setup.py, no pip install, just raw compilation.
+
+Usage:
+    ./compile_cuda_moe.sh [OPTIONS]
+
+Options:
+    --debug     Compile with debug symbols (-g -G)
+    --verbose   Show full compilation output
+    --clean     Remove all build artifacts first
+    --help      Show this help message
+
+Output:
+    moe_cuda_ext.so - Python importable shared library
+
+Examples:
+    ./compile_cuda_moe.sh                    # Standard optimized build
+    ./compile_cuda_moe.sh --debug            # Debug build with symbols
+    ./compile_cuda_moe.sh --clean --verbose  # Clean rebuild with output
+
+After compilation:
+    python3 -c "import moe_cuda_ext; print('Success!')"
+
+EOF
     exit 0
 }
 
@@ -54,12 +83,23 @@ show_help() {
 # Parse Arguments
 ################################################################################
 
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
     case $1 in
-        --debug) DEBUG_MODE=1; shift ;;
-        --verbose) VERBOSE=1; shift ;;
-        --clean) CLEAN_BUILD=1; shift ;;
-        --help) show_help ;;
+        --debug)
+            DEBUG_MODE=1
+            shift
+            ;;
+        --verbose)
+            VERBOSE=1
+            shift
+            ;;
+        --clean)
+            CLEAN_BUILD=1
+            shift
+            ;;
+        --help)
+            show_help
+            ;;
         *)
             print_error "Unknown option: $1"
             echo "Use --help for usage information"
@@ -78,7 +118,12 @@ print_header "Step 1: Environment Detection"
 if [ ! -f "$CUDA_FILE" ]; then
     print_error "CUDA source file not found: $CUDA_FILE"
     print_info "Current directory: $(pwd)"
-    print_info "Files here: $(ls -1 | head -n 10 | tr '\n' ' ')"
+    print_info "Expected location: $CUDA_FILE"
+    if [ -d "cuda" ]; then
+        print_info "Files in cuda/: $(ls -1 cuda/ | tr '\n' ' ')"
+    else
+        print_info "cuda/ directory not found!"
+    fi
     exit 1
 fi
 print_success "Found: $CUDA_FILE"
@@ -88,8 +133,8 @@ if ! command -v python3 &> /dev/null; then
     print_error "Python 3 not found"
     exit 1
 fi
-PYTHON_VERSION=$(python3 --version)
-print_success "$PYTHON_VERSION"
+PYTHON_VERSION=$(python3 --version | awk '{print $2}')
+print_success "Python $PYTHON_VERSION"
 
 # Check PyTorch
 if ! python3 -c "import torch" 2>/dev/null; then
@@ -101,54 +146,46 @@ TORCH_VERSION=$(python3 -c "import torch; print(torch.__version__)")
 print_success "PyTorch $TORCH_VERSION"
 
 # Check CUDA availability
-if python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+CUDA_AVAILABLE=$(python3 -c "import torch; print('1' if torch.cuda.is_available() else '0')")
+if [ "$CUDA_AVAILABLE" = "1" ]; then
     CUDA_VERSION=$(python3 -c "import torch; print(torch.version.cuda)")
-    print_success "CUDA $CUDA_VERSION available"
+    GPU_NAME=$(python3 -c "import torch; print(torch.cuda.get_device_name(0))")
+    print_success "CUDA $CUDA_VERSION"
+    print_success "GPU: $GPU_NAME"
 else
     print_warning "CUDA not available in PyTorch"
+    print_warning "Module will compile but won't run"
 fi
 
 # Check nvcc
 if ! command -v nvcc &> /dev/null; then
     print_error "nvcc not found - CUDA Toolkit required"
+    print_info "Install from: https://developer.nvidia.com/cuda-downloads"
     exit 1
 fi
 NVCC_VERSION=$(nvcc --version | grep "release" | awk '{print $5}' | cut -d',' -f1)
 print_success "nvcc $NVCC_VERSION"
 
 # Detect GPU architecture
-GPU_ARCH=$(python3 << 'EOF'
-import torch
-if torch.cuda.is_available():
-    cap = torch.cuda.get_device_capability(0)
-    print(f"{cap[0]}{cap[1]}")
-else:
-    print("75")
-EOF
-)
-print_success "Target architecture: sm_$GPU_ARCH"
-
-# Get Python extension suffix
-if command -v python3-config &> /dev/null; then
-    EXT_SUFFIX=$(python3-config --extension-suffix)
+if [ "$CUDA_AVAILABLE" = "1" ]; then
+    GPU_ARCH=$(python3 -c "import torch; cap = torch.cuda.get_device_capability(0); print(f'{cap[0]}{cap[1]}')")
+    print_success "Target architecture: sm_$GPU_ARCH"
 else
-    # Fallback: detect from Python
-    EXT_SUFFIX=$(python3 << 'EOF'
-import sysconfig
-import sys
-# Get the extension suffix
-suffix = sysconfig.get_config_var('EXT_SUFFIX')
-if suffix:
-    print(suffix)
-else:
-    # Fallback for older Python or missing config
-    version = f"{sys.version_info.major}{sys.version_info.minor}"
-    platform = sysconfig.get_platform().replace('-', '_')
-    print(f".cpython-{version}-{platform}.so")
-EOF
-)
+    GPU_ARCH="75"
+    print_warning "Using default: sm_$GPU_ARCH (Turing)"
 fi
-print_info "Extension suffix: $EXT_SUFFIX"
+
+# Get Python paths
+PYTHON_INCLUDE=$(python3 -c "import sysconfig; print(sysconfig.get_path('include'))")
+print_info "Python include: $PYTHON_INCLUDE"
+
+# Get PyTorch paths
+TORCH_INCLUDE=$(python3 -c "import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), 'include'))")
+TORCH_LIB=$(python3 -c "import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), 'lib'))")
+print_info "PyTorch include: $TORCH_INCLUDE"
+print_info "PyTorch lib: $TORCH_LIB"
+
+print_info "Output: $OUTPUT_FILE"
 
 ################################################################################
 # Clean Build
@@ -157,174 +194,179 @@ print_info "Extension suffix: $EXT_SUFFIX"
 if [ $CLEAN_BUILD -eq 1 ]; then
     print_header "Step 2: Cleaning"
     
-    rm -rf build dist *.egg-info
+    rm -f moe_cuda_ext*.so 2>/dev/null || true
+    rm -f moe_cuda_ops.o 2>/dev/null || true
+    rm -f compile.log 2>/dev/null || true
     find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-    find . -type f -name "*.pyc" -delete 2>/dev/null || true
-    find . -type f -name "*.so" -delete 2>/dev/null || true
-    find . -type f -name "*.o" -delete 2>/dev/null || true
     
     print_success "Cleaned build artifacts"
 fi
 
 ################################################################################
-# Create Setup Script
+# Compilation - Step 1: CUDA to Object File
 ################################################################################
 
-print_header "Step 3: Creating Build Configuration"
+print_header "Step 3: Compiling CUDA Kernel (.cu → .o)"
 
-cat > setup.py << 'SETUP_SCRIPT_EOF'
-import os
-import sys
-from setuptools import setup, Extension
-from torch.utils.cpp_extension import BuildExtension, CUDAExtension
+# Build nvcc command
+NVCC_CMD="nvcc"
 
-# Detect if debug mode
-is_debug = os.getenv('BUILD_DEBUG', '0') == '1'
+# Architecture flags
+NVCC_CMD+=" -gencode arch=compute_${GPU_ARCH},code=sm_${GPU_ARCH}"
 
-# CUDA source file
-cuda_source = 'moe_cuda_ops.cu'
-if not os.path.exists(cuda_source):
-    print(f"ERROR: {cuda_source} not found!")
-    sys.exit(1)
+# Include directories
+NVCC_CMD+=" -I${PYTHON_INCLUDE}"
+NVCC_CMD+=" -I${TORCH_INCLUDE}"
+NVCC_CMD+=" -I${TORCH_INCLUDE}/torch/csrc/api/include"
 
-print(f"Building from: {cuda_source}")
-print(f"Debug mode: {is_debug}")
-
-# Compiler flags
-if is_debug:
-    extra_compile_args = {
-        'cxx': ['-g', '-O0'],
-        'nvcc': [
-            '-g', '-G',
-            '-lineinfo',
-            '--generate-line-info'
-        ]
-    }
-else:
-    extra_compile_args = {
-        'cxx': ['-O3', '-DNDEBUG'],
-        'nvcc': [
-            '-O3',
-            '--use_fast_math',
-            '-lineinfo',
-            '--extra-device-vectorization',
-            '-Xptxas=-v'
-        ]
-    }
-
-setup(
-    name='moe_cuda_ext',
-    version='1.0.0',
-    ext_modules=[
-        CUDAExtension(
-            name='moe_cuda_ext',
-            sources=[cuda_source],
-            extra_compile_args=extra_compile_args
-        )
-    ],
-    cmdclass={
-        'build_ext': BuildExtension.with_options(no_python_abi_suffix=True)
-    },
-    zip_safe=False,
-)
-SETUP_SCRIPT_EOF
-
-print_success "Created setup.py"
-
-################################################################################
-# Compilation
-################################################################################
-
-print_header "Step 4: Compiling CUDA Kernels"
-
-# Set environment variables
-export TORCH_CUDA_ARCH_LIST="$GPU_ARCH"
+# Compilation flags
+NVCC_CMD+=" -c"
+NVCC_CMD+=" -std=c++14"
+NVCC_CMD+=" --compiler-options '-fPIC'"
+NVCC_CMD+=" -DTORCH_EXTENSION_NAME=moe_cuda_ext"
+NVCC_CMD+=" -DTORCH_API_INCLUDE_EXTENSION_H"
 
 if [ $DEBUG_MODE -eq 1 ]; then
-    export BUILD_DEBUG=1
-    print_info "Compiling with debug symbols..."
+    print_info "Debug mode enabled"
+    NVCC_CMD+=" -g -G -O0"
+    NVCC_CMD+=" --generate-line-info"
 else
-    export BUILD_DEBUG=0
-    print_info "Compiling with optimizations..."
+    print_info "Optimized build"
+    NVCC_CMD+=" -O3"
+    NVCC_CMD+=" --use_fast_math"
+    NVCC_CMD+=" --extra-device-vectorization"
 fi
 
-# Run compilation
-print_info "This may take 1-3 minutes..."
-echo ""
-
+# Add verbosity
 if [ $VERBOSE -eq 1 ]; then
-    # Verbose mode - show everything
-    python3 setup.py build_ext --inplace
-    BUILD_STATUS=$?
-else
-    # Quiet mode - capture output and show key lines
-    python3 setup.py build_ext --inplace > build.log 2>&1
-    BUILD_STATUS=$?
-    
-    if [ $BUILD_STATUS -eq 0 ]; then
-        # Show important lines
-        grep -E "(Building|Compiling|creating build|copying)" build.log | head -n 10 || true
-    else
-        # Show errors
-        echo ""
-        print_error "Compilation failed! Output:"
-        cat build.log
-    fi
+    NVCC_CMD+=" -Xptxas=-v"
 fi
 
-echo ""
+# Input and output
+NVCC_CMD+=" ${CUDA_FILE}"
+NVCC_CMD+=" -o moe_cuda_ops.o"
 
-if [ $BUILD_STATUS -ne 0 ]; then
-    print_error "Compilation failed!"
-    if [ $VERBOSE -eq 0 ]; then
-        print_info "Run with --verbose for full output"
-        print_info "Or check: cat build.log"
-    fi
-    exit 1
-fi
-
-print_success "Compilation completed"
-
-################################################################################
-# Find and Install Module
-################################################################################
-
-print_header "Step 5: Installing Module"
-
-# Find the compiled .so file
-SO_FILE=$(find . -name "moe_cuda_ext*.so" -type f 2>/dev/null | head -n 1)
-
-if [ -z "$SO_FILE" ]; then
-    print_error "Compiled .so file not found!"
-    print_info "Searching for any .so files:"
-    find . -name "*.so" -type f 2>/dev/null || echo "  None found"
+print_info "Compiling with nvcc..."
+if [ $VERBOSE -eq 1 ]; then
     echo ""
-    print_info "Directory structure:"
-    find . -type f -name "*.o" -o -name "*.so" -o -name "*.a" 2>/dev/null | head -n 20
+    echo "Command:"
+    echo "$NVCC_CMD"
+    echo ""
+fi
+
+# Execute compilation
+if [ $VERBOSE -eq 1 ]; then
+    eval $NVCC_CMD
+    COMPILE_STATUS=$?
+else
+    eval $NVCC_CMD > compile.log 2>&1
+    COMPILE_STATUS=$?
+    
+    if [ $COMPILE_STATUS -ne 0 ]; then
+        echo ""
+        print_error "Compilation failed! Error output:"
+        cat compile.log
+    else
+        # Show key info
+        if grep -q "ptxas info" compile.log; then
+            echo ""
+            grep "ptxas info" compile.log | head -n 5
+        fi
+    fi
+fi
+
+if [ $COMPILE_STATUS -ne 0 ]; then
+    print_error "nvcc compilation failed!"
+    if [ $VERBOSE -eq 0 ]; then
+        print_info "Run with --verbose for full output or check: cat compile.log"
+    fi
     exit 1
 fi
 
-print_success "Found: $SO_FILE"
-
-# Get file info
-FILE_SIZE=$(ls -lh "$SO_FILE" | awk '{print $5}')
-print_info "Size: $FILE_SIZE"
-
-# Ensure it's in the current directory with correct name
-FINAL_NAME="moe_cuda_ext$EXT_SUFFIX"
-
-if [ "$SO_FILE" != "./$FINAL_NAME" ]; then
-    cp "$SO_FILE" "./$FINAL_NAME"
-    print_success "Installed as: ./$FINAL_NAME"
-else
-    print_success "Already in correct location"
+if [ ! -f "moe_cuda_ops.o" ]; then
+    print_error "Object file not created!"
+    exit 1
 fi
+
+OBJECT_SIZE=$(ls -lh moe_cuda_ops.o | awk '{print $5}')
+print_success "Created: moe_cuda_ops.o ($OBJECT_SIZE)"
+
+################################################################################
+# Linking - Step 2: Object to Shared Library
+################################################################################
+
+print_header "Step 4: Linking (.o → .so)"
+
+# Build linker command
+LINK_CMD="g++"
+
+# Shared library flags
+LINK_CMD+=" -shared"
+LINK_CMD+=" -fPIC"
+
+# Library paths
+LINK_CMD+=" -L${TORCH_LIB}"
+
+# Libraries to link against
+LINK_CMD+=" -ltorch"
+LINK_CMD+=" -lc10"
+LINK_CMD+=" -ltorch_cpu"
+LINK_CMD+=" -ltorch_cuda"
+
+# CUDA libraries
+LINK_CMD+=" -lcudart"
+LINK_CMD+=" -lcublas"
+
+# Input and output
+LINK_CMD+=" moe_cuda_ops.o"
+LINK_CMD+=" -o ${OUTPUT_FILE}"
+
+print_info "Linking with g++..."
+if [ $VERBOSE -eq 1 ]; then
+    echo ""
+    echo "Command:"
+    echo "$LINK_CMD"
+    echo ""
+fi
+
+# Execute linking
+if [ $VERBOSE -eq 1 ]; then
+    eval $LINK_CMD
+    LINK_STATUS=$?
+else
+    eval $LINK_CMD >> compile.log 2>&1
+    LINK_STATUS=$?
+    
+    if [ $LINK_STATUS -ne 0 ]; then
+        echo ""
+        print_error "Linking failed! Error output:"
+        tail -n 20 compile.log
+    fi
+fi
+
+if [ $LINK_STATUS -ne 0 ]; then
+    print_error "Linking failed!"
+    if [ $VERBOSE -eq 0 ]; then
+        print_info "Run with --verbose for full output or check: cat compile.log"
+    fi
+    exit 1
+fi
+
+if [ ! -f "$OUTPUT_FILE" ]; then
+    print_error "Shared library not created!"
+    print_info "Looking for any .so files:"
+    ls -lh *.so 2>/dev/null || echo "  None found"
+    exit 1
+fi
+
+SO_SIZE=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
+print_success "Created: $OUTPUT_FILE ($SO_SIZE)"
 
 ################################################################################
 # Verification
 ################################################################################
 
-print_header "Step 6: Verification"
+print_header "Step 5: Verification"
 
 print_info "Testing module import..."
 echo ""
@@ -342,14 +384,13 @@ print(f"Working directory: {os.getcwd()}")
 print("")
 
 # Check if file exists
-import glob
-so_files = glob.glob("moe_cuda_ext*.so")
-if not so_files:
-    print("✗ ERROR: No moe_cuda_ext*.so file found!")
+if not os.path.exists('moe_cuda_ext.so'):
+    print("✗ ERROR: moe_cuda_ext.so not found!")
     print(f"Files in directory: {os.listdir('.')[:10]}")
     sys.exit(1)
 
-print(f"Module file: {so_files[0]} ({os.path.getsize(so_files[0])} bytes)")
+file_size = os.path.getsize('moe_cuda_ext.so')
+print(f"Module file: moe_cuda_ext.so ({file_size:,} bytes)")
 print("")
 
 # Try importing
@@ -406,9 +447,9 @@ except ImportError as e:
     print(f"✗ IMPORT FAILED: {e}")
     print("")
     print("Troubleshooting:")
-    print("  1. Check file exists: ls -lh moe_cuda_ext*.so")
-    print("  2. Check dependencies: ldd moe_cuda_ext*.so")
-    print("  3. Try: python3 -c 'import moe_cuda_ext'")
+    print("  1. Check file: ls -lh moe_cuda_ext.so")
+    print("  2. Check dependencies: ldd moe_cuda_ext.so | grep 'not found'")
+    print("  3. Verify CUDA: python3 -c 'import torch; print(torch.cuda.is_available())'")
     sys.exit(1)
 except Exception as e:
     print(f"✗ UNEXPECTED ERROR: {e}")
@@ -421,8 +462,13 @@ VERIFY_SCRIPT
 
 VERIFY_STATUS=$?
 
+echo ""
+
 if [ $VERIFY_STATUS -ne 0 ]; then
     print_error "Verification failed!"
+    echo ""
+    print_info "Checking library dependencies:"
+    ldd $OUTPUT_FILE | grep "not found" || print_success "All dependencies found"
     exit 1
 fi
 
@@ -433,25 +479,30 @@ fi
 print_header "Build Complete! 🎉"
 
 echo ""
-echo -e "${GREEN}Successfully built and installed CUDA MoE operations!${NC}"
+echo -e "${GREEN}Successfully built CUDA MoE operations!${NC}"
 echo ""
 echo "Module details:"
-echo "  • File: moe_cuda_ext$EXT_SUFFIX"
-echo "  • Size: $FILE_SIZE"
+echo "  • File: $OUTPUT_FILE"
+echo "  • Size: $SO_SIZE"
 echo "  • Architecture: sm_$GPU_ARCH"
+echo "  • Location: $(pwd)/$OUTPUT_FILE"
 echo ""
 echo "Usage in Python:"
-echo "  from core.moe_cuda_wrapper import MoECUDAOps"
-echo "  # or"
 echo "  import moe_cuda_ext"
+echo "  # or from your wrapper:"
+echo "  from moe_cuda_wrapper import MoECUDAOps"
 echo ""
 echo "Enable in model config:"
 echo "  config = DeepSeekConfig.standard_moe(use_cuda_moe=True)"
 echo ""
-echo "Files created:"
-echo "  • setup.py (build configuration)"
-echo "  • moe_cuda_ext$EXT_SUFFIX (compiled module)"
-echo "  • build.log (compilation log)"
+
+# Cleanup
+print_info "Cleaning up intermediate files..."
+rm -f moe_cuda_ops.o
+print_success "Removed: moe_cuda_ops.o"
+
+echo ""
+print_success "Ready to use! 🚀"
 echo ""
 
 # Offer benchmark
@@ -459,6 +510,7 @@ read -p "Run performance benchmark? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     print_header "Performance Benchmark"
+    echo ""
     
     python3 << 'BENCHMARK'
 import torch
@@ -466,11 +518,11 @@ import moe_cuda_ext
 import time
 
 if not torch.cuda.is_available():
-    print("CUDA not available - skipping benchmark")
+    print("⚠ CUDA not available - skipping benchmark")
     exit(0)
 
 print("Benchmarking CUDA MoE operations...")
-print("=" * 60)
+print("=" * 70)
 
 # Configuration
 num_tokens = 1024
@@ -479,10 +531,6 @@ num_experts = 8
 k = 2
 num_iterations = 100
 
-# Create test data
-gate_logits = torch.randn(num_tokens, num_experts, device='cuda')
-tokens = torch.randn(num_tokens, hidden_dim, device='cuda')
-
 print(f"Configuration:")
 print(f"  Tokens: {num_tokens}")
 print(f"  Hidden dim: {hidden_dim}")
@@ -490,6 +538,10 @@ print(f"  Experts: {num_experts}")
 print(f"  Top-k: {k}")
 print(f"  Iterations: {num_iterations}")
 print("")
+
+# Create test data
+gate_logits = torch.randn(num_tokens, num_experts, device='cuda')
+tokens = torch.randn(num_tokens, hidden_dim, device='cuda')
 
 # Warmup
 for _ in range(10):
@@ -504,8 +556,8 @@ torch.cuda.synchronize()
 routing_time = (time.perf_counter() - start) * 1000 / num_iterations
 
 print(f"Results:")
-print(f"  Routing time: {routing_time:.3f}ms")
-print(f"  Throughput: {num_tokens / (routing_time / 1000):.0f} tokens/sec")
+print(f"  ✓ Routing time: {routing_time:.3f}ms per call")
+print(f"  ✓ Throughput: {num_tokens / (routing_time / 1000):,.0f} tokens/sec")
 print("")
 
 # Benchmark dispatch
@@ -518,13 +570,31 @@ for _ in range(num_iterations):
 torch.cuda.synchronize()
 dispatch_time = (time.perf_counter() - start) * 1000 / num_iterations
 
-print(f"  Dispatch time: {dispatch_time:.3f}ms")
+print(f"  ✓ Dispatch time: {dispatch_time:.3f}ms per call")
 print("")
 
+# Benchmark combine
+expert_outputs = torch.randn(num_experts, capacity, hidden_dim, device='cuda')
+start = time.perf_counter()
+for _ in range(num_iterations):
+    combined = moe_cuda_ext.combine_expert_outputs(
+        expert_outputs, token_map, probs, num_tokens, k
+    )
+torch.cuda.synchronize()
+combine_time = (time.perf_counter() - start) * 1000 / num_iterations
+
+print(f"  ✓ Combine time: {combine_time:.3f}ms per call")
+print("")
+
+total_time = routing_time + dispatch_time + combine_time
+print(f"Total MoE overhead: {total_time:.3f}ms per forward pass")
+print("")
+print("=" * 70)
 print("✓ CUDA operations are fast and working correctly!")
-print("=" * 60)
 BENCHMARK
+    
+    echo ""
 fi
 
 echo ""
-print_success "Ready to use! 🚀"
+print_success "All done! Import with: import moe_cuda_ext"

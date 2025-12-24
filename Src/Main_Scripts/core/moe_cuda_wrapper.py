@@ -23,7 +23,7 @@ try:
     from torch.utils.cpp_extension import load
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    cuda_src = os.path.join(current_dir, 'cuda/moe_cuda_ops.cu')
+    cuda_src = os.path.join(current_dir, 'moe_cuda_ops.cu')
     
     if not os.path.exists(cuda_src):
         raise FileNotFoundError(f"CUDA source not found: {cuda_src}")
