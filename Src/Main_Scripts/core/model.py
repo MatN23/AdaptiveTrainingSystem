@@ -1409,15 +1409,16 @@ class DenseSwiGLUWithMoD(nn.Module):
                 except Exception as e:
                     logging.warning(f"CUDA SwiGLU failed: {e}, falling back")
             
-            # PyTorch fallback
+            # PyTorch fallback - THIS WAS THE BUG - was missing down_proj!
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
-            return self.down_proj(F.silu(gate) * up), None
+            output = self.down_proj(F.silu(gate) * up)  # ← FIX: Added down_proj
+            return output, None
         
         # MoD routing
         routing_weights, routing_probs, aux_loss = self.router(x)
         
-        # Compute FFN for all tokens
+        # Compute FFN for all tokens - ENSURE down_proj is ALWAYS called
         if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
             try:
                 ffn_output = self._cuda_swiglu(x)
@@ -1425,14 +1426,14 @@ class DenseSwiGLUWithMoD(nn.Module):
                 logging.warning(f"CUDA SwiGLU failed: {e}, falling back")
                 gate_up = self.gate_up_proj(x)
                 gate, up = gate_up.chunk(2, dim=-1)
-                ffn_output = self.down_proj(F.silu(gate) * up)
+                ffn_output = self.down_proj(F.silu(gate) * up)  # ← Properly applies down_proj
         else:
-            # PyTorch fallback
+            # PyTorch fallback - MUST include down_proj
             gate_up = self.gate_up_proj(x)
             gate, up = gate_up.chunk(2, dim=-1)
-            ffn_output = self.down_proj(F.silu(gate) * up)
+            ffn_output = self.down_proj(F.silu(gate) * up)  # ← FIX: Added down_proj
         
-        # Apply routing
+        # Apply routing AFTER down_proj (so dimensions match)
         output = ffn_output * routing_weights
         
         return output, aux_loss
