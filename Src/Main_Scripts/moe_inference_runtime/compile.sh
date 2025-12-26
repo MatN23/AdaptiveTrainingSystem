@@ -1,10 +1,28 @@
 #!/bin/bash
 # compile.sh - Build MoE inference runtime
-# Usage: ./compile.sh [--cpu|--mps|--cuda]
+# Usage: ./compile.sh [--cpu|--mps|--cuda|--auto]
 
 set -e
 
-TARGET=${1:-cpu}
+# Auto-detect best backend if not specified
+if [[ -z "$1" || "$1" == "--auto" || "$1" == "auto" ]]; then
+    # Check for CUDA first
+    if command -v nvcc &> /dev/null; then
+        TARGET="cuda"
+        echo "🔍 Auto-detected: NVIDIA CUDA"
+    # Check for macOS (MPS)
+    elif [[ "$(uname -s)" == "Darwin" ]]; then
+        TARGET="mps"
+        echo "🔍 Auto-detected: Apple Metal (MPS)"
+    # Fallback to CPU
+    else
+        TARGET="cpu"
+        echo "🔍 Auto-detected: CPU (no GPU acceleration found)"
+    fi
+else
+    TARGET="$1"
+fi
+
 echo "🔨 Building MoE Inference Runtime for: $TARGET"
 
 # Detect platform

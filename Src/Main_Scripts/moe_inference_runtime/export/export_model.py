@@ -97,31 +97,26 @@ def export_model(model, config, output_path):
         f.write(struct.pack('i', config.seq_length))
         
         # MoE config
-        if layer.use_moe:
-            export_tensor(f, layer.ffn.gate.weight)
-            
-            for expert in layer.ffn.experts:
-                # Handle fused gate_up_proj
-                if hasattr(expert, 'gate_up_proj'):
-                    gate_up = expert.gate_up_proj.weight
-                    mid = gate_up.shape[0] // 2
-                    # Write gate (first half) and up (second half) separately
-                    export_tensor(f, gate_up[:mid])   # gate
-                    export_tensor(f, gate_up[mid:])   # up
-                else:
-                    export_tensor(f, expert.gate_proj.weight)
-                    export_tensor(f, expert.up_proj.weight)
-                export_tensor(f, expert.down_proj.weight)
-                # MoD config
-                use_mod = getattr(config, 'use_mod', False)
-                f.write(struct.pack('?', use_mod))
-                if use_mod:
-                    f.write(struct.pack('f', getattr(config, 'mod_capacity_factor', 0.5)))
-                else:
-                    f.write(struct.pack('f', 0.0))
-
-        # Write mod_layers vector SIZE first (as int32_t), then the bools
-        f.write(struct.pack('i', config.num_layers))  # Add this line - SIZE FIRST
+        use_moe = getattr(config, 'use_moe', False)
+        f.write(struct.pack('?', use_moe))
+        f.write(struct.pack('i', getattr(config, 'num_experts', 8)))
+        f.write(struct.pack('i', getattr(config, 'moe_top_k', 2)))
+        
+        # Write moe_layers vector SIZE first, then the bools
+        f.write(struct.pack('i', config.num_layers))
+        for i in range(config.num_layers):
+            is_moe = False
+            if use_moe and hasattr(model.layers[i], 'use_moe'):
+                is_moe = model.layers[i].use_moe
+            f.write(struct.pack('?', is_moe))
+        
+        # MoD config
+        use_mod = getattr(config, 'use_mod', False)
+        f.write(struct.pack('?', use_mod))
+        f.write(struct.pack('f', getattr(config, 'mod_capacity_factor', 0.5) if use_mod else 0.0))
+        
+        # Write mod_layers vector SIZE first, then the bools
+        f.write(struct.pack('i', config.num_layers))
         for i in range(config.num_layers):
             is_mod = False
             if use_mod and hasattr(model.layers[i].ffn, 'use_mod'):
@@ -272,7 +267,15 @@ def main():
     
     if DeepSeekTransformer:
         model = DeepSeekTransformer(config)
-        model.load_state_dict(model_state)
+        # Use strict=False to handle architecture differences between checkpoint and current model
+        missing, unexpected = model.load_state_dict(model_state, strict=False)
+        if missing:
+            print(f"⚠️  Missing keys (will use fresh weights): {len(missing)} keys")
+            if len(missing) <= 10:
+                for k in missing:
+                    print(f"     - {k}")
+        if unexpected:
+            print(f"⚠️  Unexpected keys (from old checkpoint): {len(unexpected)} keys")
     else:
         print("❌ Could not import DeepSeekTransformer")
         return 1
