@@ -2465,6 +2465,9 @@ class DeepSeekConfig:
     expert_output_scaling: float = 1.0
     scale_lm_head_output: bool = False
     
+    # MPS-specific constants
+    MPS_MAX_SEQ_LENGTH: int = 512  # Reduced seq_length for MPS to prevent OOM
+    
     def __post_init__(self):
         """Post-initialization validation and defaults."""
         # Set defaults
@@ -2473,6 +2476,16 @@ class DeepSeekConfig:
         
         if self.intermediate_size is None:
             self.intermediate_size = 4 * self.hidden_size
+        
+        # MPS-aware sequence length adjustment to prevent OOM
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            if self.seq_length > self.MPS_MAX_SEQ_LENGTH:
+                original_seq_length = self.seq_length
+                self.seq_length = self.MPS_MAX_SEQ_LENGTH
+                logging.warning(
+                    f"⚠️ MPS detected: Reducing seq_length from {original_seq_length} to "
+                    f"{self.seq_length} to prevent OOM. Override with explicit seq_length if needed."
+                )
         
         # NO MORE MUTUAL EXCLUSIVITY - MoE and MoD can work together!
         # MoE layers will use expert routing

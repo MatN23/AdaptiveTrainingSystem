@@ -36,7 +36,7 @@ class HardcodedConfig:
     
     # CHECKPOINT SETTINGS
     # Set to None for auto-detection, or specify exact path
-    CHECKPOINT_PATH = "Examples/epoch_10.pt"  # e.g., "checkpoints/best_model.pt" or "checkpoints/epoch_3/"
+    CHECKPOINT_PATH = "checkpoints/final.pt"  # e.g., "checkpoints/best_model.pt" or "checkpoints/epoch_3/"
     
     # GENERATION SETTINGS
     MAX_NEW_TOKENS = 512
