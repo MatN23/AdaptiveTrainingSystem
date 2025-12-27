@@ -265,6 +265,11 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
   - Single synchronization point at end
 - **Performance:** ~8ms → ~1.5ms (including norm computation)
 
+### CUDA Kernel Speedups
+
+![CUDA Kernel Speedup Overview](assets/cuda_speedup.png)
+*Custom kernels provide 2–7× speedup over vanilla PyTorch operations.*
+
 ### Compilation and Usage
 
 **Compilation requirements:**
@@ -1224,6 +1229,11 @@ Note: Effective speedup higher than per-operation average due to reduced overhea
 - Adjusts launch configurations based on occupancy
 - Identifies and mitigates bottlenecks
 - Logs optimization decisions with expected impact
+
+### FLOPs Reduction by Layer Capacity
+
+![FLOPs Reduction vs Layer Capacity](assets/FLOPS_reduction.png)
+*Lower layer capacity factors reduce FLOPs without significantly affecting performance.*
 
 ### Configuration Parameters
 
