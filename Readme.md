@@ -338,6 +338,12 @@ Each preset specifies architecture dimensions, MoE/MoD parameters, hardware targ
 
 **Memory estimates:** Include model weights, optimizer states (Adam: 8 bytes/param), gradients, and activation memory at batch_size=1, mixed precision training. Actual memory scales with batch size and sequence length.
 
+<p align="center">
+  <img src="assets/mem_usage_graph.png" width="400">
+</p>
+Preset debug_200m not included in this graph
+
+
 **Throughput estimates:** With CUDA acceleration enabled at batch_size=1, sequence_length=2048, mixed precision with gradient checkpointing. CUDA speedup column shows combined acceleration from all custom kernels vs. pure PyTorch.
 
 **Configuration selection:**
