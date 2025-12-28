@@ -249,6 +249,120 @@ def validate_data_paths(data_params: dict) -> bool:
         print("✗ VALIDATION FAILED - Please fix the issues above")
         print("="*80 + "\n")
         return False
+
+def setup_router_finetuning(orchestrator, router_params):
+    """
+    Optional: Allow router to be fine-tuned during main training
+    
+    Add this after orchestrator initialization
+    """
+    if not router_params.get('finetune_router', False):
+        return orchestrator
+    
+    print("\n" + "="*80)
+    print("ENABLING ROUTER FINE-TUNING")
+    print("="*80)
+    
+    # Collect router parameters
+    router_params_list = []
+    for name, param in orchestrator.model.named_parameters():
+        if 'gate' in name.lower() or 'router' in name.lower():
+            param.requires_grad = True  # Enable gradients
+            router_params_list.append(param)
+    
+    print(f"✓ Found {len(router_params_list)} router parameters")
+    print(f"  Total router params: {sum(p.numel() for p in router_params_list):,}")
+    
+    # Create separate optimizer for router (lower LR)
+    from torch.optim import AdamW
+    router_optimizer = AdamW(
+        router_params_list,
+        lr=router_params.get('router_learning_rate', 1e-5),
+        weight_decay=0.01
+    )
+    
+    # Store in orchestrator
+    orchestrator.router_optimizer = router_optimizer
+    
+    print(f"✓ Router optimizer created (LR: {router_params.get('router_learning_rate', 1e-5):.2e})")
+    print("  Router will be fine-tuned during training")
+    print("="*80 + "\n")
+    
+    return orchestrator
+
+def load_pretrained_router(model, router_checkpoint_path: str):
+    """
+    Load a pre-trained router model and replace gates.
+    FIXED VERSION: Creates separate adapter instances per layer.
+    """
+    print("\n" + "="*80)
+    print("LOADING PRE-TRAINED ROUTER MODEL")
+    print("="*80)
+    
+    checkpoint_path = Path(router_checkpoint_path)
+    
+    if not checkpoint_path.exists():
+        print(f"❌ Router checkpoint not found: {checkpoint_path}")
+        print("   Continuing with standard gates...")
+        return model
+    
+    print(f"📁 Loading router from: {checkpoint_path}")
+    
+    try:
+        # Load checkpoint to verify
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        
+        print(f"\n✅ Router checkpoint loaded successfully")
+        print(f"  Training epoch: {checkpoint.get('epoch', 'unknown')}")
+        print(f"  Validation accuracy: {checkpoint.get('metrics', {}).get('top1_acc', 'unknown')}")
+        
+        # Import adapter
+        from router_training_system import RouterGateAdapter
+        
+        print(f"\n🔄 Replacing gates with trained router...")
+        num_replaced = 0
+        
+        device = next(model.parameters()).device
+        
+        for name, module in model.named_modules():
+            if hasattr(module, 'gate'):
+                # Check if this is an MoE layer
+                if 'moe' in name.lower() or 'expert' in name.lower():
+                    # ✅ FIX: Create NEW adapter instance for each layer
+                    adapter = RouterGateAdapter(
+                        router_checkpoint_path=str(checkpoint_path),
+                        device=str(device)
+                    )
+                    
+                    # Replace gate
+                    old_gate_params = sum(p.numel() for p in module.gate.parameters())
+                    module.gate = adapter
+                    new_gate_params = sum(p.numel() for p in module.gate.parameters())
+                    
+                    num_replaced += 1
+                    
+                    print(f"  ✅ Replaced gate in layer: {name}")
+                    print(f"    Old gate params: {old_gate_params:,}")
+                    print(f"    New router params: {new_gate_params:,}")
+        
+        if num_replaced == 0:
+            print(f"\n⚠️  WARNING: No gates found to replace!")
+            print(f"     Model might not have MoE layers or gates not accessible")
+            return model
+        
+        print(f"\n✅ ROUTER INTEGRATION COMPLETE")
+        print(f"   Replaced {num_replaced} gate(s) with trained router")
+        print(f"   Model now uses learned routing decisions")
+        print("="*80 + "\n")
+        
+        return model
+        
+    except Exception as e:
+        print(f"\n❌ Error loading router: {e}")
+        import traceback
+        traceback.print_exc()
+        print("\n⚠️  Continuing with standard gates...")
+        return model
     
 def validate_mps_compatibility(config) -> Tuple[bool, List[str]]:
     """
@@ -1868,7 +1982,43 @@ def main():
         'use_deepspeed': False,
         'zero_stage': 3,
         
+    }
 
+    # ========================================================================
+    # 17. ROUTER MODEL TRAINING PARAMETERS
+    # ========================================================================
+    router_training_params = {
+        'enable_router_training': False,  # Set to True when ready
+        
+        # Data collection
+        'collection_batches': 1000,  # Collect from first 1000 batches
+        
+        # Router architecture (14M params)
+        'router_hidden': 256,
+        'router_layers': 4,
+        'router_heads': 4,
+        
+        # Training
+        'router_epochs': 10,
+        'router_batch_size': 32,
+        'router_learning_rate': 5e-4,
+        
+        # Loss weights
+        'classification_weight': 1.0,
+        'distribution_weight': 0.5,
+        'load_balance_weight': 0.01,
+    }
+
+    # ========================================================================
+    # 18. PRE-TRAINED ROUTER PARAMETERS
+    # ========================================================================
+    pretrained_router_params = {
+        'use_pretrained_router': False,  # ← Set to True!
+        'router_checkpoint_path': 'router_training/best_router_model.pt',
+        
+        # Optional fine-tuning
+        'finetune_router': False,  # Keep frozen or fine-tune?
+        'router_learning_rate': 1e-5,  # If fine-tuning
     }
     # ========================================================================
     # END CONFIGURATION SECTION
@@ -2453,6 +2603,80 @@ def main():
                 print_banner("STEP 9.5: CHINCHILLA EPOCH SCALING")               
             else:
                 print("⚠️ Chinchilla scaler not available, skipping auto-scaling")
+
+        # ============================================================
+        # Step 9.6 - TRAIN Router Model (BEFORE loading pretrained)
+        # ============================================================
+        if router_training_params.get('enable_router_training', False):
+            print_banner("STEP 9.6: TRAINING ROUTER MODEL")
+            
+            from router_training_system import train_router_model
+            
+            # Prepare router config
+            router_config = {
+                'hidden_size': config.hidden_size,
+                'num_experts': config.num_experts,
+                'top_k': config.moe_top_k,
+                **router_training_params  # Merge all router params
+            }
+            
+            # Create a dataloader for router training
+            from torch.utils.data import DataLoader
+            
+            router_dataloader = DataLoader(
+                train_dataset,
+                batch_size=config.batch_size,
+                shuffle=False,  # Keep order for routing data collection
+                num_workers=config.num_workers,
+                collate_fn=train_dataset.collate_fn if hasattr(train_dataset, 'collate_fn') else None
+            )
+            
+            # Train the router
+            try:
+                trained_router = train_router_model(
+                    existing_model=model,
+                    train_dataloader=router_dataloader,
+                    config=router_config,
+                    output_dir="router_training"
+                )
+                
+                print("\n✅ Router training complete!")
+                print(f"   Best model saved to: router_training/best_router_model.pt")
+                print(f"   You can now use this router by setting:")
+                print(f"     pretrained_router_params['use_pretrained_router'] = True")
+                
+            except Exception as e:
+                print(f"\n❌ Router training failed: {e}")
+                import traceback
+                traceback.print_exc()
+                print("Continuing with standard gates...")
+
+        # ============================================================
+        # Step 9.7 - Load Pre-trained Router (AFTER optional training)
+        # ============================================================
+        if pretrained_router_params['use_pretrained_router']:
+            print_banner("STEP 9.7: LOADING PRE-TRAINED ROUTER MODEL")
+            model = load_pretrained_router(
+                model,
+                pretrained_router_params['router_checkpoint_path']
+            )
+            
+            # Optional: Verify it loaded correctly
+            from pathlib import Path
+            if Path(pretrained_router_params['router_checkpoint_path']).exists():
+                print("\n✓ Router model integration complete")
+                print("  Model will use learned routing decisions during training")
+
+
+        # ============================================================
+        # Step 9.8 - Load Pre-trained Router (AFTER training)
+        # ============================================================
+        if pretrained_router_params['use_pretrained_router']:
+            print_banner("STEP 9.7: LOADING PRE-TRAINED ROUTER MODEL")
+            model = load_pretrained_router(
+                model,
+                pretrained_router_params['router_checkpoint_path']
+            )
         
         # Step 10: Initialize enhanced training system
         print_banner("STEP 10: INITIALIZING ENHANCED TRAINING SYSTEM")
@@ -2967,6 +3191,36 @@ def main():
         training_end_time = time.time()
         total_training_time = training_end_time - training_start_time
         total_training_hours = total_training_time / 3600
+
+        # Step 14.5: Train Router Model (OPTIONAL)
+        if router_training_params.get('enable_router_training', False):
+            print_banner("STEP 14.5: TRAINING ROUTER MODEL")
+            
+            from router_training_system import train_router_model, replace_gates_with_router
+            
+            router_config = {
+                'hidden_size': config.hidden_size,
+                'num_experts': config.num_experts,
+                'top_k': config.moe_top_k,
+                **router_training_params
+            }
+            
+            # Train the router
+            trained_router = train_router_model(
+                existing_model=model,
+                train_dataloader=train_dataloader,
+                config=router_config,
+                output_dir="router_training"
+            )
+            
+            # Replace gates with trained router
+            model = replace_gates_with_router(
+                model,
+                router_model_path="router_training/best_router_model.pt"
+            )
+            
+            print("✓ Router model trained and integrated!")
+            print("  Model now uses learned routing instead of simple gates")
         
         # Step 15: Training completion summary
         print_banner("ENHANCED TRAINING COMPLETED SUCCESSFULLY!")
