@@ -16,6 +16,9 @@ from dataclasses import dataclass, asdict
 from collections import deque
 import threading
 import queue
+from enum import Enum
+from typing import Optional
+import sys
 
 import numpy as np
 import torch
@@ -33,6 +36,116 @@ warnings.filterwarnings('ignore', category=RuntimeWarning, module='numpy')
 
 import os
 import sys
+
+class VerbosityLevel(Enum):
+    """Verbosity levels for orchestrator logging."""
+    SILENT = 0      # Only critical errors
+    MINIMAL = 1     # Major events only
+    NORMAL = 2      # Standard logging (default)
+    DETAILED = 3    # Include metrics and decisions
+    DEBUG = 4       # Full debug information
+    TRACE = 5       # Everything including internal states
+
+class VerboseLogger:
+    """Enhanced logger with verbosity control."""
+    
+    def __init__(self, name: str, verbosity: VerbosityLevel = VerbosityLevel.NORMAL):
+        self.logger = logging.getLogger(name)
+        self.verbosity = verbosity
+        self._setup_handlers()
+        
+    def _setup_handlers(self):
+        """Setup logging handlers based on verbosity."""
+        # Clear existing handlers
+        self.logger.handlers.clear()
+        
+        # Create console handler
+        console = logging.StreamHandler(sys.stdout)
+        
+        # Set format based on verbosity
+        if self.verbosity >= VerbosityLevel.DEBUG:
+            formatter = logging.Formatter(
+                '%(asctime)s | %(levelname)-8s | %(name)s:%(lineno)d | %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+        elif self.verbosity >= VerbosityLevel.DETAILED:
+            formatter = logging.Formatter(
+                '%(asctime)s | %(levelname)-8s | %(message)s',
+                datefmt='%H:%M:%S'
+            )
+        else:
+            formatter = logging.Formatter('%(levelname)s: %(message)s')
+        
+        console.setFormatter(formatter)
+        self.logger.addHandler(console)
+        
+        # Set logging level
+        level_map = {
+            VerbosityLevel.SILENT: logging.CRITICAL,
+            VerbosityLevel.MINIMAL: logging.WARNING,
+            VerbosityLevel.NORMAL: logging.INFO,
+            VerbosityLevel.DETAILED: logging.INFO,
+            VerbosityLevel.DEBUG: logging.DEBUG,
+            VerbosityLevel.TRACE: logging.DEBUG
+        }
+        self.logger.setLevel(level_map[self.verbosity])
+    
+    def set_verbosity(self, level: VerbosityLevel):
+        """Change verbosity level at runtime."""
+        self.verbosity = level
+        self._setup_handlers()
+    
+    def critical(self, msg: str):
+        """Always logged."""
+        self.logger.critical(msg)
+    
+    def error(self, msg: str):
+        """Logged at MINIMAL and above."""
+        if self.verbosity >= VerbosityLevel.MINIMAL:
+            self.logger.error(msg)
+    
+    def warning(self, msg: str):
+        """Logged at MINIMAL and above."""
+        if self.verbosity >= VerbosityLevel.MINIMAL:
+            self.logger.warning(msg)
+    
+    def info(self, msg: str):
+        """Logged at NORMAL and above."""
+        if self.verbosity >= VerbosityLevel.NORMAL:
+            self.logger.info(msg)
+    
+    def detail(self, msg: str):
+        """Logged at DETAILED and above."""
+        if self.verbosity >= VerbosityLevel.DETAILED:
+            self.logger.info(f"[DETAIL] {msg}")
+    
+    def debug(self, msg: str):
+        """Logged at DEBUG and above."""
+        if self.verbosity >= VerbosityLevel.DEBUG:
+            self.logger.debug(msg)
+    
+    def trace(self, msg: str):
+        """Logged at TRACE only."""
+        if self.verbosity >= VerbosityLevel.TRACE:
+            self.logger.debug(f"[TRACE] {msg}")
+    
+    def metric(self, name: str, value: any):
+        """Log metrics at DETAILED and above."""
+        if self.verbosity >= VerbosityLevel.DETAILED:
+            self.logger.info(f"[METRIC] {name}: {value}")
+    
+    def decision(self, decision_type: str, details: str):
+        """Log adaptive decisions at DETAILED and above."""
+        if self.verbosity >= VerbosityLevel.DETAILED:
+            self.logger.info(f"[DECISION] {decision_type}: {details}")
+    
+    def section(self, title: str, level: VerbosityLevel = VerbosityLevel.NORMAL):
+        """Log section headers."""
+        if self.verbosity >= level:
+            width = 80
+            self.logger.info("\n" + "="*width)
+            self.logger.info(title.center(width))
+            self.logger.info("="*width)
 
 class SuppressStderr:
     """Context manager to suppress stderr output (for LAPACK warnings)."""
@@ -723,12 +836,48 @@ class AdaptiveTrainingOrchestrator:
         
         # Load previous meta-learning data if available
         self._load_meta_learning_state()
+
+        verbosity_map = {
+            'silent': VerbosityLevel.SILENT,
+            'minimal': VerbosityLevel.MINIMAL,
+            'normal': VerbosityLevel.NORMAL,
+            'detailed': VerbosityLevel.DETAILED,
+            'debug': VerbosityLevel.DEBUG,
+            'trace': VerbosityLevel.TRACE
+        }
+        
+        verbosity_str = getattr(config, 'verbosity', 'normal').lower()
+        self.verbosity = verbosity_map.get(verbosity_str, VerbosityLevel.NORMAL)
+        
+        # Initialize verbose logger
+        self.logger = VerboseLogger(
+            f"Orchestrator.{config.experiment_name}",
+            verbosity=self.verbosity
+        )
+        
+        self.logger.section("ADAPTIVE TRAINING ORCHESTRATOR INITIALIZATION")
+        self.logger.info(f"Verbosity level: {self.verbosity.name}")
         
         # Save initial configuration
         if hasattr(config, 'save'):
             config.save(str(self.experiment_dir / "initial_config.yaml"))
         
         logging.info("Adaptive Training Orchestrator initialized with AI-driven optimization")
+
+        if self.verbosity >= VerbosityLevel.DETAILED:
+            self._log_initialization_details()
+
+    def _log_initialization_details(self):
+        """Log detailed initialization information."""
+        self.logger.detail("Configuration parameters:")
+        for attr in sorted(dir(self.config)):
+            if not attr.startswith('_') and not callable(getattr(self.config, attr)):
+                value = getattr(self.config, attr)
+                self.logger.detail(f"  {attr}: {value}")
+        
+        self.logger.detail(f"Experiment directory: {self.experiment_dir}")
+        self.logger.detail(f"Device: {self.device}")
+        self.logger.detail(f"Meta-learner history: {len(self.meta_learner.training_history)} runs")
 
     @property
     def use_deepspeed(self) -> bool:
@@ -927,34 +1076,30 @@ class AdaptiveTrainingOrchestrator:
         logging.info("Started real-time monitoring thread")
     
     def _process_real_time_metrics(self, metrics):
-        """Process metrics in real-time and make adaptive decisions."""
+        """Process metrics in real-time with verbose logging."""
         self.current_metrics = metrics
         self.training_metrics_history.append(metrics)
         self.analytics.metrics_buffer.append(metrics)
         
-        # 🔥 NEW: LOG EVERY METRIC RECEIVED
-        log_frequency = getattr(self.config, 'adaptive_log_frequency', 10)
-        if self.global_step % log_frequency == 0:
-            logging.info("\n" + "="*80)
-            logging.info(f"📊 ADAPTIVE MONITORING - Step {self.global_step}")
-            logging.info("="*80)
-            logging.info(f"  Loss: {metrics.loss:.6f}")
-            logging.info(f"  Learning Rate: {metrics.learning_rate:.2e}")
-            logging.info(f"  Grad Norm: {metrics.grad_norm:.4f}")
-            logging.info(f"  Throughput: {metrics.throughput:.0f} tokens/s")
-            
-            if metrics.expert_utilization:
-                logging.info(f"  Expert Utilization:")
-                for expert_id, usage in list(metrics.expert_utilization.items())[:5]:
-                    logging.info(f"    {expert_id}: {usage:.1%}")
-            
-            logging.info("="*80 + "\n")
+        # Verbose metric logging
+        if self.verbosity >= VerbosityLevel.DETAILED:
+            if self.global_step % 10 == 0:  # Every 10 steps in detailed mode
+                self.logger.metric("loss", f"{metrics.loss:.6f}")
+                self.logger.metric("learning_rate", f"{metrics.learning_rate:.2e}")
+                self.logger.metric("grad_norm", f"{metrics.grad_norm:.4f}")
+                self.logger.metric("throughput", f"{metrics.throughput:.0f} tok/s")
+        
+        # Full trace logging
+        if self.verbosity >= VerbosityLevel.TRACE:
+            self.logger.trace(f"Full metrics: {metrics.to_dict()}")
         
         # Check for anomalies
         anomalies = self.analytics.detect_training_anomalies(metrics)
         if anomalies:
             for anomaly in anomalies:
-                logging.warning(f"⚠️ Training anomaly detected: {anomaly}")
+                self.logger.warning(f"Training anomaly: {anomaly['type']} - {anomaly['description']}")
+                if self.verbosity >= VerbosityLevel.DEBUG:
+                    self.logger.debug(f"Anomaly details: {anomaly}")
                 self._handle_training_anomaly(anomaly)
     
     def _handle_training_anomaly(self, anomaly):
@@ -1038,24 +1183,27 @@ class AdaptiveTrainingOrchestrator:
             self.trainer.adjust_learning_rate(new_lr, grace_period=grace_period)
     
     def _execute_adaptive_decision(self, decision):
-        """Execute an adaptive decision."""
+        """Execute adaptive decision with verbose logging."""
         self.adaptive_decisions.append(decision)
-
-        # 🔥 ALWAYS LOG DECISIONS
-        logging.info("\n" + "🎯"*40)
-        logging.info(f"EXECUTING ADAPTIVE DECISION: {decision.decision_type}")
-        logging.info(f"Reasoning: {decision.reasoning}")
-        logging.info(f"Confidence: {decision.confidence:.2f}")
-        logging.info(f"Expected Improvement: {decision.expected_improvement:.2%}")
-        logging.info("🎯"*40 + "\n")
-
+        
+        # Log decision at appropriate level
+        self.logger.decision(
+            decision.decision_type,
+            f"{decision.reasoning} (confidence: {decision.confidence:.2f})"
+        )
+        
+        if self.verbosity >= VerbosityLevel.DEBUG:
+            self.logger.debug(f"Decision parameters: {decision.parameters}")
+            self.logger.debug(f"Expected improvement: {decision.expected_improvement:.2%}")
+        
         try:
-            # ✅ FIX: Don't handle learning_rate_adjustment here
-            # It's already handled by _apply_learning_rate_adjustment()
+            # Execute decision based on type
             if decision.decision_type == 'learning_rate_adjustment':
                 # Already executed by caller, just log it
-                logging.info(f"✅ LR adjustment tracked (handled by caller)")
-
+                old_lr = decision.parameters.get('old_lr', 0)
+                new_lr = decision.parameters.get('new_lr', 0)
+                self.logger.info(f"LR adjustment tracked: {old_lr:.2e} → {new_lr:.2e}")
+            
             elif decision.decision_type == 'corrective_lr_reduction':
                 # Handle corrective LR reductions
                 if hasattr(self.trainer, 'adjust_learning_rate'):
@@ -1063,8 +1211,10 @@ class AdaptiveTrainingOrchestrator:
                     current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
                     new_lr = current_lr * factor
                     self.trainer.adjust_learning_rate(new_lr, grace_period=10, emergency=False)
-                    logging.info(f"✅ Corrective LR reduction applied: {new_lr:.2e}")
-
+                    self.logger.info(f"Corrective LR reduction: {current_lr:.2e} → {new_lr:.2e}")
+                    if self.verbosity >= VerbosityLevel.DETAILED:
+                        self.logger.detail(f"Reduction factor: {factor}")
+            
             elif decision.decision_type == 'optimization_lr_increase':
                 # Handle optimization LR increases
                 if hasattr(self.trainer, 'adjust_learning_rate'):
@@ -1072,63 +1222,112 @@ class AdaptiveTrainingOrchestrator:
                     current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
                     new_lr = current_lr * factor
                     self.trainer.adjust_learning_rate(new_lr, grace_period=10, emergency=False)
-                    logging.info(f"✅ Optimization LR increase applied: {new_lr:.2e}")
-
+                    self.logger.info(f"Optimization LR increase: {current_lr:.2e} → {new_lr:.2e}")
+                    if self.verbosity >= VerbosityLevel.DETAILED:
+                        self.logger.detail(f"Increase factor: {factor}")
+            
             elif decision.decision_type == 'emergency_lr_reduction':
                 if hasattr(self.trainer, 'emergency_lr_reduction'):
-                    self.trainer.emergency_lr_reduction(decision.parameters['factor'])
-                    logging.info(f"✅ Emergency LR reduction executed")
+                    factor = decision.parameters.get('factor', 0.1)
+                    self.trainer.emergency_lr_reduction(factor)
+                    self.logger.warning(f"🚨 Emergency LR reduction executed (factor: {factor})")
+                    if self.verbosity >= VerbosityLevel.DEBUG:
+                        self.logger.debug(f"Emergency reason: {decision.reasoning}")
                 else:
-                    logging.warning("Trainer doesn't have emergency_lr_reduction method")
-
+                    self.logger.warning("Trainer doesn't have emergency_lr_reduction method")
+            
             elif decision.decision_type == 'plateau_intervention':
                 action = decision.parameters.get('action', 'increase_lr_or_change_architecture')
+                self.logger.info(f"Plateau intervention: {action}")
+                
                 if 'increase_lr' in action and hasattr(self.trainer, 'adjust_learning_rate'):
                     current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
                     new_lr = current_lr * 1.5
                     self.trainer.adjust_learning_rate(new_lr, grace_period=15, emergency=False)
-                    logging.info(f"✅ Plateau intervention: LR increased to {new_lr:.2e}")
-
+                    self.logger.info(f"Plateau LR increase: {current_lr:.2e} → {new_lr:.2e}")
+                    if self.verbosity >= VerbosityLevel.DETAILED:
+                        self.logger.detail("Attempting to escape plateau with LR boost")
+            
             elif decision.decision_type == 'divergence_prevention':
                 if hasattr(self.trainer, 'emergency_lr_reduction'):
                     factor = decision.parameters.get('factor', 0.5)
                     self.trainer.emergency_lr_reduction(factor)
-                    logging.info(f"✅ Divergence prevention: Emergency LR reduction by {factor}x")
-
+                    self.logger.warning(f"Divergence prevention: Emergency LR reduction ({factor}x)")
+                    if self.verbosity >= VerbosityLevel.DEBUG:
+                        self.logger.debug(f"Divergence indicators: {decision.parameters}")
+            
             elif decision.decision_type == 'checkpoint_rollback':
                 if hasattr(self.trainer, 'rollback_steps'):
                     steps_back = decision.parameters.get('steps_back', 100)
                     self.trainer.rollback_steps(steps_back)
-                    logging.info(f"✅ Rolled back {steps_back} steps")
+                    self.logger.warning(f"Checkpoint rollback: {steps_back} steps")
+                    if self.verbosity >= VerbosityLevel.DEBUG:
+                        self.logger.debug(f"Rollback reason: {decision.reasoning}")
                 else:
-                    logging.warning("Trainer doesn't have rollback_steps method")
-
+                    self.logger.warning("Trainer doesn't have rollback_steps method")
+            
             elif decision.decision_type == 'add_expert':
                 if hasattr(self.trainer, 'add_expert'):
                     layer_idx = decision.parameters.get('layer_idx', None)
                     self.trainer.add_expert(layer_idx)
-                    logging.info(f"✅ Added expert to layer {layer_idx}")
+                    self.logger.info(f"Added expert to layer {layer_idx}")
+                    if self.verbosity >= VerbosityLevel.DETAILED:
+                        self.logger.detail(f"Expert addition reasoning: {decision.reasoning}")
                 else:
-                    logging.warning("Trainer doesn't have add_expert method")
-
+                    self.logger.warning("Trainer doesn't have add_expert method")
+            
             elif decision.decision_type == 'prune_expert':
                 if hasattr(self.trainer, 'prune_expert'):
                     layer_idx = decision.parameters.get('layer_idx', 0)
                     expert_id = decision.parameters.get('expert_id', 0)
                     self.trainer.prune_expert(layer_idx, expert_id)
-                    logging.info(f"✅ Pruned expert {expert_id} from layer {layer_idx}")
+                    self.logger.info(f"Pruned expert {expert_id} from layer {layer_idx}")
+                    if self.verbosity >= VerbosityLevel.DEBUG:
+                        utilization = decision.parameters.get('utilization', 'unknown')
+                        self.logger.debug(f"Expert utilization was: {utilization}")
                 else:
-                    logging.warning("Trainer doesn't have prune_expert method")
-
+                    self.logger.warning("Trainer doesn't have prune_expert method")
+            
+            elif decision.decision_type == 'loss_spike_response':
+                self.logger.warning(f"Loss spike response triggered")
+                if self.verbosity >= VerbosityLevel.DETAILED:
+                    loss = decision.parameters.get('loss', 'unknown')
+                    threshold = decision.parameters.get('threshold', 'unknown')
+                    self.logger.detail(f"Loss: {loss}, Threshold: {threshold}")
+            
             else:
-                logging.warning(f"Unknown decision type: {decision.decision_type}")
-
-            logging.info(f"Successfully processed: {decision.decision_type}")
-
+                self.logger.warning(f"Unknown decision type: {decision.decision_type}")
+                if self.verbosity >= VerbosityLevel.DEBUG:
+                    self.logger.debug(f"Decision parameters: {decision.parameters}")
+            
+            # Success logging
+            if self.verbosity >= VerbosityLevel.DETAILED:
+                self.logger.detail(f"✓ Successfully processed: {decision.decision_type}")
+        
         except Exception as e:
-            logging.error(f"Failed to execute adaptive decision {decision.decision_type}: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
+            self.logger.error(f"Failed to execute {decision.decision_type}: {e}")
+            if self.verbosity >= VerbosityLevel.DEBUG:
+                import traceback
+                self.logger.debug(traceback.format_exc())
+
+    def set_verbosity(self, level: str):
+        """Change verbosity level during training."""
+        verbosity_map = {
+            'silent': VerbosityLevel.SILENT,
+            'minimal': VerbosityLevel.MINIMAL,
+            'normal': VerbosityLevel.NORMAL,
+            'detailed': VerbosityLevel.DETAILED,
+            'debug': VerbosityLevel.DEBUG,
+            'trace': VerbosityLevel.TRACE
+        }
+        
+        new_level = verbosity_map.get(level.lower(), VerbosityLevel.NORMAL)
+        old_level = self.verbosity
+        
+        self.verbosity = new_level
+        self.logger.set_verbosity(new_level)
+        
+        self.logger.info(f"Verbosity changed: {old_level.name} → {new_level.name}")
         
     def initialize_training(self):
         """Initialize training with adaptive intelligence."""
@@ -1456,83 +1655,101 @@ class AdaptiveTrainingOrchestrator:
         logging.info("="*80 + "\n")
     
     def run_adaptive_training(self):
-        """Run training with full adaptive intelligence - FIXED to setup scheduler."""
-        logging.info("="*80)
-        logging.info("ADAPTIVE AI-DRIVEN TRAINING WITH SELF-IMPROVEMENT")
-        logging.info("="*80)
-
+        """Run training with full verbose logging."""
+        self.logger.section("STARTING ADAPTIVE TRAINING", VerbosityLevel.NORMAL)
+        
         start_time = datetime.now()
-
+        
+        if self.verbosity >= VerbosityLevel.DETAILED:
+            self.logger.detail(f"Training mode: Adaptive AI-Driven")
+            self.logger.detail(f"Epochs: {self.config.num_epochs}")
+            self.logger.detail(f"Batch size: {self.config.batch_size}")
+            self.logger.detail(f"Gradient accumulation: {self.config.gradient_accumulation_steps}")
+            self.logger.detail(f"Learning rate: {self.config.learning_rate}")
+            self.logger.detail(f"Precision: {self.config.precision}")
+            self.logger.detail(f"Device: {self.device}")
+        
         try:
             self.is_training = True
+            
+            # Check monitoring thread
             if not (self.monitoring_thread and self.monitoring_thread.is_alive()):
-                print("⚠️ Monitoring thread not running - starting now...")
-                print(f"   self.is_training = {self.is_training}")
-                print(f"   self.should_stop = {self.should_stop}")
+                if self.verbosity >= VerbosityLevel.DEBUG:
+                    self.logger.debug("Monitoring thread not running - starting now...")
                 
                 try:
                     self.start_real_time_monitoring()
-                    
                     import time
-                    time.sleep(0.5)  # Give thread time to start
-                    
-                    print("\n🔍 DEBUG: After start_real_time_monitoring():")
-                    print(f"   Thread exists: {self.monitoring_thread is not None}")
-                    if self.monitoring_thread:
-                        print(f"   Thread alive: {self.monitoring_thread.is_alive()}")
-                        print(f"   Thread ident: {self.monitoring_thread.ident}")
-                        print(f"   Thread daemon: {self.monitoring_thread.daemon}")
+                    time.sleep(0.5)
                     
                     if self.monitoring_thread and self.monitoring_thread.is_alive():
-                        print("✅ Monitoring thread started successfully\n")
+                        self.logger.info("✓ Monitoring thread started successfully")
                     else:
-                        print("❌ Failed to start monitoring thread!\n")
-                            
+                        self.logger.error("✗ Failed to start monitoring thread!")
+                        
                 except Exception as e:
-                    print(f"❌ Exception starting monitoring thread: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    self.logger.error(f"Exception starting monitoring thread: {e}")
+                    if self.verbosity >= VerbosityLevel.DEBUG:
+                        import traceback
+                        self.logger.debug(traceback.format_exc())
             else:
-                print("✅ Monitoring thread already running")
-
+                self.logger.info("✓ Monitoring thread already running")
+            
             # Initialize trainer if needed
             if self.trainer is None:
-                logging.warning("Trainer was None, initializing now...")
+                self.logger.warning("Trainer was None, initializing now...")
                 self.initialize_training()
-
+            
             if self.trainer is None:
                 raise RuntimeError("CRITICAL: Trainer still None after initialization!")
-
-            logging.info(f"✅ Trainer confirmed: {type(self.trainer).__name__}")
-
+            
+            self.logger.info(f"✓ Trainer confirmed: {type(self.trainer).__name__}")
+            
+            if self.verbosity >= VerbosityLevel.DEBUG:
+                self.logger.debug(f"Trainer has methods: {dir(self.trainer)[:10]}...")
+            
             # Setup datasets
-            logging.info("Setting up datasets...")
+            self.logger.section("DATASET SETUP", VerbosityLevel.NORMAL)
             train_dataset, eval_dataset = self._setup_datasets()
-
+            
             if train_dataset is None or len(train_dataset) == 0:
                 raise RuntimeError("Training dataset is empty or None!")
-
-            logging.info(f"✅ Train dataset: {len(train_dataset)} samples")
-            logging.info(f"✅ Eval dataset: {len(eval_dataset)} samples")
-
-            # ✅ MOVE THE SCHEDULER SETUP HERE (before training)
-            logging.info("Setting up learning rate scheduler...")
-
+            
+            self.logger.info(f"✓ Train dataset: {len(train_dataset):,} samples")
+            
+            if eval_dataset != train_dataset:
+                self.logger.info(f"✓ Eval dataset: {len(eval_dataset):,} samples")
+            else:
+                self.logger.info(f"✓ Using training data for evaluation")
+            
+            if self.verbosity >= VerbosityLevel.DETAILED:
+                self.logger.detail(f"Dataset types: train={type(train_dataset).__name__}, eval={type(eval_dataset).__name__}")
+            
+            # Setup scheduler
+            self.logger.section("SCHEDULER SETUP", VerbosityLevel.NORMAL)
+            
             if type(self.trainer).__name__ == 'AdaptiveTrainer':
-                logging.warning("Using fallback trainer - manual scheduler setup required")
-                # Calculate total steps manually
+                self.logger.warning("Using fallback trainer - manual scheduler setup required")
+                
+                if self.verbosity >= VerbosityLevel.DEBUG:
+                    self.logger.debug("Calculating scheduler parameters...")
+                
                 gradient_accumulation_steps = getattr(self.config, 'gradient_accumulation_steps', 1)
                 batches_per_epoch = len(train_dataset) // self.config.batch_size
                 steps_per_epoch = batches_per_epoch // gradient_accumulation_steps
                 total_steps = steps_per_epoch * self.config.num_epochs
-
-                # Create scheduler manually for fallback trainer
+                
+                if self.verbosity >= VerbosityLevel.DETAILED:
+                    self.logger.detail(f"Batches per epoch: {batches_per_epoch}")
+                    self.logger.detail(f"Steps per epoch: {steps_per_epoch}")
+                    self.logger.detail(f"Total steps: {total_steps}")
+                
                 from torch.optim.lr_scheduler import LambdaLR
                 import math
-
+                
                 warmup_ratio = getattr(self.config, 'warmup_ratio', 0.1)
                 warmup_steps = int(total_steps * warmup_ratio)
-
+                
                 def lr_lambda(current_step: int):
                     if current_step < warmup_steps:
                         return float(current_step) / float(max(1, warmup_steps))
@@ -1540,88 +1757,141 @@ class AdaptiveTrainingOrchestrator:
                         progress = (current_step - warmup_steps) / max(1, (total_steps - warmup_steps))
                         min_lr_ratio = self.config.min_lr / self.config.learning_rate
                         return max(min_lr_ratio, 0.5 * (1.0 + math.cos(math.pi * progress)))
-
+                
                 self.trainer.scheduler = LambdaLR(self.trainer.optimizer, lr_lambda)
-                logging.info(f"✅ Manual scheduler created: warmup={warmup_steps}, total={total_steps}")
+                self.logger.info(f"✓ Manual scheduler created: warmup={warmup_steps}, total={total_steps}")
             else:
-                # Real trainer - use its built-in setup
                 self._setup_trainer_scheduler(train_dataset)
-
+                self.logger.info(f"✓ Scheduler setup complete")
+            
             # Pre-training analysis
-            logging.info("Performing pre-training analysis...")
-            self._analyze_dataset_characteristics(train_dataset)
-
+            if self.verbosity >= VerbosityLevel.DETAILED:
+                self.logger.section("PRE-TRAINING ANALYSIS", VerbosityLevel.DETAILED)
+                self._analyze_dataset_characteristics(train_dataset)
+            
+            # Start actual training
+            self.logger.section("TRAINING LOOP", VerbosityLevel.NORMAL)
+            self.logger.info(f"Starting training at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            if self.verbosity >= VerbosityLevel.DEBUG:
+                self.logger.debug(f"Trainer.train() about to be called...")
+                self.logger.debug(f"Train dataset size: {len(train_dataset)}")
+                self.logger.debug(f"Eval dataset size: {len(eval_dataset)}")
+            
             # THE ACTUAL TRAINING CALL
-            logging.info("="*80)
-            logging.info("STARTING ACTUAL TRAINING LOOP")
-            logging.info("="*80)
-
             self.trainer.train(train_dataset, eval_dataset)
-
-            logging.info("="*80)
-            logging.info("TRAINING LOOP COMPLETED")
-            logging.info("="*80)
-
-            # ============================================================
-            # CHINCHILLA SCALER CHECK
-            # ============================================================
+            
+            self.logger.section("TRAINING COMPLETED", VerbosityLevel.NORMAL)
+            
+            # Chinchilla scaler check
             if hasattr(self.trainer, 'chinchilla_scaler') and self.trainer.chinchilla_scaler:
-                logging.info("\n" + "="*80)
-                logging.info("📊 CHINCHILLA SCALER FINAL REPORT")
-                logging.info("="*80)
-
+                self.logger.section("CHINCHILLA SCALER FINAL REPORT", VerbosityLevel.NORMAL)
+                
                 scaler = self.trainer.chinchilla_scaler
-                scaler.print_status()
-
-                # Get final report
+                
+                if self.verbosity >= VerbosityLevel.DETAILED:
+                    scaler.print_status()
+                
                 final_report = scaler.get_status_report()
-                logging.info(f"\nFinal Training Phase: {final_report['training']['training_phase']}")
-                logging.info(f"Convergence Score: {final_report['training']['convergence_score']:.2%}")
-                logging.info(f"Token Coverage: {final_report['chinchilla']['progress']:.1f}%")
-
-                # Check if early stopping was recommended
+                self.logger.info(f"Final Training Phase: {final_report['training']['training_phase']}")
+                self.logger.info(f"Convergence Score: {final_report['training']['convergence_score']:.2%}")
+                self.logger.info(f"Token Coverage: {final_report['chinchilla']['progress']:.1f}%")
+                
                 should_stop, reason = scaler.should_stop_early()
                 if should_stop:
-                    logging.info(f"\n⚠️  Early stopping was recommended: {reason}")
-
-                # Save scaler state
+                    self.logger.info(f"⚠️  Early stopping was recommended: {reason}")
+                
                 scaler_path = self.experiment_dir / "chinchilla_scaler_final_state.json"
                 scaler.save_state(str(scaler_path))
-                logging.info(f"\n✅ Scaler state saved: {scaler_path}")
-                logging.info("="*80 + "\n")
-            # ============================================================
-
+                self.logger.info(f"✓ Scaler state saved: {scaler_path}")
+                
+                if self.verbosity >= VerbosityLevel.DEBUG:
+                    self.logger.debug(f"Full scaler report: {final_report}")
+            
             # Post-training analysis
             end_time = datetime.now()
             training_duration = (end_time - start_time).total_seconds()
-
+            
+            self.logger.section("POST-TRAINING ANALYSIS", VerbosityLevel.NORMAL)
+            self.logger.info(f"Training duration: {training_duration:.1f} seconds ({training_duration/3600:.2f} hours)")
+            
             final_performance = self._calculate_final_performance()
-
+            self.logger.info(f"Final performance score: {final_performance:.3f}")
+            
+            if self.verbosity >= VerbosityLevel.DETAILED:
+                self.logger.detail(f"Adaptive decisions made: {len(self.adaptive_decisions)}")
+                self.logger.detail(f"Metrics collected: {len(self.training_metrics_history)}")
+            
+            # Record outcome for meta-learning
+            self.logger.info("Recording training outcome for meta-learning...")
             self.meta_learner.record_training_outcome(
                 self.config, self.training_metrics_history, final_performance
             )
-
+            
+            # Generate reports
+            self.logger.info("Generating adaptive insights report...")
             self._generate_adaptive_insights_report(training_duration, final_performance)
+            
+            # Save state
+            self.logger.info("Saving meta-learning state...")
             self._save_meta_learning_state()
-
-            logging.info(f"Adaptive training completed in {training_duration:.1f} seconds")
-            logging.info(f"Made {len(self.adaptive_decisions)} adaptive decisions during training")
-
-        except Exception as e:
-            import traceback as tb
-            error_trace = tb.format_exc()
-            logging.error(f"Adaptive training failed: {e}")
-            logging.error(error_trace)
+            
+            # Summary
+            self.logger.section("TRAINING SUMMARY", VerbosityLevel.NORMAL)
+            self.logger.info(f"✓ Adaptive training completed successfully")
+            self.logger.info(f"✓ Duration: {training_duration:.1f}s")
+            self.logger.info(f"✓ Adaptive decisions: {len(self.adaptive_decisions)}")
+            self.logger.info(f"✓ Final performance: {final_performance:.3f}")
+            
+            if self.verbosity >= VerbosityLevel.DETAILED:
+                # Decision breakdown
+                decision_types = {}
+                for decision in self.adaptive_decisions:
+                    dt = decision.decision_type
+                    decision_types[dt] = decision_types.get(dt, 0) + 1
+                
+                self.logger.detail("Decision breakdown:")
+                for dt, count in sorted(decision_types.items(), key=lambda x: x[1], reverse=True):
+                    self.logger.detail(f"  {dt}: {count}")
+        
+        except KeyboardInterrupt:
+            self.logger.section("TRAINING INTERRUPTED", VerbosityLevel.MINIMAL)
+            self.logger.warning("Training interrupted by user (Ctrl+C)")
+            
+            if self.verbosity >= VerbosityLevel.DETAILED:
+                self.logger.detail("Saving emergency state...")
             
             try:
                 self._save_emergency_adaptive_state()
-            except Exception as save_error:
-                logging.error(f"Failed to save emergency state: {save_error}")
+                self.logger.info("✓ Emergency state saved")
+            except Exception as e:
+                self.logger.error(f"Failed to save emergency state: {e}")
             
             raise
+        
+        except Exception as e:
+            self.logger.section("TRAINING ERROR", VerbosityLevel.MINIMAL)
+            self.logger.error(f"Training failed with error: {e}")
+            
+            if self.verbosity >= VerbosityLevel.DEBUG:
+                import traceback
+                self.logger.debug("Full traceback:")
+                self.logger.debug(traceback.format_exc())
+            
+            try:
+                self.logger.warning("Attempting to save emergency state...")
+                self._save_emergency_adaptive_state()
+                self.logger.info("✓ Emergency state saved")
+            except Exception as save_error:
+                self.logger.error(f"Failed to save emergency state: {save_error}")
+            
+            raise
+        
         finally:
             self.is_training = False
-    
+            
+            if self.verbosity >= VerbosityLevel.DEBUG:
+                self.logger.debug("Training loop exited, is_training set to False")
     
     def _analyze_dataset_characteristics(self, dataset):
         """Analyze dataset to inform adaptive strategies."""
