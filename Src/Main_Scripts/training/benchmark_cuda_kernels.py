@@ -2,8 +2,8 @@
 # Licensed under the Custom License below.
 
 """
-CUDA Kernel Performance Benchmark
-Tests speed differences between PyTorch and custom CUDA implementations.
+CUDA Kernel Performance Benchmark with torch.compile
+Tests speed differences between PyTorch, torch.compile, and custom CUDA.
 
 Usage:
     python benchmark_cuda_kernels.py
@@ -68,16 +68,12 @@ class BenchmarkResults:
 def pytorch_cross_entropy_accuracy(logits: torch.Tensor, 
                                    labels: torch.Tensor,
                                    pad_token_id: int = -100) -> Dict[str, torch.Tensor]:
-    """
-    Reference PyTorch implementation of cross-entropy + accuracy.
-    """
-    # Reshape if needed
+    """Reference PyTorch implementation."""
     if logits.dim() == 3:
         batch_size, seq_len, vocab_size = logits.shape
         logits = logits.view(-1, vocab_size)
         labels = labels.view(-1)
     
-    # Create mask for valid tokens
     mask = (labels != pad_token_id).float()
     valid_token_count = mask.sum()
     
@@ -88,17 +84,51 @@ def pytorch_cross_entropy_accuracy(logits: torch.Tensor,
             'valid_tokens': torch.tensor(0, device=logits.device)
         }
     
-    # Compute accuracy
     with torch.no_grad():
         predictions = torch.argmax(logits, dim=-1)
         correct_predictions = (predictions == labels).float()
         masked_correct = correct_predictions * mask
         accuracy = masked_correct.sum() / valid_token_count
     
-    # Compute loss per token
     loss_per_token = F.cross_entropy(logits, labels, reduction='none')
+    masked_loss_sum = (loss_per_token * mask).sum()
+    loss = masked_loss_sum / valid_token_count
     
-    # Masked loss
+    return {
+        'loss': loss,
+        'accuracy': accuracy,
+        'valid_tokens': valid_token_count
+    }
+
+
+# Compile the PyTorch version
+@torch.compile(mode='max-autotune', fullgraph=True)
+def compiled_cross_entropy_accuracy(logits: torch.Tensor,
+                                    labels: torch.Tensor,
+                                    pad_token_id: int = -100) -> Dict[str, torch.Tensor]:
+    """torch.compile optimized version."""
+    if logits.dim() == 3:
+        batch_size, seq_len, vocab_size = logits.shape
+        logits = logits.view(-1, vocab_size)
+        labels = labels.view(-1)
+    
+    mask = (labels != pad_token_id).float()
+    valid_token_count = mask.sum()
+    
+    if valid_token_count == 0:
+        return {
+            'loss': torch.tensor(0.0, device=logits.device),
+            'accuracy': torch.tensor(0.0, device=logits.device),
+            'valid_tokens': torch.tensor(0, device=logits.device)
+        }
+    
+    with torch.no_grad():
+        predictions = torch.argmax(logits, dim=-1)
+        correct_predictions = (predictions == labels).float()
+        masked_correct = correct_predictions * mask
+        accuracy = masked_correct.sum() / valid_token_count
+    
+    loss_per_token = F.cross_entropy(logits, labels, reduction='none')
     masked_loss_sum = (loss_per_token * mask).sum()
     loss = masked_loss_sum / valid_token_count
     
@@ -110,9 +140,13 @@ def pytorch_cross_entropy_accuracy(logits: torch.Tensor,
 
 
 def pytorch_grad_clip(parameters, max_norm: float) -> float:
-    """
-    Reference PyTorch gradient clipping.
-    """
+    """Reference PyTorch gradient clipping."""
+    return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
+
+
+@torch.compile(mode='max-autotune')
+def compiled_grad_clip(parameters, max_norm: float) -> float:
+    """torch.compile optimized gradient clipping."""
     return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
 
 
@@ -122,12 +156,12 @@ def benchmark_loss_computation(
     vocab_size: int,
     num_iterations: int,
     warmup: int = 10
-) -> Tuple[BenchmarkResults, BenchmarkResults]:
+) -> Tuple[BenchmarkResults, BenchmarkResults, BenchmarkResults]:
     """
     Benchmark cross-entropy + accuracy computation.
     
     Returns:
-        (pytorch_results, cuda_results)
+        (pytorch_results, compiled_results, cuda_results)
     """
     print(f"\n{'='*80}")
     print(f"BENCHMARKING: Cross-Entropy + Accuracy")
@@ -143,16 +177,15 @@ def benchmark_loss_computation(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     pytorch_results = BenchmarkResults("PyTorch Cross-Entropy")
+    compiled_results = BenchmarkResults("torch.compile Cross-Entropy")
     cuda_results = BenchmarkResults("CUDA Fused Loss")
     
     # Create test data
     logits = torch.randn(batch_size, seq_len, vocab_size, device=device, requires_grad=True)
     labels = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
-    
-    # Add some padding tokens
     labels[labels < vocab_size // 10] = -100
     
-    # Initialize CUDA kernel if available
+    # Initialize implementations
     if KERNELS_AVAILABLE:
         fused_loss = FusedLoss()
         if not fused_loss.enabled:
@@ -162,15 +195,13 @@ def benchmark_loss_computation(
         print("\n⚠️  CUDA kernels not available, skipping CUDA benchmark")
         cuda_results = None
     
-    print("\nRunning PyTorch benchmark...")
-    
-    # Warmup
+    # Benchmark PyTorch
+    print("\n[1/3] Running PyTorch benchmark...")
     for _ in range(warmup):
         _ = pytorch_cross_entropy_accuracy(logits, labels)
         if device.type == 'cuda':
             torch.cuda.synchronize()
     
-    # Benchmark PyTorch
     for i in range(num_iterations):
         if device.type == 'cuda':
             torch.cuda.synchronize()
@@ -181,23 +212,46 @@ def benchmark_loss_computation(
         if device.type == 'cuda':
             torch.cuda.synchronize()
         
-        elapsed = (time.perf_counter() - start) * 1000  # ms
+        elapsed = (time.perf_counter() - start) * 1000
         pytorch_results.add_time(elapsed)
         
         if (i + 1) % 100 == 0:
             print(f"  Progress: {i+1}/{num_iterations}")
     
-    # Benchmark CUDA if available
-    if cuda_results is not None:
-        print("\nRunning CUDA benchmark...")
+    # Benchmark torch.compile
+    print("\n[2/3] Running torch.compile benchmark...")
+    print("  (First run will be slower due to compilation...)")
+    
+    for _ in range(warmup + 5):  # Extra warmup for compilation
+        _ = compiled_cross_entropy_accuracy(logits, labels)
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+    
+    for i in range(num_iterations):
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
         
-        # Warmup
+        start = time.perf_counter()
+        result = compiled_cross_entropy_accuracy(logits, labels)
+        
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        
+        elapsed = (time.perf_counter() - start) * 1000
+        compiled_results.add_time(elapsed)
+        
+        if (i + 1) % 100 == 0:
+            print(f"  Progress: {i+1}/{num_iterations}")
+    
+    # Benchmark CUDA
+    if cuda_results is not None:
+        print("\n[3/3] Running CUDA benchmark...")
+        
         for _ in range(warmup):
             _ = fused_loss(logits, labels)
             if device.type == 'cuda':
                 torch.cuda.synchronize()
         
-        # Benchmark
         for i in range(num_iterations):
             if device.type == 'cuda':
                 torch.cuda.synchronize()
@@ -208,13 +262,13 @@ def benchmark_loss_computation(
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             
-            elapsed = (time.perf_counter() - start) * 1000  # ms
+            elapsed = (time.perf_counter() - start) * 1000
             cuda_results.add_time(elapsed)
             
             if (i + 1) % 100 == 0:
                 print(f"  Progress: {i+1}/{num_iterations}")
     
-    return pytorch_results, cuda_results
+    return pytorch_results, compiled_results, cuda_results
 
 
 def benchmark_gradient_clipping(
@@ -223,12 +277,12 @@ def benchmark_gradient_clipping(
     num_iterations: int,
     max_norm: float = 1.0,
     warmup: int = 10
-) -> Tuple[BenchmarkResults, BenchmarkResults]:
+) -> Tuple[BenchmarkResults, BenchmarkResults, BenchmarkResults]:
     """
     Benchmark gradient clipping.
     
     Returns:
-        (pytorch_results, cuda_results)
+        (pytorch_results, compiled_results, cuda_results)
     """
     print(f"\n{'='*80}")
     print(f"BENCHMARKING: Gradient Clipping")
@@ -244,9 +298,9 @@ def benchmark_gradient_clipping(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     pytorch_results = BenchmarkResults("PyTorch Grad Clip")
+    compiled_results = BenchmarkResults("torch.compile Grad Clip")
     cuda_results = BenchmarkResults("CUDA Fused Grad Clip")
     
-    # Create fake model with gradients
     class DummyModel(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -256,12 +310,9 @@ def benchmark_gradient_clipping(
             ])
     
     model = DummyModel()
-    
-    # Create fake gradients
     for param in model.parameters():
         param.grad = torch.randn_like(param)
     
-    # Initialize CUDA kernel if available
     if KERNELS_AVAILABLE:
         fused_clip = FusedGradClip()
         if not fused_clip.cuda_enabled:
@@ -271,15 +322,13 @@ def benchmark_gradient_clipping(
         print("\n⚠️  CUDA kernels not available, skipping CUDA benchmark")
         cuda_results = None
     
-    print("\nRunning PyTorch benchmark...")
-    
-    # Warmup
+    # Benchmark PyTorch
+    print("\n[1/3] Running PyTorch benchmark...")
     for _ in range(warmup):
         _ = pytorch_grad_clip(model.parameters(), max_norm)
         if device.type == 'cuda':
             torch.cuda.synchronize()
     
-    # Benchmark PyTorch
     for i in range(num_iterations):
         if device.type == 'cuda':
             torch.cuda.synchronize()
@@ -290,23 +339,46 @@ def benchmark_gradient_clipping(
         if device.type == 'cuda':
             torch.cuda.synchronize()
         
-        elapsed = (time.perf_counter() - start) * 1000  # ms
+        elapsed = (time.perf_counter() - start) * 1000
         pytorch_results.add_time(elapsed)
         
         if (i + 1) % 100 == 0:
             print(f"  Progress: {i+1}/{num_iterations}")
     
-    # Benchmark CUDA if available
-    if cuda_results is not None:
-        print("\nRunning CUDA benchmark...")
+    # Benchmark torch.compile
+    print("\n[2/3] Running torch.compile benchmark...")
+    print("  Note: torch.compile may not optimize grad clipping significantly")
+    
+    for _ in range(warmup + 5):
+        _ = compiled_grad_clip(model.parameters(), max_norm)
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+    
+    for i in range(num_iterations):
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
         
-        # Warmup
+        start = time.perf_counter()
+        norm = compiled_grad_clip(model.parameters(), max_norm)
+        
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        
+        elapsed = (time.perf_counter() - start) * 1000
+        compiled_results.add_time(elapsed)
+        
+        if (i + 1) % 100 == 0:
+            print(f"  Progress: {i+1}/{num_iterations}")
+    
+    # Benchmark CUDA
+    if cuda_results is not None:
+        print("\n[3/3] Running CUDA benchmark...")
+        
         for _ in range(warmup):
             _ = fused_clip(model.parameters(), max_norm)
             if device.type == 'cuda':
                 torch.cuda.synchronize()
         
-        # Benchmark
         for i in range(num_iterations):
             if device.type == 'cuda':
                 torch.cuda.synchronize()
@@ -317,54 +389,67 @@ def benchmark_gradient_clipping(
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             
-            elapsed = (time.perf_counter() - start) * 1000  # ms
+            elapsed = (time.perf_counter() - start) * 1000
             cuda_results.add_time(elapsed)
             
             if (i + 1) % 100 == 0:
                 print(f"  Progress: {i+1}/{num_iterations}")
     
-    return pytorch_results, cuda_results
+    return pytorch_results, compiled_results, cuda_results
 
 
-def print_comparison(pytorch_results: BenchmarkResults, 
+def print_comparison(pytorch_results: BenchmarkResults,
+                    compiled_results: BenchmarkResults,
                     cuda_results: BenchmarkResults):
-    """Print detailed comparison between PyTorch and CUDA."""
+    """Print detailed comparison."""
     print(f"\n{'='*80}")
     print(f"RESULTS COMPARISON")
     print(f"{'='*80}")
     
     pytorch_results.print_summary()
+    compiled_results.print_summary()
     
     if cuda_results is not None:
         cuda_results.print_summary()
-        
-        pytorch_stats = pytorch_results.get_stats()
+    
+    pytorch_stats = pytorch_results.get_stats()
+    compiled_stats = compiled_results.get_stats()
+    
+    print(f"\n{'='*80}")
+    print(f"SPEEDUP ANALYSIS")
+    print(f"{'='*80}")
+    
+    compile_speedup = pytorch_stats['mean'] / compiled_stats['mean']
+    print(f"\ntorch.compile vs PyTorch:")
+    print(f"  Speedup:    {compile_speedup:.2f}x faster")
+    print(f"  Time saved: {pytorch_stats['mean'] - compiled_stats['mean']:.3f} ms per call")
+    
+    if cuda_results is not None:
         cuda_stats = cuda_results.get_stats()
         
-        speedup = pytorch_stats['mean'] / cuda_stats['mean']
-        time_saved = pytorch_stats['mean'] - cuda_stats['mean']
+        cuda_vs_pytorch = pytorch_stats['mean'] / cuda_stats['mean']
+        cuda_vs_compiled = compiled_stats['mean'] / cuda_stats['mean']
+        
+        print(f"\nCUDA vs PyTorch:")
+        print(f"  Speedup:    {cuda_vs_pytorch:.2f}x faster")
+        print(f"  Time saved: {pytorch_stats['mean'] - cuda_stats['mean']:.3f} ms per call")
+        
+        print(f"\nCUDA vs torch.compile:")
+        print(f"  Speedup:    {cuda_vs_compiled:.2f}x faster")
+        print(f"  Time saved: {compiled_stats['mean'] - cuda_stats['mean']:.3f} ms per call")
         
         print(f"\n{'='*80}")
-        print(f"SPEEDUP ANALYSIS")
-        print(f"{'='*80}")
-        print(f"  Speedup:        {speedup:.2f}x faster")
-        print(f"  Time saved:     {time_saved:.3f} ms per call")
-        print(f"  CUDA vs PyTorch: {cuda_stats['mean']:.3f} ms vs {pytorch_stats['mean']:.3f} ms")
-        
-        if speedup >= 2.0:
-            print(f"\n  ✅ Excellent speedup! CUDA kernel is {speedup:.1f}x faster")
-        elif speedup >= 1.5:
-            print(f"\n  ✅ Good speedup! CUDA kernel is {speedup:.1f}x faster")
-        elif speedup >= 1.2:
-            print(f"\n  ⚠️  Modest speedup of {speedup:.1f}x")
+        print(f"WINNER: ", end="")
+        if cuda_stats['mean'] < compiled_stats['mean'] * 0.9:
+            print(f"✅ CUDA ({cuda_stats['mean']:.3f} ms)")
+        elif compiled_stats['mean'] < cuda_stats['mean'] * 0.9:
+            print(f"✅ torch.compile ({compiled_stats['mean']:.3f} ms)")
         else:
-            print(f"\n  ❌ Limited speedup of {speedup:.1f}x - may not be worth the complexity")
-    else:
-        print("\n⚠️  CUDA results not available for comparison")
+            print("🤝 TIE (within 10%)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Benchmark CUDA kernels vs PyTorch')
+    parser = argparse.ArgumentParser(description='Benchmark CUDA kernels vs PyTorch vs torch.compile')
     parser.add_argument('--iterations', type=int, default=100,
                        help='Number of iterations per benchmark (default: 100)')
     parser.add_argument('--warmup', type=int, default=10,
@@ -387,43 +472,37 @@ def main():
     args = parser.parse_args()
     
     print("="*80)
-    print("CUDA KERNEL PERFORMANCE BENCHMARK")
+    print("CUDA KERNEL PERFORMANCE BENCHMARK (with torch.compile)")
     print("="*80)
     print(f"\nDevice: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
     print(f"CUDA available: {torch.cuda.is_available()}")
     print(f"Custom kernels available: {KERNELS_AVAILABLE}")
+    print(f"PyTorch version: {torch.__version__}")
     
     if not torch.cuda.is_available():
-        print("\n⚠️  CUDA not available - benchmarks will run on CPU (not meaningful)")
-        print("   Please run on a CUDA-enabled system for accurate results")
-        return
-    
-    if not KERNELS_AVAILABLE:
-        print("\n⚠️  Custom CUDA kernels not available")
-        print("   Make sure cuda_kernels.py is in the same directory")
-        print("   And that .so files are compiled and present")
+        print("\n⚠️  CUDA not available - benchmarks will run on CPU")
         return
     
     # Benchmark 1: Loss Computation
     if not args.skip_loss:
-        pytorch_loss, cuda_loss = benchmark_loss_computation(
+        pytorch_loss, compiled_loss, cuda_loss = benchmark_loss_computation(
             batch_size=args.batch_size,
             seq_len=args.seq_len,
             vocab_size=args.vocab_size,
             num_iterations=args.iterations,
             warmup=args.warmup
         )
-        print_comparison(pytorch_loss, cuda_loss)
+        print_comparison(pytorch_loss, compiled_loss, cuda_loss)
     
     # Benchmark 2: Gradient Clipping
     if not args.skip_grad:
-        pytorch_clip, cuda_clip = benchmark_gradient_clipping(
+        pytorch_clip, compiled_clip, cuda_clip = benchmark_gradient_clipping(
             num_params=args.num_params,
             param_size=args.param_size,
             num_iterations=args.iterations,
             warmup=args.warmup
         )
-        print_comparison(pytorch_clip, cuda_clip)
+        print_comparison(pytorch_clip, compiled_clip, cuda_clip)
     
     print(f"\n{'='*80}")
     print("BENCHMARK COMPLETE")

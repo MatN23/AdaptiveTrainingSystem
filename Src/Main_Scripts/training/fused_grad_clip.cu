@@ -1,35 +1,33 @@
 // Copyright (c) 2025 MatN23. All rights reserved.
 // Licensed under the Custom License below.
-
-// fused_grad_clip.cu - FIXED ASYNC VERSION
-// Fully async gradient norm computation + clipping
-// NO cudaStreamSynchronize() - stays in GPU pipeline
+// fused_grad_clip.cu - OPTIMIZED VERSION
+// Fully async gradient norm computation + clipping with vectorization
 //
 // Compile with:
-// nvcc -O3 -arch=sm_75 --compiler-options '-fPIC' --use_fast_math --ptxas-options=-v -shared fused_grad_clip.cu -o fused_grad_clip.so
+// nvcc -O3 -arch=sm_80 --use_fast_math --ptxas-options=-v -lineinfo \
+//      --compiler-options '-fPIC' -shared fused_grad_clip.cu -o fused_grad_clip.so
 
 #include <cuda_runtime.h>
 #include <cmath>
 #include <cfloat>
 #include <cstdio>
-#include <cstdlib>
 
-// Warp reduction for sum of squares
+// Warp reduction
 __device__ __forceinline__ float warp_reduce_sum(float val) {
-    for (int offset = 16; offset > 0; offset /= 2) {
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
         val += __shfl_down_sync(0xffffffff, val, offset);
     }
     return val;
 }
 
-// ✅ NEW: Single-pass kernel that computes norm AND clips in one go
+// Optimized kernel with vectorized loads
 __global__ void compute_grad_norm_squared_kernel(
     float** __restrict__ grad_ptrs,
     const int* __restrict__ grad_sizes,
-    float* __restrict__ global_norm_sq,  // Single output value
+    float* __restrict__ global_norm_sq,
     int num_tensors
 ) {
-    // Each block handles one tensor
     int tensor_idx = blockIdx.x;
     if (tensor_idx >= num_tensors) return;
     
@@ -38,8 +36,15 @@ __global__ void compute_grad_norm_squared_kernel(
     
     float sum_sq = 0.0f;
     
-    // Each thread accumulates its portion
-    for (int i = threadIdx.x; i < size; i += blockDim.x) {
+    // Vectorized loads (4 floats at a time)
+    int vec_end = (size / 4) * 4;
+    for (int i = threadIdx.x * 4; i < vec_end; i += blockDim.x * 4) {
+        float4 vals = *reinterpret_cast<const float4*>(&grad[i]);
+        sum_sq += vals.x * vals.x + vals.y * vals.y + vals.z * vals.z + vals.w * vals.w;
+    }
+    
+    // Handle remainder
+    for (int i = vec_end + threadIdx.x; i < size; i += blockDim.x) {
         float val = grad[i];
         sum_sq += val * val;
     }
@@ -49,28 +54,27 @@ __global__ void compute_grad_norm_squared_kernel(
     
     // Block reduce
     __shared__ float warp_sums[32];
-    int lane = threadIdx.x % 32;
-    int wid = threadIdx.x / 32;
+    int lane = threadIdx.x & 31;
+    int wid = threadIdx.x >> 5;
     
     if (lane == 0) warp_sums[wid] = sum_sq;
     __syncthreads();
     
     if (wid == 0) {
-        sum_sq = (threadIdx.x < blockDim.x / 32) ? warp_sums[lane] : 0.0f;
+        sum_sq = (threadIdx.x < (blockDim.x >> 5)) ? warp_sums[lane] : 0.0f;
         sum_sq = warp_reduce_sum(sum_sq);
         
-        // ✅ ATOMIC ADD to global result
         if (threadIdx.x == 0) {
             atomicAdd(global_norm_sq, sum_sq);
         }
     }
 }
 
-// ✅ NEW: Separate kernel for clipping (launched conditionally)
+// Optimized clipping kernel with vectorization
 __global__ void clip_gradients_kernel(
     float** __restrict__ grad_ptrs,
     const int* __restrict__ grad_sizes,
-    const float* __restrict__ total_norm_device,  // Read from device memory
+    const float* __restrict__ total_norm_device,
     float max_norm,
     int num_tensors
 ) {
@@ -80,27 +84,34 @@ __global__ void clip_gradients_kernel(
     float* grad = grad_ptrs[tensor_idx];
     int size = grad_sizes[tensor_idx];
     
-    // Read total norm from device memory (no sync needed!)
     float total_norm = *total_norm_device;
-    
-    // Compute clip coefficient
     float clip_coef = max_norm / (total_norm + 1e-6f);
+    
     if (clip_coef >= 1.0f) return;  // No clipping needed
     
-    // Apply clipping
-    for (int i = threadIdx.x; i < size; i += blockDim.x) {
+    // Vectorized clipping
+    int vec_end = (size / 4) * 4;
+    for (int i = threadIdx.x * 4; i < vec_end; i += blockDim.x * 4) {
+        float4 vals = *reinterpret_cast<float4*>(&grad[i]);
+        vals.x *= clip_coef;
+        vals.y *= clip_coef;
+        vals.z *= clip_coef;
+        vals.w *= clip_coef;
+        *reinterpret_cast<float4*>(&grad[i]) = vals;
+    }
+    
+    // Handle remainder
+    for (int i = vec_end + threadIdx.x; i < size; i += blockDim.x) {
         grad[i] *= clip_coef;
     }
 }
 
-// ✅ NEW: Kernel to compute sqrt on GPU (avoids D2H transfer)
 __global__ void sqrt_kernel(float* norm_sq, float* norm) {
     if (threadIdx.x == 0 && blockIdx.x == 0) {
         *norm = sqrtf(*norm_sq);
     }
 }
 
-// CUDA error checking
 #define CUDA_CHECK(call) \
     do { \
         cudaError_t err = call; \
@@ -113,7 +124,6 @@ __global__ void sqrt_kernel(float* norm_sq, float* norm) {
 
 extern "C" {
 
-// ✅ FIXED: Fully async version - NO synchronization
 float fused_grad_clip_launcher(
     float** grad_ptrs_device,
     int* grad_sizes_device,
@@ -121,49 +131,40 @@ float fused_grad_clip_launcher(
     float max_norm,
     cudaStream_t stream
 ) {
-    // ✅ Use pinned memory for async D2H transfer
+    // Pinned memory for async transfer
     static float* norm_pinned = nullptr;
     if (norm_pinned == nullptr) {
         CUDA_CHECK(cudaHostAlloc(&norm_pinned, sizeof(float), cudaHostAllocDefault));
     }
     
-    // Device memory for norm
+    // Device memory
     float* norm_sq_device;
     float* norm_device;
     CUDA_CHECK(cudaMallocAsync(&norm_sq_device, sizeof(float), stream));
     CUDA_CHECK(cudaMallocAsync(&norm_device, sizeof(float), stream));
     CUDA_CHECK(cudaMemsetAsync(norm_sq_device, 0, sizeof(float), stream));
     
-    // Step 1: Compute norm^2 (fully async)
+    // Compute norm^2 with optimal thread count
     int threads = 256;
     int blocks = num_tensors;
     
     compute_grad_norm_squared_kernel<<<blocks, threads, 0, stream>>>(
-        grad_ptrs_device,
-        grad_sizes_device,
-        norm_sq_device,
-        num_tensors
+        grad_ptrs_device, grad_sizes_device, norm_sq_device, num_tensors
     );
     
-    // Step 2: Take sqrt on GPU (no CPU involvement)
+    // Compute sqrt on GPU
     sqrt_kernel<<<1, 1, 0, stream>>>(norm_sq_device, norm_device);
     
-    // Step 3: Clip gradients (uses device memory - still async)
+    // Clip gradients
     clip_gradients_kernel<<<blocks, threads, 0, stream>>>(
-        grad_ptrs_device,
-        grad_sizes_device,
-        norm_device,
-        max_norm,
-        num_tensors
+        grad_ptrs_device, grad_sizes_device, norm_device, max_norm, num_tensors
     );
     
-    // Step 4: ASYNC copy norm to host (doesn't block!)
-    CUDA_CHECK(cudaMemcpyAsync(norm_pinned, norm_device, sizeof(float), 
+    // Async copy to host
+    CUDA_CHECK(cudaMemcpyAsync(norm_pinned, norm_device, sizeof(float),
                                cudaMemcpyDeviceToHost, stream));
     
-    // ✅ CRITICAL: Only sync at the very end for return value
-    // This is unavoidable since we need to return the norm
-    // BUT it happens AFTER all GPU work is queued
+    // Synchronize only at the end
     CUDA_CHECK(cudaStreamSynchronize(stream));
     
     float total_norm = *norm_pinned;
