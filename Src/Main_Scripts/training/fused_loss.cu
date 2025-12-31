@@ -1,50 +1,55 @@
 // Copyright (c) 2025 MatN23. All rights reserved.
-// Licensed under the Custom License below.
-// fused_loss.cu
-// Fused Cross Entropy + Accuracy computation
+// GOD-TIER fused_loss.cu - TRUE SINGLE-PASS with online softmax
+// 
+// Uses numerically stable online algorithm to compute max, sum, and argmax
+// in ONE PASS through the vocabulary!
 //
 // Compile with:
-// nvcc -O3 -arch=sm_80 --use_fast_math --ptxas-options=-v -lineinfo \
+// nvcc -O3 -arch=sm_75 --use_fast_math --ptxas-options=-v \
 //      --compiler-options '-fPIC' -shared fused_loss.cu -o fused_loss.so
 
 #include <cuda_runtime.h>
-#include <cuda_fp16.h>
 #include <cmath>
 #include <cfloat>
 #include <cstdio>
 
-// Warp reduction primitives
-__device__ __forceinline__ float warp_reduce_sum(float val) {
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset >>= 1) {
-        val += __shfl_down_sync(0xffffffff, val, offset);
-    }
-    return val;
-}
+#define WARP_SIZE 32
+#define FULL_MASK 0xffffffff
 
-__device__ __forceinline__ float warp_reduce_max(float val) {
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset >>= 1) {
-        val = fmaxf(val, __shfl_down_sync(0xffffffff, val, offset));
-    }
-    return val;
-}
+// Warp-level reduction for online softmax state
+struct SoftmaxState {
+    float m;  // running max
+    float d;  // running sum of exp
+    float argmax_val;
+    int argmax_idx;
+};
 
-// Optimized argmax using warp primitives
-__device__ __forceinline__ void warp_reduce_argmax(float &val, int &idx) {
+__device__ __forceinline__ SoftmaxState warp_reduce_softmax_state(SoftmaxState state) {
     #pragma unroll
     for (int offset = 16; offset > 0; offset >>= 1) {
-        float other_val = __shfl_down_sync(0xffffffff, val, offset);
-        int other_idx = __shfl_down_sync(0xffffffff, idx, offset);
-        if (other_val > val) {
-            val = other_val;
-            idx = other_idx;
+        float other_m = __shfl_xor_sync(FULL_MASK, state.m, offset);
+        float other_d = __shfl_xor_sync(FULL_MASK, state.d, offset);
+        float other_argmax_val = __shfl_xor_sync(FULL_MASK, state.argmax_val, offset);
+        int other_argmax_idx = __shfl_xor_sync(FULL_MASK, state.argmax_idx, offset);
+        
+        // Merge two softmax states
+        float m_new = fmaxf(state.m, other_m);
+        state.d = state.d * __expf(state.m - m_new) + other_d * __expf(other_m - m_new);
+        state.m = m_new;
+        
+        // Merge argmax
+        if (other_argmax_val > state.argmax_val) {
+            state.argmax_val = other_argmax_val;
+            state.argmax_idx = other_argmax_idx;
         }
     }
+    return state;
 }
 
-// Optimized fused kernel with vectorized loads
-__global__ void fused_cross_entropy_accuracy_kernel(
+// SINGLE-PASS kernel: computes everything in ONE traversal!
+// Uses online softmax algorithm (numerically stable)
+__global__ void __launch_bounds__(256, 4)
+fused_cross_entropy_single_pass(
     const float* __restrict__ logits,
     const int64_t* __restrict__ labels,
     const int64_t pad_token_id,
@@ -54,148 +59,166 @@ __global__ void fused_cross_entropy_accuracy_kernel(
     const int total_tokens,
     const int vocab_size
 ) {
-    int token_idx = blockIdx.x;
+    const int token_idx = blockIdx.x;
     if (token_idx >= total_tokens) return;
     
-    int64_t label = labels[token_idx];
+    const int64_t label = labels[token_idx];
     
-    // Early exit for invalid tokens
-    if (label == pad_token_id || label < 0 || label >= vocab_size) return;
-    
-    const float* logit_row = logits + token_idx * vocab_size;
-    
-    // Step 1: Find max logit (vectorized when possible)
-    float max_logit = -FLT_MAX;
-    
-    // Vectorized load for aligned data (4 floats at a time)
-    int vec_end = (vocab_size / 4) * 4;
-    for (int i = threadIdx.x * 4; i < vec_end; i += blockDim.x * 4) {
-        float4 vals = *reinterpret_cast<const float4*>(&logit_row[i]);
-        max_logit = fmaxf(max_logit, fmaxf(fmaxf(vals.x, vals.y), fmaxf(vals.z, vals.w)));
+    // Skip padding
+    if (label == pad_token_id || label < 0 || label >= vocab_size) {
+        return;
     }
     
-    // Handle remainder
-    for (int i = vec_end + threadIdx.x; i < vocab_size; i += blockDim.x) {
-        max_logit = fmaxf(max_logit, logit_row[i]);
-    }
+    const float* logit_row = logits + (size_t)token_idx * vocab_size;
     
-    // Reduce max across warps
-    max_logit = warp_reduce_max(max_logit);
+    // =========================================================================
+    // SINGLE PASS: Online softmax + argmax together!
+    // =========================================================================
+    SoftmaxState state;
+    state.m = -FLT_MAX;
+    state.d = 0.0f;
+    state.argmax_val = -FLT_MAX;
+    state.argmax_idx = 0;
     
-    __shared__ float warp_maxes[32];
-    int lane = threadIdx.x & 31;
-    int wid = threadIdx.x >> 5;
+    float label_logit = 0.0f;
     
-    if (lane == 0) warp_maxes[wid] = max_logit;
-    __syncthreads();
-    
-    if (wid == 0) {
-        max_logit = (threadIdx.x < (blockDim.x >> 5)) ? warp_maxes[lane] : -FLT_MAX;
-        max_logit = warp_reduce_max(max_logit);
-        if (threadIdx.x == 0) warp_maxes[0] = max_logit;
-    }
-    __syncthreads();
-    max_logit = warp_maxes[0];
-    
-    // Step 2: Compute sum of exp (vectorized)
-    float sum_exp = 0.0f;
+    // Vectorized processing - process 4 elements at a time
+    const int vec_end = (vocab_size / 4) * 4;
     
     for (int i = threadIdx.x * 4; i < vec_end; i += blockDim.x * 4) {
-        float4 vals = *reinterpret_cast<const float4*>(&logit_row[i]);
-        sum_exp += expf(vals.x - max_logit) + expf(vals.y - max_logit) + 
-                   expf(vals.z - max_logit) + expf(vals.w - max_logit);
-    }
-    
-    for (int i = vec_end + threadIdx.x; i < vocab_size; i += blockDim.x) {
-        sum_exp += expf(logit_row[i] - max_logit);
-    }
-    
-    sum_exp = warp_reduce_sum(sum_exp);
-    
-    __shared__ float warp_sums[32];
-    if (lane == 0) warp_sums[wid] = sum_exp;
-    __syncthreads();
-    
-    if (wid == 0) {
-        sum_exp = (threadIdx.x < (blockDim.x >> 5)) ? warp_sums[lane] : 0.0f;
-        sum_exp = warp_reduce_sum(sum_exp);
-        if (threadIdx.x == 0) warp_sums[0] = sum_exp;
-    }
-    __syncthreads();
-    sum_exp = warp_sums[0];
-    
-    // Step 3: Compute loss
-    float label_logit = logit_row[label];
-    float log_prob = (label_logit - max_logit) - __logf(sum_exp + 1e-10f);
-    float token_loss = -log_prob;
-    
-    // Clamp loss to prevent NaN propagation
-    token_loss = fminf(token_loss, 100.0f);
-    
-    // Step 4: Argmax for accuracy (optimized with warp primitives)
-    float my_max = -FLT_MAX;
-    int my_idx = 0;
-    
-    for (int i = threadIdx.x * 4; i < vec_end; i += blockDim.x * 4) {
-        float4 vals = *reinterpret_cast<const float4*>(&logit_row[i]);
+        float4 vals = __ldg(reinterpret_cast<const float4*>(&logit_row[i]));
         
-        if (vals.x > my_max) { my_max = vals.x; my_idx = i; }
-        if (vals.y > my_max) { my_max = vals.y; my_idx = i + 1; }
-        if (vals.z > my_max) { my_max = vals.z; my_idx = i + 2; }
-        if (vals.w > my_max) { my_max = vals.w; my_idx = i + 3; }
-    }
-    
-    for (int i = vec_end + threadIdx.x; i < vocab_size; i += blockDim.x) {
-        float val = logit_row[i];
-        if (val > my_max) {
-            my_max = val;
-            my_idx = i;
+        // Process each value with online softmax
+        float values[4] = {vals.x, vals.y, vals.z, vals.w};
+        
+        #pragma unroll
+        for (int j = 0; j < 4; j++) {
+            float x = values[j];
+            int idx = i + j;
+            
+            // Online softmax update
+            float m_new = fmaxf(state.m, x);
+            state.d = state.d * __expf(state.m - m_new) + __expf(x - m_new);
+            state.m = m_new;
+            
+            // Track argmax
+            if (x > state.argmax_val) {
+                state.argmax_val = x;
+                state.argmax_idx = idx;
+            }
+            
+            // Store label logit if we hit it
+            if (idx == label) {
+                label_logit = x;
+            }
         }
     }
     
-    // Warp-level argmax
-    warp_reduce_argmax(my_max, my_idx);
+    // Handle remainder elements
+    for (int i = vec_end + threadIdx.x; i < vocab_size; i += blockDim.x) {
+        float x = __ldg(&logit_row[i]);
+        
+        // Online softmax update
+        float m_new = fmaxf(state.m, x);
+        state.d = state.d * __expf(state.m - m_new) + __expf(x - m_new);
+        state.m = m_new;
+        
+        // Track argmax
+        if (x > state.argmax_val) {
+            state.argmax_val = x;
+            state.argmax_idx = i;
+        }
+        
+        // Store label logit if we hit it
+        if (i == label) {
+            label_logit = x;
+        }
+    }
     
-    __shared__ float shared_vals[32];
-    __shared__ int shared_idxs[32];
+    // =========================================================================
+    // Reduce across warp
+    // =========================================================================
+    state = warp_reduce_softmax_state(state);
     
+    // =========================================================================
+    // Reduce across block using shared memory
+    // =========================================================================
+    __shared__ float smem_m[32];
+    __shared__ float smem_d[32];
+    __shared__ float smem_argmax_val[32];
+    __shared__ int smem_argmax_idx[32];
+    __shared__ float smem_label_logit[256];
+    
+    const int lane = threadIdx.x & 31;
+    const int wid = threadIdx.x >> 5;
+    
+    // Store warp results
     if (lane == 0) {
-        shared_vals[wid] = my_max;
-        shared_idxs[wid] = my_idx;
+        smem_m[wid] = state.m;
+        smem_d[wid] = state.d;
+        smem_argmax_val[wid] = state.argmax_val;
+        smem_argmax_idx[wid] = state.argmax_idx;
     }
+    smem_label_logit[threadIdx.x] = label_logit;
     __syncthreads();
     
+    // Final reduction in first warp
     if (wid == 0) {
-        my_max = (threadIdx.x < (blockDim.x >> 5)) ? shared_vals[lane] : -FLT_MAX;
-        my_idx = (threadIdx.x < (blockDim.x >> 5)) ? shared_idxs[lane] : 0;
-        warp_reduce_argmax(my_max, my_idx);
+        // Load from shared memory
+        if (lane < (blockDim.x >> 5)) {
+            state.m = smem_m[lane];
+            state.d = smem_d[lane];
+            state.argmax_val = smem_argmax_val[lane];
+            state.argmax_idx = smem_argmax_idx[lane];
+        } else {
+            state.m = -FLT_MAX;
+            state.d = 0.0f;
+            state.argmax_val = -FLT_MAX;
+            state.argmax_idx = 0;
+        }
         
-        if (threadIdx.x == 0) {
-            shared_idxs[0] = my_idx;
+        // Reduce within first warp
+        state = warp_reduce_softmax_state(state);
+        
+        if (lane == 0) {
+            smem_m[0] = state.m;
+            smem_d[0] = state.d;
+            smem_argmax_idx[0] = state.argmax_idx;
         }
     }
     __syncthreads();
     
-    int predicted = shared_idxs[0];
-    int correct = (predicted == (int)label) ? 1 : 0;
-    
-    // Step 5: Atomic accumulation (only thread 0)
+    // =========================================================================
+    // Compute final loss and accuracy
+    // =========================================================================
     if (threadIdx.x == 0) {
-        atomicAdd(loss_out, token_loss);
-        atomicAdd(accuracy_out, (float)correct);
+        const float max_logit = smem_m[0];
+        const float sum_exp = smem_d[0];
+        const int pred_idx = smem_argmax_idx[0];
+        
+        // Find label_logit from shared memory
+        float final_label_logit = 0.0f;
+        for (int i = 0; i < blockDim.x; i++) {
+            final_label_logit = fmaxf(final_label_logit, smem_label_logit[i]);
+        }
+        
+        // If we didn't find it, load it directly
+        if (final_label_logit == 0.0f) {
+            final_label_logit = logit_row[label];
+        }
+        
+        // Compute loss: -log(softmax[label])
+        // softmax[label] = exp(label_logit - max) / sum_exp
+        // loss = -(label_logit - max - log(sum_exp))
+        const float loss = -((final_label_logit - max_logit) - __logf(sum_exp + 1e-10f));
+        const float accuracy = (pred_idx == (int)label) ? 1.0f : 0.0f;
+        
+        // Atomic updates
+        atomicAdd(loss_out, fminf(loss, 100.0f));
+        atomicAdd(accuracy_out, accuracy);
         atomicAdd((unsigned long long*)valid_tokens_out, 1ULL);
     }
 }
-
-#define CUDA_CHECK(call) \
-    do { \
-        cudaError_t err = call; \
-        if (err != cudaSuccess) { \
-            fprintf(stderr, "CUDA error in %s:%d: %s\n", __FILE__, __LINE__, \
-                    cudaGetErrorString(err)); \
-            exit(EXIT_FAILURE); \
-        } \
-    } while(0)
 
 extern "C" {
 
@@ -210,21 +233,24 @@ void fused_cross_entropy_accuracy_launcher(
     int vocab_size,
     cudaStream_t stream
 ) {
-    CUDA_CHECK(cudaMemsetAsync(loss_out, 0, sizeof(float), stream));
-    CUDA_CHECK(cudaMemsetAsync(accuracy_out, 0, sizeof(float), stream));
-    CUDA_CHECK(cudaMemsetAsync(valid_tokens_out, 0, sizeof(int64_t), stream));
+    cudaMemsetAsync(loss_out, 0, sizeof(float), stream);
+    cudaMemsetAsync(accuracy_out, 0, sizeof(float), stream);
+    cudaMemsetAsync(valid_tokens_out, 0, sizeof(int64_t), stream);
     
-    // Use 256 threads for optimal occupancy
-    int threads = 256;
-    int blocks = total_tokens;
+    // One block per token
+    const int num_blocks = total_tokens;
+    const int threads = 256;
     
-    fused_cross_entropy_accuracy_kernel<<<blocks, threads, 0, stream>>>(
+    fused_cross_entropy_single_pass<<<num_blocks, threads, 0, stream>>>(
         logits, labels, pad_token_id,
         loss_out, accuracy_out, valid_tokens_out,
         total_tokens, vocab_size
     );
     
-    CUDA_CHECK(cudaGetLastError());
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA kernel error: %s\n", cudaGetErrorString(err));
+    }
 }
 
 }  // extern "C"

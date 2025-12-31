@@ -101,8 +101,8 @@ def pytorch_cross_entropy_accuracy(logits: torch.Tensor,
     }
 
 
-# Compile the PyTorch version
-@torch.compile(mode='max-autotune', fullgraph=True)
+# Compile the PyTorch version - removed dynamic control flow
+@torch.compile(mode='max-autotune')
 def compiled_cross_entropy_accuracy(logits: torch.Tensor,
                                     labels: torch.Tensor,
                                     pad_token_id: int = -100) -> Dict[str, torch.Tensor]:
@@ -113,21 +113,15 @@ def compiled_cross_entropy_accuracy(logits: torch.Tensor,
         labels = labels.view(-1)
     
     mask = (labels != pad_token_id).float()
-    valid_token_count = mask.sum()
+    valid_token_count = mask.sum().clamp(min=1.0)  # Avoid division by zero
     
-    if valid_token_count == 0:
-        return {
-            'loss': torch.tensor(0.0, device=logits.device),
-            'accuracy': torch.tensor(0.0, device=logits.device),
-            'valid_tokens': torch.tensor(0, device=logits.device)
-        }
+    # Compute accuracy
+    predictions = torch.argmax(logits, dim=-1)
+    correct_predictions = (predictions == labels).float()
+    masked_correct = correct_predictions * mask
+    accuracy = masked_correct.sum() / valid_token_count
     
-    with torch.no_grad():
-        predictions = torch.argmax(logits, dim=-1)
-        correct_predictions = (predictions == labels).float()
-        masked_correct = correct_predictions * mask
-        accuracy = masked_correct.sum() / valid_token_count
-    
+    # Compute loss
     loss_per_token = F.cross_entropy(logits, labels, reduction='none')
     masked_loss_sum = (loss_per_token * mask).sum()
     loss = masked_loss_sum / valid_token_count
@@ -144,9 +138,10 @@ def pytorch_grad_clip(parameters, max_norm: float) -> float:
     return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
 
 
-@torch.compile(mode='max-autotune')
+# Note: torch.compile doesn't help much with grad clipping
+# since it's already heavily optimized and involves dynamic operations
 def compiled_grad_clip(parameters, max_norm: float) -> float:
-    """torch.compile optimized gradient clipping."""
+    """Placeholder - grad clipping doesn't benefit from torch.compile."""
     return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
 
 
@@ -222,17 +217,36 @@ def benchmark_loss_computation(
     print("\n[2/3] Running torch.compile benchmark...")
     print("  (First run will be slower due to compilation...)")
     
-    for _ in range(warmup + 5):  # Extra warmup for compilation
-        _ = compiled_cross_entropy_accuracy(logits, labels)
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
+    # Determine which function to use
+    compile_failed = False
+    try:
+        # Test compilation
+        for i in range(warmup + 5):  # Extra warmup for compilation
+            _ = compiled_cross_entropy_accuracy(logits, labels)
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            if i == 0:
+                print("  ✓ Compilation successful")
+    except Exception as e:
+        print(f"  ⚠️  torch.compile failed: {e}")
+        print("  Falling back to eager mode for comparison...")
+        compile_failed = True
+        # Warmup with PyTorch instead
+        for _ in range(warmup):
+            _ = pytorch_cross_entropy_accuracy(logits, labels)
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
     
+    # Run benchmark with appropriate function
     for i in range(num_iterations):
         if device.type == 'cuda':
             torch.cuda.synchronize()
         
         start = time.perf_counter()
-        result = compiled_cross_entropy_accuracy(logits, labels)
+        if compile_failed:
+            result = pytorch_cross_entropy_accuracy(logits, labels)
+        else:
+            result = compiled_cross_entropy_accuracy(logits, labels)
         
         if device.type == 'cuda':
             torch.cuda.synchronize()
@@ -349,10 +363,15 @@ def benchmark_gradient_clipping(
     print("\n[2/3] Running torch.compile benchmark...")
     print("  Note: torch.compile may not optimize grad clipping significantly")
     
-    for _ in range(warmup + 5):
-        _ = compiled_grad_clip(model.parameters(), max_norm)
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
+    try:
+        for i in range(warmup + 5):
+            _ = compiled_grad_clip(model.parameters(), max_norm)
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+            if i == 0:
+                print("  ✓ Using baseline PyTorch (grad clipping not compiled)")
+    except Exception as e:
+        print(f"  ⚠️  Unexpected error: {e}")
     
     for i in range(num_iterations):
         if device.type == 'cuda':
