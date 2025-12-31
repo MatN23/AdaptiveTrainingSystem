@@ -1,8 +1,11 @@
 // Copyright (c) 2025 MatN23. All rights reserved.
-// GOD-TIER fused_loss.cu - TRUE SINGLE-PASS with online softmax
+// ULTRA-OPTIMIZED fused_loss.cu - Back to V4 + Better Optimizations
 // 
-// Uses numerically stable online algorithm to compute max, sum, and argmax
-// in ONE PASS through the vocabulary!
+// Revert persistent kernel, add instead:
+// - Wider SIMD (8 elements)
+// - Branchless operations
+// - Better register usage
+// - Manual loop unrolling
 //
 // Compile with:
 // nvcc -O3 -arch=sm_75 --use_fast_math --ptxas-options=-v \
@@ -37,17 +40,15 @@ __device__ __forceinline__ SoftmaxState warp_reduce_softmax_state(SoftmaxState s
         state.d = state.d * __expf(state.m - m_new) + other_d * __expf(other_m - m_new);
         state.m = m_new;
         
-        // Merge argmax
-        if (other_argmax_val > state.argmax_val) {
-            state.argmax_val = other_argmax_val;
-            state.argmax_idx = other_argmax_idx;
-        }
+        // Merge argmax (branchless)
+        int other_greater = (other_argmax_val > state.argmax_val);
+        state.argmax_val = other_greater ? other_argmax_val : state.argmax_val;
+        state.argmax_idx = other_greater ? other_argmax_idx : state.argmax_idx;
     }
     return state;
 }
 
-// SINGLE-PASS kernel: computes everything in ONE traversal!
-// Uses online softmax algorithm (numerically stable)
+// OPTIMIZED: Single-pass with 8-wide SIMD and branchless operations
 __global__ void __launch_bounds__(256, 4)
 fused_cross_entropy_single_pass(
     const float* __restrict__ logits,
@@ -72,7 +73,7 @@ fused_cross_entropy_single_pass(
     const float* logit_row = logits + (size_t)token_idx * vocab_size;
     
     // =========================================================================
-    // SINGLE PASS: Online softmax + argmax together!
+    // SINGLE PASS: Online softmax + argmax with 8-wide SIMD
     // =========================================================================
     SoftmaxState state;
     state.m = -FLT_MAX;
@@ -82,67 +83,177 @@ fused_cross_entropy_single_pass(
     
     float label_logit = 0.0f;
     
-    // Vectorized processing - process 4 elements at a time
-    const int vec_end = (vocab_size / 4) * 4;
+    // Process 8 elements at a time for better ILP
+    const int vec8_end = (vocab_size / 8) * 8;
     
-    for (int i = threadIdx.x * 4; i < vec_end; i += blockDim.x * 4) {
-        float4 vals = __ldg(reinterpret_cast<const float4*>(&logit_row[i]));
+    for (int i = threadIdx.x * 8; i < vec8_end; i += blockDim.x * 8) {
+        // Load 8 floats (2x float4)
+        float4 vals1 = __ldg(reinterpret_cast<const float4*>(&logit_row[i]));
+        float4 vals2 = __ldg(reinterpret_cast<const float4*>(&logit_row[i + 4]));
         
-        // Process each value with online softmax
-        float values[4] = {vals.x, vals.y, vals.z, vals.w};
+        // Manually unroll for 8 elements (better than loop)
+        float x;
+        int idx;
+        int is_label, is_greater;
         
-        #pragma unroll
-        for (int j = 0; j < 4; j++) {
-            float x = values[j];
-            int idx = i + j;
-            
-            // Online softmax update
-            float m_new = fmaxf(state.m, x);
-            state.d = state.d * __expf(state.m - m_new) + __expf(x - m_new);
-            state.m = m_new;
-            
-            // Track argmax
-            if (x > state.argmax_val) {
-                state.argmax_val = x;
-                state.argmax_idx = idx;
-            }
-            
-            // Store label logit if we hit it
-            if (idx == label) {
-                label_logit = x;
-            }
-        }
+        // Element 0
+        x = vals1.x; idx = i;
+        float m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        // Element 1
+        x = vals1.y; idx = i + 1;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        // Element 2
+        x = vals1.z; idx = i + 2;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        // Element 3
+        x = vals1.w; idx = i + 3;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        // Element 4
+        x = vals2.x; idx = i + 4;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        // Element 5
+        x = vals2.y; idx = i + 5;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        // Element 6
+        x = vals2.z; idx = i + 6;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        // Element 7
+        x = vals2.w; idx = i + 7;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
     }
     
-    // Handle remainder elements
-    for (int i = vec_end + threadIdx.x; i < vocab_size; i += blockDim.x) {
+    // Handle remainder (4 elements at a time)
+    const int vec4_end = (vocab_size / 4) * 4;
+    for (int i = vec8_end + threadIdx.x * 4; i < vec4_end; i += blockDim.x * 4) {
+        float4 vals = __ldg(reinterpret_cast<const float4*>(&logit_row[i]));
+        
+        float x; int idx; int is_label, is_greater;
+        
+        x = vals.x; idx = i;
+        float m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        x = vals.y; idx = i + 1;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        x = vals.z; idx = i + 2;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+        
+        x = vals.w; idx = i + 3;
+        m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
+        is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? idx : state.argmax_idx;
+        is_label = (idx == label);
+        label_logit = is_label ? x : label_logit;
+    }
+    
+    // Final scalar remainder
+    for (int i = vec4_end + threadIdx.x; i < vocab_size; i += blockDim.x) {
         float x = __ldg(&logit_row[i]);
         
-        // Online softmax update
-        float m_new = fmaxf(state.m, x);
-        state.d = state.d * __expf(state.m - m_new) + __expf(x - m_new);
-        state.m = m_new;
+        float m_old = state.m;
+        state.m = fmaxf(state.m, x);
+        state.d = state.d * __expf(m_old - state.m) + __expf(x - state.m);
         
-        // Track argmax
-        if (x > state.argmax_val) {
-            state.argmax_val = x;
-            state.argmax_idx = i;
-        }
+        int is_greater = (x > state.argmax_val);
+        state.argmax_val = is_greater ? x : state.argmax_val;
+        state.argmax_idx = is_greater ? i : state.argmax_idx;
         
-        // Store label logit if we hit it
-        if (i == label) {
-            label_logit = x;
-        }
+        int is_label = (i == label);
+        label_logit = is_label ? x : label_logit;
     }
     
     // =========================================================================
-    // Reduce across warp
+    // Warp-level reduction
     // =========================================================================
     state = warp_reduce_softmax_state(state);
     
-    // =========================================================================
-    // Reduce across block using shared memory
-    // =========================================================================
     __shared__ float smem_m[32];
     __shared__ float smem_d[32];
     __shared__ float smem_argmax_val[32];
@@ -152,7 +263,6 @@ fused_cross_entropy_single_pass(
     const int lane = threadIdx.x & 31;
     const int wid = threadIdx.x >> 5;
     
-    // Store warp results
     if (lane == 0) {
         smem_m[wid] = state.m;
         smem_d[wid] = state.d;
@@ -162,10 +272,11 @@ fused_cross_entropy_single_pass(
     smem_label_logit[threadIdx.x] = label_logit;
     __syncthreads();
     
-    // Final reduction in first warp
+    // =========================================================================
+    // Block-level reduction
+    // =========================================================================
     if (wid == 0) {
-        // Load from shared memory
-        if (lane < (blockDim.x >> 5)) {
+        if (lane < 8) {  // Only 8 warps
             state.m = smem_m[lane];
             state.d = smem_d[lane];
             state.argmax_val = smem_argmax_val[lane];
@@ -177,7 +288,6 @@ fused_cross_entropy_single_pass(
             state.argmax_idx = 0;
         }
         
-        // Reduce within first warp
         state = warp_reduce_softmax_state(state);
         
         if (lane == 0) {
@@ -196,24 +306,20 @@ fused_cross_entropy_single_pass(
         const float sum_exp = smem_d[0];
         const int pred_idx = smem_argmax_idx[0];
         
-        // Find label_logit from shared memory
-        float final_label_logit = 0.0f;
-        for (int i = 0; i < blockDim.x; i++) {
+        // Find label_logit
+        float final_label_logit = smem_label_logit[0];
+        #pragma unroll
+        for (int i = 1; i < 256; i++) {
             final_label_logit = fmaxf(final_label_logit, smem_label_logit[i]);
         }
         
-        // If we didn't find it, load it directly
         if (final_label_logit == 0.0f) {
             final_label_logit = logit_row[label];
         }
         
-        // Compute loss: -log(softmax[label])
-        // softmax[label] = exp(label_logit - max) / sum_exp
-        // loss = -(label_logit - max - log(sum_exp))
         const float loss = -((final_label_logit - max_logit) - __logf(sum_exp + 1e-10f));
         const float accuracy = (pred_idx == (int)label) ? 1.0f : 0.0f;
         
-        // Atomic updates
         atomicAdd(loss_out, fminf(loss, 100.0f));
         atomicAdd(accuracy_out, accuracy);
         atomicAdd((unsigned long long*)valid_tokens_out, 1ULL);
@@ -237,7 +343,7 @@ void fused_cross_entropy_accuracy_launcher(
     cudaMemsetAsync(accuracy_out, 0, sizeof(float), stream);
     cudaMemsetAsync(valid_tokens_out, 0, sizeof(int64_t), stream);
     
-    // One block per token
+    // One block per token (this works best for this workload!)
     const int num_blocks = total_tokens;
     const int threads = 256;
     

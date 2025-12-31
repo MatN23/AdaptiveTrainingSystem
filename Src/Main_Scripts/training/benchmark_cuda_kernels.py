@@ -138,8 +138,6 @@ def pytorch_grad_clip(parameters, max_norm: float) -> float:
     return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
 
 
-# Note: torch.compile doesn't help much with grad clipping
-# since it's already heavily optimized and involves dynamic operations
 def compiled_grad_clip(parameters, max_norm: float) -> float:
     """Placeholder - grad clipping doesn't benefit from torch.compile."""
     return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
@@ -217,11 +215,9 @@ def benchmark_loss_computation(
     print("\n[2/3] Running torch.compile benchmark...")
     print("  (First run will be slower due to compilation...)")
     
-    # Determine which function to use
     compile_failed = False
     try:
-        # Test compilation
-        for i in range(warmup + 5):  # Extra warmup for compilation
+        for i in range(warmup + 5):
             _ = compiled_cross_entropy_accuracy(logits, labels)
             if device.type == 'cuda':
                 torch.cuda.synchronize()
@@ -231,13 +227,11 @@ def benchmark_loss_computation(
         print(f"  ⚠️  torch.compile failed: {e}")
         print("  Falling back to eager mode for comparison...")
         compile_failed = True
-        # Warmup with PyTorch instead
         for _ in range(warmup):
             _ = pytorch_cross_entropy_accuracy(logits, labels)
             if device.type == 'cuda':
                 torch.cuda.synchronize()
     
-    # Run benchmark with appropriate function
     for i in range(num_iterations):
         if device.type == 'cuda':
             torch.cuda.synchronize()
@@ -417,12 +411,13 @@ def benchmark_gradient_clipping(
     return pytorch_results, compiled_results, cuda_results
 
 
-def print_comparison(pytorch_results: BenchmarkResults,
-                    compiled_results: BenchmarkResults,
-                    cuda_results: BenchmarkResults):
-    """Print detailed comparison."""
+def print_speedup_table(pytorch_results: BenchmarkResults,
+                       compiled_results: BenchmarkResults,
+                       cuda_results: BenchmarkResults,
+                       benchmark_name: str):
+    """Print detailed comparison with speedup table."""
     print(f"\n{'='*80}")
-    print(f"RESULTS COMPARISON")
+    print(f"RESULTS: {benchmark_name}")
     print(f"{'='*80}")
     
     pytorch_results.print_summary()
@@ -434,37 +429,48 @@ def print_comparison(pytorch_results: BenchmarkResults,
     pytorch_stats = pytorch_results.get_stats()
     compiled_stats = compiled_results.get_stats()
     
+    # Build speedup table
     print(f"\n{'='*80}")
-    print(f"SPEEDUP ANALYSIS")
+    print(f"SPEEDUP TABLE")
     print(f"{'='*80}")
     
-    compile_speedup = pytorch_stats['mean'] / compiled_stats['mean']
-    print(f"\ntorch.compile vs PyTorch:")
-    print(f"  Speedup:    {compile_speedup:.2f}x faster")
-    print(f"  Time saved: {pytorch_stats['mean'] - compiled_stats['mean']:.3f} ms per call")
+    # Table header
+    print(f"\n{'Implementation':<25} {'Time (ms)':<12} {'vs PyTorch':<15} {'vs compile':<15}")
+    print(f"{'-'*25} {'-'*12} {'-'*15} {'-'*15}")
     
+    # PyTorch baseline
+    print(f"{'PyTorch':<25} {pytorch_stats['mean']:>10.3f}   {'1.00x (base)':<15} {'-':<15}")
+    
+    # torch.compile
+    compile_vs_pytorch = pytorch_stats['mean'] / compiled_stats['mean']
+    print(f"{'torch.compile':<25} {compiled_stats['mean']:>10.3f}   {f'{compile_vs_pytorch:.2f}x faster':<15} {'1.00x (base)':<15}")
+    
+    # CUDA
     if cuda_results is not None:
         cuda_stats = cuda_results.get_stats()
-        
         cuda_vs_pytorch = pytorch_stats['mean'] / cuda_stats['mean']
         cuda_vs_compiled = compiled_stats['mean'] / cuda_stats['mean']
         
-        print(f"\nCUDA vs PyTorch:")
-        print(f"  Speedup:    {cuda_vs_pytorch:.2f}x faster")
-        print(f"  Time saved: {pytorch_stats['mean'] - cuda_stats['mean']:.3f} ms per call")
+        print(f"{'CUDA Custom Kernel':<25} {cuda_stats['mean']:>10.3f}   {f'{cuda_vs_pytorch:.2f}x faster':<15} {f'{cuda_vs_compiled:.2f}x faster':<15}")
         
-        print(f"\nCUDA vs torch.compile:")
-        print(f"  Speedup:    {cuda_vs_compiled:.2f}x faster")
-        print(f"  Time saved: {compiled_stats['mean'] - cuda_stats['mean']:.3f} ms per call")
-        
+        # Winner analysis
         print(f"\n{'='*80}")
-        print(f"WINNER: ", end="")
-        if cuda_stats['mean'] < compiled_stats['mean'] * 0.9:
-            print(f"✅ CUDA ({cuda_stats['mean']:.3f} ms)")
-        elif compiled_stats['mean'] < cuda_stats['mean'] * 0.9:
-            print(f"✅ torch.compile ({compiled_stats['mean']:.3f} ms)")
+        print(f"WINNER ANALYSIS")
+        print(f"{'='*80}")
+        
+        if cuda_stats['mean'] < compiled_stats['mean']:
+            speedup = cuda_vs_compiled
+            time_saved = compiled_stats['mean'] - cuda_stats['mean']
+            print(f"\n🏆 CUDA wins by {speedup:.2f}x")
+            print(f"   Time saved: {time_saved:.3f} ms per call")
+            print(f"   For 1000 iterations: {time_saved * 1000 / 1000:.1f} seconds saved")
+        elif compiled_stats['mean'] < cuda_stats['mean']:
+            speedup = compiled_stats['mean'] / cuda_stats['mean']
+            time_saved = cuda_stats['mean'] - compiled_stats['mean']
+            print(f"\n🏆 torch.compile wins by {1/speedup:.2f}x")
+            print(f"   CUDA is slower by: {time_saved:.3f} ms per call")
         else:
-            print("🤝 TIE (within 10%)")
+            print(f"\n🤝 TIE - Both within measurement error")
 
 
 def main():
@@ -511,7 +517,7 @@ def main():
             num_iterations=args.iterations,
             warmup=args.warmup
         )
-        print_comparison(pytorch_loss, compiled_loss, cuda_loss)
+        print_speedup_table(pytorch_loss, compiled_loss, cuda_loss, "Cross-Entropy + Accuracy")
     
     # Benchmark 2: Gradient Clipping
     if not args.skip_grad:
@@ -521,7 +527,7 @@ def main():
             num_iterations=args.iterations,
             warmup=args.warmup
         )
-        print_comparison(pytorch_clip, compiled_clip, cuda_clip)
+        print_speedup_table(pytorch_clip, compiled_clip, cuda_clip, "Gradient Clipping")
     
     print(f"\n{'='*80}")
     print("BENCHMARK COMPLETE")

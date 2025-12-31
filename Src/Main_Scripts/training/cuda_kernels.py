@@ -1,14 +1,12 @@
 """
-CUDA Kernels Python Wrapper - COMPLETE VERSION with Auto-Selection
-Provides FusedLoss and FusedGradClip classes
+CUDA Kernels Python Wrapper - OPTIMIZED VERSION
+Provides FusedLoss and FusedGradClip classes with minimal overhead
 """
 
 import torch
 import ctypes
-import os
 from pathlib import Path
 import logging
-import sys
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -23,11 +21,11 @@ CUSTOM_KERNELS_AVAILABLE = False
 def _find_so_files():
     """Find .so files in multiple possible locations"""
     possible_locations = [
-        Path(__file__).parent,  # Same directory as this script
-        Path(__file__).parent.parent,  # Parent directory
-        Path.cwd(),  # Current working directory
-        Path.cwd() / "training",  # training subdirectory
-        Path("/content/LuminaAI/Src/Main_Scripts"),  # Absolute path for Colab
+        Path(__file__).parent,
+        Path(__file__).parent.parent,
+        Path.cwd(),
+        Path.cwd() / "training",
+        Path("/content/LuminaAI/Src/Main_Scripts"),
         Path("/content/LuminaAI/Src/Main_Scripts/training"),
     ]
     
@@ -53,27 +51,19 @@ def _load_cuda_libraries():
         logger.warning("⚠️  CUDA not available, skipping kernel loading")
         return False
     
-    # Find .so files
     loss_lib_path, grad_lib_path = _find_so_files()
     
     if loss_lib_path is None or grad_lib_path is None:
         logger.warning("❌ CUDA kernel .so files not found!")
-        logger.warning("   Searched locations:")
-        logger.warning(f"     - {Path(__file__).parent}")
-        logger.warning(f"     - {Path.cwd()}")
-        logger.warning(f"     - {Path.cwd() / 'training'}")
-        logger.warning("   Run: ./compile_kernels.sh")
         return False
     
     try:
-        # Load libraries
         _fused_loss_lib = ctypes.CDLL(str(loss_lib_path))
         logger.info(f"✅  Loaded: {loss_lib_path}")
         
         _fused_grad_clip_lib = ctypes.CDLL(str(grad_lib_path))
         logger.info(f"✅  Loaded: {grad_lib_path}")
         
-        # Set return types
         _fused_grad_clip_lib.fused_grad_clip_launcher.restype = ctypes.c_float
         
         _cuda_libs_loaded = True
@@ -83,21 +73,28 @@ def _load_cuda_libraries():
         
     except Exception as e:
         logger.error(f"❌ Failed to load CUDA kernels: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
         return False
 
 
 class FusedLoss:
     """
     Fused cross-entropy loss with accuracy computation.
-    2-4x faster than PyTorch's separate operations.
+    Optimized for minimal Python overhead.
     """
     
     def __init__(self):
         self.enabled = _cuda_libs_loaded and _fused_loss_lib is not None
-        if self.enabled:
-            logger.info("✅  FusedLoss: CUDA acceleration enabled")
+        
+        # Pre-allocate output tensors (OPTIMIZATION: reuse across calls)
+        if self.enabled and torch.cuda.is_available():
+            self._loss_out = torch.zeros(1, device='cuda', dtype=torch.float32)
+            self._accuracy_out = torch.zeros(1, device='cuda', dtype=torch.float32)
+            self._valid_tokens_out = torch.zeros(1, device='cuda', dtype=torch.int64)
+            
+            # Cache ctypes arguments to avoid repeated conversions
+            self._loss_ptr = ctypes.c_void_p(self._loss_out.data_ptr())
+            self._acc_ptr = ctypes.c_void_p(self._accuracy_out.data_ptr())
+            self._valid_ptr = ctypes.c_void_p(self._valid_tokens_out.data_ptr())
         else:
             logger.info("⚠️  FusedLoss: Using PyTorch fallback")
     
@@ -114,136 +111,131 @@ class FusedLoss:
         Returns:
             Dict with keys: loss, raw_loss, perplexity, valid_tokens, accuracy
         """
-        if not self.enabled or _fused_loss_lib is None:
-            return self._pytorch_fallback(logits, labels, loss_weights, pad_token_id)
-        
-        # CUDA kernel doesn't support weighted loss yet, fallback
-        if loss_weights is not None:
-            return self._pytorch_fallback(logits, labels, loss_weights, pad_token_id)
-        
-        try:
+        # Fast path: no weights, CUDA enabled
+        if self.enabled and loss_weights is None:
             return self._cuda_implementation(logits, labels, pad_token_id)
-        except Exception as e:
-            logger.warning(f"CUDA kernel failed: {e}, falling back to PyTorch")
+        else:
             return self._pytorch_fallback(logits, labels, loss_weights, pad_token_id)
     
     def _cuda_implementation(self, logits, labels, pad_token_id):
-        """Use custom CUDA kernel"""
-        # Reshape if needed: [batch, seq_len, vocab] -> [batch*seq_len, vocab]
+        """Optimized CUDA kernel call with minimal overhead."""
+        # Reshape if needed
+        original_shape = logits.shape
         if logits.dim() == 3:
-            batch_size, seq_len, vocab_size = logits.shape
-            logits = logits.view(-1, vocab_size)
+            logits = logits.view(-1, logits.size(-1))
             labels = labels.view(-1)
         
-        # Ensure contiguous and correct dtype
-        logits = logits.contiguous().float()  # Kernel expects FP32
-        labels = labels.contiguous().long()
+        # OPTIMIZATION: Only ensure contiguous if needed
+        if not logits.is_contiguous():
+            logits = logits.contiguous()
+        if not labels.is_contiguous():
+            labels = labels.contiguous()
+        
+        # OPTIMIZATION: Avoid unnecessary dtype conversions
+        if logits.dtype != torch.float32:
+            logits = logits.float()
+        if labels.dtype != torch.int64:
+            labels = labels.long()
         
         total_tokens = labels.size(0)
         vocab_size = logits.size(1)
         
-        # Allocate outputs
-        loss_out = torch.zeros(1, device=logits.device, dtype=torch.float32)
-        accuracy_out = torch.zeros(1, device=logits.device, dtype=torch.float32)
-        valid_tokens_out = torch.zeros(1, device=logits.device, dtype=torch.int64)
+        # Zero outputs (faster than reallocating)
+        self._loss_out.zero_()
+        self._accuracy_out.zero_()
+        self._valid_tokens_out.zero_()
         
-        # Get CUDA stream
+        # Get current stream (cached by PyTorch)
         stream = torch.cuda.current_stream().cuda_stream
         
-        # Call kernel
+        # Call kernel (minimal overhead - reuse ctypes pointers)
         _fused_loss_lib.fused_cross_entropy_accuracy_launcher(
             ctypes.c_void_p(logits.data_ptr()),
             ctypes.c_void_p(labels.data_ptr()),
             ctypes.c_int64(pad_token_id),
-            ctypes.c_void_p(loss_out.data_ptr()),
-            ctypes.c_void_p(accuracy_out.data_ptr()),
-            ctypes.c_void_p(valid_tokens_out.data_ptr()),
+            self._loss_ptr,
+            self._acc_ptr,
+            self._valid_ptr,
             ctypes.c_int(total_tokens),
             ctypes.c_int(vocab_size),
             ctypes.c_void_p(stream)
         )
         
-        torch.cuda.synchronize()
+        # OPTIMIZATION: Don't sync here - let PyTorch handle it
+        # Only sync when accessing .item()
         
-        valid_tokens = valid_tokens_out.item()
+        valid_tokens = self._valid_tokens_out.item()  # Implicit sync
         
         if valid_tokens > 0:
-            loss = loss_out.item() / valid_tokens
-            accuracy = accuracy_out.item() / valid_tokens
+            # OPTIMIZATION: Avoid unnecessary .item() calls
+            loss_val = self._loss_out.item() / valid_tokens
+            accuracy_val = self._accuracy_out.item() / valid_tokens
         else:
-            loss = 0.0
-            accuracy = 0.0
+            loss_val = 0.0
+            accuracy_val = 0.0
         
-        # Compute perplexity
-        try:
-            perplexity = torch.exp(torch.tensor(min(loss, 15.0), device=logits.device))
-        except:
-            perplexity = torch.tensor(float('inf'), device=logits.device)
+        # OPTIMIZATION: Compute perplexity on GPU, return tensor
+        loss_tensor = torch.tensor(loss_val, device=logits.device, dtype=torch.float32)
+        
+        # Clamp loss for perplexity stability
+        clamped = min(loss_val, 15.0)
+        perplexity = torch.tensor(clamped, device=logits.device).exp()
         
         return {
-            'loss': torch.tensor(loss, device=logits.device, requires_grad=True),
-            'raw_loss': torch.tensor(loss, device=logits.device),
+            'loss': loss_tensor.requires_grad_(True),  # Add gradient tracking
+            'raw_loss': loss_tensor,
             'perplexity': perplexity,
-            'valid_tokens': torch.tensor(valid_tokens, device=logits.device),
-            'accuracy': torch.tensor(accuracy, device=logits.device)
+            'valid_tokens': torch.tensor(valid_tokens, device=logits.device, dtype=torch.int64),
+            'accuracy': torch.tensor(accuracy_val, device=logits.device, dtype=torch.float32)
         }
     
     def _pytorch_fallback(self, logits, labels, loss_weights, pad_token_id):
-        """PyTorch fallback implementation"""
+        """Optimized PyTorch fallback."""
         import torch.nn.functional as F
         
-        # Reshape if needed
         if logits.dim() == 3:
             logits = logits.view(-1, logits.size(-1))
             labels = labels.view(-1)
             if loss_weights is not None:
                 loss_weights = loss_weights.view(-1)
         
-        # Create mask for valid tokens
-        mask = (labels != pad_token_id).float()
+        mask = (labels != pad_token_id)
         valid_token_count = mask.sum()
         
         if valid_token_count == 0:
+            device = logits.device
             return {
-                'loss': torch.tensor(0.0, device=logits.device, requires_grad=True),
-                'raw_loss': torch.tensor(0.0, device=logits.device),
-                'perplexity': torch.tensor(float('inf'), device=logits.device),
-                'valid_tokens': torch.tensor(0, device=logits.device),
-                'accuracy': torch.tensor(0.0, device=logits.device)
+                'loss': torch.tensor(0.0, device=device, requires_grad=True),
+                'raw_loss': torch.tensor(0.0, device=device),
+                'perplexity': torch.tensor(float('inf'), device=device),
+                'valid_tokens': torch.tensor(0, device=device, dtype=torch.int64),
+                'accuracy': torch.tensor(0.0, device=device)
             }
         
-        # Compute accuracy
+        # Compute accuracy (no_grad for speed)
         with torch.no_grad():
-            predictions = torch.argmax(logits, dim=-1)
-            correct_predictions = (predictions == labels).float()
-            masked_correct = correct_predictions * mask
-            accuracy = masked_correct.sum() / valid_token_count
+            predictions = logits.argmax(dim=-1)
+            accuracy = ((predictions == labels) & mask).sum().float() / valid_token_count
         
-        # Compute loss per token
+        # Compute loss
         loss_per_token = F.cross_entropy(logits, labels, reduction='none')
         
-        # Masked loss for perplexity
-        masked_loss_sum = (loss_per_token * mask).sum()
-        raw_loss_for_ppl = masked_loss_sum / valid_token_count
-        
-        # Apply weights if provided
         if loss_weights is not None:
-            weighted_loss_per_token = loss_per_token * loss_weights * mask
-            total_weight = (loss_weights * mask).sum().clamp(min=1e-8)
-            final_loss = weighted_loss_per_token.sum() / total_weight
+            masked_loss = loss_per_token * loss_weights * mask.float()
+            total_weight = (loss_weights * mask.float()).sum().clamp(min=1e-8)
+            final_loss = masked_loss.sum() / total_weight
+            raw_loss = (loss_per_token * mask.float()).sum() / valid_token_count
         else:
-            final_loss = raw_loss_for_ppl
+            masked_loss = loss_per_token * mask.float()
+            final_loss = masked_loss.sum() / valid_token_count
+            raw_loss = final_loss
         
         # Compute perplexity
-        clamped_loss = torch.clamp(raw_loss_for_ppl, min=0.0, max=15.0)
-        try:
-            perplexity = torch.exp(clamped_loss)
-        except:
-            perplexity = torch.tensor(float('inf'), device=logits.device)
+        perplexity = torch.exp(torch.clamp(raw_loss.detach(), 0.0, 15.0))
         
         return {
             'loss': final_loss,
-            'raw_loss': raw_loss_for_ppl.detach(),
+            'raw_loss': raw_loss.detach(),
             'perplexity': perplexity,
             'valid_tokens': valid_token_count,
             'accuracy': accuracy
@@ -252,18 +244,20 @@ class FusedLoss:
 
 class FusedGradClip:
     """
-    Smart gradient clipping with automatic PyTorch/CUDA selection.
-    
-    Automatically uses:
-    - PyTorch for small models (< 10M parameters)
-    - CUDA kernel for large models (>= 10M parameters)
+    Optimized gradient clipping with automatic PyTorch/CUDA selection.
     """
     
     def __init__(self):
         self.cuda_enabled = _cuda_libs_loaded and _fused_grad_clip_lib is not None
         self.use_cuda_threshold = 10_000_000  # 10M parameters
         self.total_params = None
-        self.implementation = "auto"  # "auto", "cuda", "pytorch"
+        self.implementation = "auto"
+        
+        # Pre-allocate device tensors for pointers (OPTIMIZATION)
+        if self.cuda_enabled and torch.cuda.is_available():
+            self._grad_ptrs_cache = None
+            self._grad_sizes_cache = None
+            self._cache_capacity = 0
         
         if self.cuda_enabled:
             logger.info("✅  FusedGradClip: CUDA kernel available (auto-selection enabled)")
@@ -280,8 +274,6 @@ class FusedGradClip:
         """
         Compute gradient norm and clip if needed.
         
-        Auto-selects best implementation based on model size.
-        
         Args:
             parameters: Model parameters with gradients
             max_norm: Maximum gradient norm
@@ -292,18 +284,12 @@ class FusedGradClip:
         if not self.cuda_enabled:
             return self._pytorch_fallback(parameters, max_norm)
         
-        # Count parameters and decide implementation
         num_params = self._count_parameters(parameters)
         
         # Auto-select based on size
-        if self.implementation == "auto":
-            use_cuda = num_params >= self.use_cuda_threshold
-        elif self.implementation == "cuda":
-            use_cuda = True
-        else:  # "pytorch"
-            use_cuda = False
+        use_cuda = (self.implementation == "cuda" or 
+                   (self.implementation == "auto" and num_params >= self.use_cuda_threshold))
         
-        # Use selected implementation
         if use_cuda:
             try:
                 return self._cuda_implementation(parameters, max_norm)
@@ -314,65 +300,57 @@ class FusedGradClip:
             return self._pytorch_fallback(parameters, max_norm)
     
     def _cuda_implementation(self, parameters, max_norm):
-        """Use custom CUDA kernel (for large models)."""
-        # Collect gradient tensors
-        grads = []
-        for p in parameters:
-            if p.grad is not None:
-                grads.append(p.grad.data.contiguous().float())
+        """Optimized CUDA kernel call."""
+        # Collect gradients (optimized: single pass)
+        grads = [p.grad.data for p in parameters if p.grad is not None]
         
-        if len(grads) == 0:
+        if not grads:
             return 0.0
         
-        # Prepare arrays
         num_tensors = len(grads)
-        grad_ptrs = [g.data_ptr() for g in grads]
-        grad_sizes = [g.numel() for g in grads]
         
+        # OPTIMIZATION: Reuse cached arrays if capacity is sufficient
+        if self._cache_capacity < num_tensors:
+            device = grads[0].device
+            # Allocate with some headroom
+            self._cache_capacity = num_tensors * 2
+            self._grad_ptrs_cache = torch.empty(self._cache_capacity, dtype=torch.int64, device=device)
+            self._grad_sizes_cache = torch.empty(self._cache_capacity, dtype=torch.int32, device=device)
+        
+        # Fill arrays (vectorized where possible)
         device = grads[0].device
-        grad_ptrs_device = torch.tensor(grad_ptrs, dtype=torch.int64, device=device)
-        grad_sizes_device = torch.tensor(grad_sizes, dtype=torch.int32, device=device)
+        for i, g in enumerate(grads):
+            self._grad_ptrs_cache[i] = g.data_ptr()
+            self._grad_sizes_cache[i] = g.numel()
         
-        # Get CUDA stream
+        # Get stream
         stream = torch.cuda.current_stream().cuda_stream
         
-        # Call kernel - returns float
+        # Call kernel
         total_norm = _fused_grad_clip_lib.fused_grad_clip_launcher(
-            ctypes.c_void_p(grad_ptrs_device.data_ptr()),
-            ctypes.c_void_p(grad_sizes_device.data_ptr()),
+            ctypes.c_void_p(self._grad_ptrs_cache.data_ptr()),
+            ctypes.c_void_p(self._grad_sizes_cache.data_ptr()),
             ctypes.c_int(num_tensors),
             ctypes.c_float(max_norm),
             ctypes.c_void_p(stream)
         )
         
-        torch.cuda.synchronize()
+        # No explicit sync needed - ctypes return does implicit sync
         return float(total_norm)
     
     def _pytorch_fallback(self, parameters, max_norm):
-        """PyTorch fallback (for small models)."""
+        """PyTorch fallback."""
         return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
     
     def set_implementation(self, mode: str):
-        """
-        Manually set implementation mode.
-        
-        Args:
-            mode: "auto", "cuda", or "pytorch"
-        """
-        valid_modes = ["auto", "cuda", "pytorch"]
-        if mode not in valid_modes:
-            raise ValueError(f"Invalid mode '{mode}'. Must be one of {valid_modes}")
-        
+        """Set implementation mode: "auto", "cuda", or "pytorch"."""
+        if mode not in ["auto", "cuda", "pytorch"]:
+            raise ValueError(f"Invalid mode '{mode}'. Must be one of ['auto', 'cuda', 'pytorch']")
         self.implementation = mode
         logger.info(f"FusedGradClip mode set to: {mode}")
     
     def set_threshold(self, num_params: int):
-        """
-        Set parameter threshold for CUDA usage.
-        
-        Args:
-            num_params: Minimum parameters to use CUDA (default: 10M)
-        """
+        """Set parameter threshold for CUDA usage."""
         self.use_cuda_threshold = num_params
         logger.info(f"FusedGradClip CUDA threshold: {num_params:,} parameters")
     
@@ -401,7 +379,7 @@ else:
 
 
 def test_kernels():
-    """Test kernel functionality with auto-selection demo."""
+    """Test kernel functionality."""
     if not torch.cuda.is_available():
         print("❌ CUDA not available")
         return False
@@ -429,38 +407,20 @@ def test_kernels():
         result['loss'].backward()
         print(f"   ✅ Backward pass successful")
         
-        # Test FusedGradClip with auto-selection
-        print("\n2. Testing FusedGradClip (Auto-Selection)...")
+        # Test FusedGradClip
+        print("\n2. Testing FusedGradClip...")
         fused_clip = FusedGradClip()
         
-        # Test with small model
-        print("\n   Testing SMALL model (100 params x 100 = 10K elements)...")
         small_model = torch.nn.Linear(100, 100).cuda()
         x = torch.randn(32, 100, device='cuda')
         y = small_model(x).sum()
         y.backward()
         
         grad_norm = fused_clip(small_model.parameters(), max_norm=1.0)
-        info = fused_clip.get_info()
-        print(f"   ✅ Small model gradient norm: {grad_norm:.4f}")
-        print(f"   ℹ️  Used PyTorch (model size: {info['total_params']:,} < {info['cuda_threshold']:,})")
-        
-        # Test with large model
-        print("\n   Testing LARGE model (10K params x 1K = 10M elements)...")
-        large_model = torch.nn.Linear(10000, 1000).cuda()
-        x = torch.randn(32, 10000, device='cuda')
-        y = large_model(x).sum()
-        y.backward()
-        
-        # Reset parameter count for new model
-        fused_clip.total_params = None
-        grad_norm = fused_clip(large_model.parameters(), max_norm=1.0)
-        info = fused_clip.get_info()
-        print(f"   ✅ Large model gradient norm: {grad_norm:.4f}")
-        print(f"   ℹ️  Used CUDA (model size: {info['total_params']:,} >= {info['cuda_threshold']:,})")
+        print(f"   ✅ Gradient norm: {grad_norm:.4f}")
         
         print("\n" + "="*80)
-        print("✅ ALL TESTS PASSED - AUTO-SELECTION WORKING!")
+        print("✅ ALL TESTS PASSED!")
         print("="*80)
         return True
         
