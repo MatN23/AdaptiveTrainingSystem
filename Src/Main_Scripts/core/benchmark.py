@@ -326,43 +326,141 @@ def benchmark_moe_gating(num_tokens: int, num_experts: int, k: int,
 # ============================================================================
 
 def print_results(title: str, results: Dict[str, BenchmarkResult]):
-    """Pretty print benchmark results"""
+    """Pretty print benchmark results in table format"""
     print(f"\n{title}")
-    print("-" * 70)
-    print(f"{'Implementation':<20} {'Time (ms)':<15} {'Std (ms)':<15} {'Speedup':<10}")
-    print("-" * 70)
+    print("=" * 90)
+    print(f"{'Implementation':<20} {'Time (ms)':<15} {'Std (ms)':<15} {'Throughput (ops/s)':<20} {'Speedup':<10}")
+    print("=" * 90)
     
     for name, result in results.items():
-        print(f"{result.name:<20} {result.mean_ms:>10.4f}     {result.std_ms:>10.4f}     {result.speedup:>6.2f}x")
+        print(f"{result.name:<20} {result.mean_ms:>10.4f}     {result.std_ms:>10.4f}     {result.throughput:>15.2f}     {result.speedup:>6.2f}x")
     
-    print("-" * 70)
+    print("=" * 90)
     
     # Highlight winner
     fastest = min(results.values(), key=lambda r: r.mean_ms)
-    print(f"🏆 Fastest: {fastest.name} ({fastest.mean_ms:.4f}ms)")
+    print(f"🏆 Winner: {fastest.name} - {fastest.mean_ms:.4f}ms ({fastest.speedup:.2f}x speedup)")
     print()
 
 
 def print_summary(all_results: Dict[str, Dict[str, BenchmarkResult]]):
-    """Print summary of all benchmarks"""
-    print("\n" + "="*70)
-    print("BENCHMARK SUMMARY")
-    print("="*70)
+    """Print summary table of all benchmarks"""
+    print("\n" + "="*90)
+    print("BENCHMARK SUMMARY TABLE")
+    print("="*90)
+    
+    # Header
+    print(f"\n{'Operation':<20} {'PyTorch (ms)':<18} {'torch.compile (ms)':<22} {'Custom CUDA (ms)':<20} {'Best':<15}")
+    print("-"*90)
     
     for op_name, results in all_results.items():
-        print(f"\n{op_name}:")
-        for impl_name, result in results.items():
-            print(f"  {result.name:<20} {result.mean_ms:>8.4f}ms  ({result.speedup:>5.2f}x)")
-    
-    print("\n" + "="*70)
-    print("OVERALL WINNERS")
-    print("="*70)
-    
-    for op_name, results in all_results.items():
+        row = f"{op_name:<20}"
+        
+        # PyTorch time
+        if 'pytorch' in results:
+            row += f"{results['pytorch'].mean_ms:>12.4f}      "
+        else:
+            row += f"{'N/A':>12}      "
+        
+        # torch.compile time
+        if 'compiled' in results:
+            row += f"{results['compiled'].mean_ms:>12.4f}          "
+        else:
+            row += f"{'N/A':>12}          "
+        
+        # Custom CUDA time
+        if 'cuda' in results:
+            row += f"{results['cuda'].mean_ms:>12.4f}        "
+        else:
+            row += f"{'N/A':>12}        "
+        
+        # Winner
         fastest = min(results.values(), key=lambda r: r.mean_ms)
-        print(f"{op_name:<30} 🏆 {fastest.name:<15} ({fastest.speedup:.2f}x speedup)")
+        row += f"{fastest.name} ({fastest.speedup:.2f}x)"
+        
+        print(row)
     
-    print("="*70 + "\n")
+    print("-"*90)
+    
+    # Speedup summary
+    print("\n" + "="*90)
+    print("SPEEDUP SUMMARY")
+    print("="*90)
+    print(f"\n{'Operation':<20} {'torch.compile vs PT':<25} {'Custom CUDA vs PT':<25} {'CUDA vs compile':<20}")
+    print("-"*90)
+    
+    for op_name, results in all_results.items():
+        row = f"{op_name:<20}"
+        
+        baseline = results['pytorch'].mean_ms
+        
+        # compile speedup
+        if 'compiled' in results:
+            speedup = baseline / results['compiled'].mean_ms
+            row += f"{speedup:>12.2f}x            "
+        else:
+            row += f"{'N/A':>12}             "
+        
+        # CUDA speedup
+        if 'cuda' in results:
+            speedup = baseline / results['cuda'].mean_ms
+            row += f"{speedup:>12.2f}x            "
+        else:
+            row += f"{'N/A':>12}             "
+        
+        # CUDA vs compile
+        if 'compiled' in results and 'cuda' in results:
+            speedup = results['compiled'].mean_ms / results['cuda'].mean_ms
+            row += f"{speedup:>12.2f}x"
+        else:
+            row += f"{'N/A':>12}"
+        
+        print(row)
+    
+    print("-"*90)
+    
+    # Overall statistics
+    print("\n" + "="*90)
+    print("OVERALL STATISTICS")
+    print("="*90)
+    
+    all_pytorch_times = [r['pytorch'].mean_ms for r in all_results.values()]
+    all_compiled_times = [r['compiled'].mean_ms for r in all_results.values() if 'compiled' in r]
+    all_cuda_times = [r['cuda'].mean_ms for r in all_results.values() if 'cuda' in r]
+    
+    avg_pytorch = sum(all_pytorch_times) / len(all_pytorch_times)
+    
+    print(f"\n{'Metric':<30} {'PyTorch':<15} {'torch.compile':<18} {'Custom CUDA':<15}")
+    print("-"*90)
+    print(f"{'Average Time (ms)':<30} {avg_pytorch:>10.4f}     ", end="")
+    
+    if all_compiled_times:
+        avg_compiled = sum(all_compiled_times) / len(all_compiled_times)
+        print(f"{avg_compiled:>12.4f}      ", end="")
+    else:
+        print(f"{'N/A':>12}      ", end="")
+    
+    if all_cuda_times:
+        avg_cuda = sum(all_cuda_times) / len(all_cuda_times)
+        print(f"{avg_cuda:>10.4f}")
+    else:
+        print(f"{'N/A':>10}")
+    
+    print(f"{'Average Speedup vs PyTorch':<30} {'1.00x':>10}     ", end="")
+    
+    if all_compiled_times:
+        speedup = avg_pytorch / avg_compiled
+        print(f"{speedup:>12.2f}x      ", end="")
+    else:
+        print(f"{'N/A':>12}      ", end="")
+    
+    if all_cuda_times:
+        speedup = avg_pytorch / avg_cuda
+        print(f"{speedup:>10.2f}x")
+    else:
+        print(f"{'N/A':>10}")
+    
+    print("="*90 + "\n")
 
 
 # ============================================================================
@@ -373,19 +471,35 @@ def run_full_benchmark(batch_size=4, seq_len=512, hidden_size=768, num_heads=12,
                       num_experts=8, k=2, runs=100, dtype=torch.float32):
     """Run complete benchmark suite"""
     
-    print("\n" + "="*70)
-    print("COMPREHENSIVE CUDA OPERATIONS BENCHMARK")
-    print("="*70)
-    print(f"PyTorch version: {torch.__version__}")
-    print(f"CUDA available: {torch.cuda.is_available()}")
+    print("\n" + "="*90)
+    print("BENCHMARK CONFIGURATION")
+    print("="*90)
+    
+    # System info table
+    print(f"\n{'Parameter':<30} {'Value':<40}")
+    print("-"*90)
+    print(f"{'PyTorch Version':<30} {torch.__version__:<40}")
+    print(f"{'CUDA Available':<30} {str(torch.cuda.is_available()):<40}")
     if torch.cuda.is_available():
-        print(f"CUDA device: {torch.cuda.get_device_name(0)}")
-        print(f"CUDA version: {torch.version.cuda}")
-    print(f"torch.compile available: {hasattr(torch, 'compile')}")
-    print(f"Transformer CUDA ops: {'✅ Available' if TRANSFORMER_OPS_AVAILABLE else '❌ Not available'}")
-    print(f"MoE CUDA ops: {'✅ Available' if MOE_CUDA_AVAILABLE else '❌ Not available'}")
-    print(f"Data type: {dtype}")
-    print("="*70)
+        print(f"{'CUDA Device':<30} {torch.cuda.get_device_name(0):<40}")
+        print(f"{'CUDA Version':<30} {torch.version.cuda:<40}")
+    print(f"{'torch.compile Available':<30} {str(hasattr(torch, 'compile')):<40}")
+    print(f"{'Transformer CUDA Ops':<30} {'✅ Available' if TRANSFORMER_OPS_AVAILABLE else '❌ Not available':<40}")
+    print(f"{'MoE CUDA Ops':<30} {'✅ Available' if MOE_CUDA_AVAILABLE else '❌ Not available':<40}")
+    print("-"*90)
+    
+    # Config table
+    print(f"\n{'Configuration':<30} {'Value':<40}")
+    print("-"*90)
+    print(f"{'Batch Size':<30} {batch_size:<40}")
+    print(f"{'Sequence Length':<30} {seq_len:<40}")
+    print(f"{'Hidden Size':<30} {hidden_size:<40}")
+    print(f"{'Number of Heads':<30} {num_heads:<40}")
+    print(f"{'Number of Experts':<30} {num_experts:<40}")
+    print(f"{'Top-K Experts':<30} {k:<40}")
+    print(f"{'Benchmark Runs':<30} {runs:<40}")
+    print(f"{'Data Type':<30} {str(dtype):<40}")
+    print("="*90)
     
     all_results = {}
     
@@ -394,20 +508,20 @@ def run_full_benchmark(batch_size=4, seq_len=512, hidden_size=768, num_heads=12,
     intermediate_size = hidden_size * 4
     
     all_results['RMSNorm'] = benchmark_rmsnorm(batch_size, seq_len, hidden_size, runs, dtype)
-    print_results("RMSNorm Results", all_results['RMSNorm'])
+    print_results("RMSNorm Benchmark Results", all_results['RMSNorm'])
     
     all_results['RoPE'] = benchmark_rope(batch_size, num_heads, seq_len, head_dim, runs, dtype)
-    print_results("RoPE Results", all_results['RoPE'])
+    print_results("RoPE Benchmark Results", all_results['RoPE'])
     
     all_results['SwiGLU'] = benchmark_swiglu(batch_size, seq_len, hidden_size, intermediate_size, runs, dtype)
-    print_results("SwiGLU Results", all_results['SwiGLU'])
+    print_results("SwiGLU Benchmark Results", all_results['SwiGLU'])
     
     # MoE ops
     num_tokens = batch_size * seq_len
     all_results['MoE Gating'] = benchmark_moe_gating(num_tokens, num_experts, k, runs, dtype)
-    print_results("MoE Gating Results", all_results['MoE Gating'])
+    print_results("MoE Gating Benchmark Results", all_results['MoE Gating'])
     
-    # Print summary
+    # Print summary tables
     print_summary(all_results)
     
     return all_results
