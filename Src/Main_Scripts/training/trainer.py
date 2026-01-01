@@ -2841,14 +2841,15 @@ class EnhancedConversationTrainer:
             'loss': 0.0,
             'raw_loss': 0.0,
             'tokens': 0,
-            'accuracy': 0.0
+            'accuracy': 0.0,
+            'step_count': 0  # 🔥 NEW: Track how many steps accumulated
         }
 
         gradient_accumulation_steps = getattr(self.config, 'gradient_accumulation_steps', 1)
         epoch_start_time = time.time()
         last_log_time = time.time()
 
-        # ✅ NEW: Track accumulation cycle timing
+        # Track accumulation cycle timing
         accumulation_start_time = None
         accumulation_compute_time = 0.0
 
@@ -2866,19 +2867,19 @@ class EnhancedConversationTrainer:
             if self.should_stop:
                 break
             
-            # ✅ Start timing accumulation cycle
+            # Start timing accumulation cycle
             if accumulation_start_time is None:
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
                 accumulation_start_time = time.perf_counter()
                 accumulation_compute_time = 0.0
             
-            # ✅ Get step metrics (includes per-step compute time)
+            # Get step metrics (includes per-step compute time)
             step_metrics = self.train_step(batch)
 
-            # ✅ Accumulate compute time from this micro-batch
+            # Accumulate compute time from this micro-batch
             if 'compute_time_ms' in step_metrics:
-                accumulation_compute_time += step_metrics['compute_time_ms'] / 1000.0  # Convert to seconds
+                accumulation_compute_time += step_metrics['compute_time_ms'] / 1000.0
 
             # Send metrics to orchestrator if monitoring is enabled
             if hasattr(self, '_monitoring_queue'):
@@ -2891,85 +2892,60 @@ class EnhancedConversationTrainer:
                     if self.global_step % 100 == 0:
                         logging.debug(f"Could not send metrics to orchestrator: {e}")
 
-            # Debug logging for first few batches
-            if batch_idx < 5 and getattr(self.config, 'log_level', 'INFO') == 'DEBUG':
-                debug_msg = f"DEBUG: Batch {batch_idx}, Step metrics: {step_metrics}"
-                if self.quantization_manager.is_quantized:
-                    debug_msg += f" [QUANTIZED: {self.quantization_manager.quantization_info['bits']}-bit]"
-                print(debug_msg)
-
             # Skip invalid batches
             if step_metrics['loss'] == 0.0 or math.isnan(step_metrics['loss']) or math.isinf(step_metrics['loss']):
-                skip_msg = f"Skipping batch {batch_idx} due to invalid loss: {step_metrics['loss']}"
-                if self.quantization_manager.is_quantized:
-                    skip_msg += " (may be quantization-related)"
-                print(skip_msg)
+                print(f"Skipping batch {batch_idx} due to invalid loss: {step_metrics['loss']}")
                 continue
             
-            # Accumulate metrics across gradient accumulation steps
-            accumulation_metrics['loss'] += step_metrics['loss'] / gradient_accumulation_steps
-            accumulation_metrics['raw_loss'] += step_metrics['raw_loss'] / gradient_accumulation_steps
+            # 🔥 FIX: Accumulate WITHOUT division (we'll divide at the end)
+            accumulation_metrics['loss'] += step_metrics['loss']
+            accumulation_metrics['raw_loss'] += step_metrics['raw_loss']
             accumulation_metrics['tokens'] += step_metrics['valid_tokens']
             accumulation_metrics['accuracy'] += step_metrics['accuracy']
+            accumulation_metrics['step_count'] += 1  # 🔥 NEW: Count steps
             
             # Take optimizer step after full accumulation
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                opt_metrics = self.optimizer_step()
+                # 🔥 FIX: Calculate averages ONLY when taking optimizer step
+                if accumulation_metrics['step_count'] > 0:
+                    avg_loss = accumulation_metrics['loss'] / accumulation_metrics['step_count']
+                    avg_raw_loss = accumulation_metrics['raw_loss'] / accumulation_metrics['step_count']
+                    avg_accuracy = accumulation_metrics['accuracy'] / accumulation_metrics['step_count']
+                else:
+                    avg_loss = 0.0
+                    avg_raw_loss = 0.0
+                    avg_accuracy = 0.0
                 
-                #if self.global_step % 50 == 0:  # Debug every 50 steps
-                #    print(f"\n{'='*80}")
-                #    print(f"🔍 THROUGHPUT DEBUG - Step {self.global_step}")
-                #    print(f"{'='*80}")
-                #    print(f"Accumulation metrics:")
-                #    print(f"  Total tokens in cycle: {accumulation_metrics['tokens']}")
-                #    print(f"  Compute time (seconds): {accumulation_compute_time:.4f}")
-                #    print(f"  Gradient accum steps: {gradient_accumulation_steps}")
-                #    
-                #    if accumulation_compute_time > 0:
-                #        calculated_throughput = accumulation_metrics['tokens'] / accumulation_compute_time
-                #        print(f"\nCalculated throughput:")
-                #        print(f"  {accumulation_metrics['tokens']} tokens / {accumulation_compute_time:.4f}s = {calculated_throughput:.0f} tokens/sec")
-                #    
-                #    print(f"\nThroughput window:")
-                #    print(f"  Current window: {self.throughput_window}")
-                #    print(f"  Window average: {self._calculate_throughput():.0f} tokens/sec")
-                    
-                #    print(f"\nStep metrics breakdown:")
-                #    for i in range(gradient_accumulation_steps):
-                #        if i < len(self.throughput_window):
-                #            print(f"  Micro-batch {i}: {self.throughput_window[i]:.0f} tokens/sec")
-                #    
-                #    print(f"{'='*80}\n")
+                opt_metrics = self.optimizer_step()
                 self.global_step += 1
 
-                # ✅ Calculate ACCURATE throughput over full accumulation cycle
+                # Calculate throughput
                 if accumulation_compute_time > 0:
-                    # Throughput based on PURE COMPUTE TIME (no logging overhead)
                     cycle_throughput = accumulation_metrics['tokens'] / accumulation_compute_time
                 else:
                     cycle_throughput = 0.0
                 
-                # ✅ Update throughput window with FULL CYCLE measurement
+                # Update throughput window
                 if cycle_throughput > 0:
                     self.throughput_window.append(cycle_throughput)
                     if len(self.throughput_window) > self.throughput_window_size:
                         self.throughput_window.pop(0)
 
-                # Update epoch metrics
-                if accumulation_metrics['loss'] > 0:
-                    epoch_metrics['total_loss'] += accumulation_metrics['loss']
-                    epoch_metrics['total_raw_loss'] += accumulation_metrics['raw_loss']
+                # 🔥 FIX: Update epoch metrics with AVERAGED loss
+                if avg_loss > 0:
+                    epoch_metrics['total_loss'] += avg_loss
+                    epoch_metrics['total_raw_loss'] += avg_raw_loss
                     epoch_metrics['total_tokens'] += accumulation_metrics['tokens']
-                    epoch_metrics['total_accuracy'] += accumulation_metrics['accuracy']
+                    epoch_metrics['total_accuracy'] += avg_accuracy
                     epoch_metrics['num_batches'] += 1
                     if 'grad_norm' in opt_metrics and opt_metrics['grad_norm'] is not None:
                         epoch_metrics['grad_norm_sum'] += opt_metrics['grad_norm']
 
                     # Track best step metrics
-                    if accumulation_metrics['loss'] < epoch_metrics['best_loss']:
-                        epoch_metrics['best_loss'] = accumulation_metrics['loss']
-                        epoch_metrics['best_raw_loss'] = accumulation_metrics['raw_loss']
-                        epoch_metrics['best_accuracy'] = accumulation_metrics['accuracy']
+                    if avg_loss < epoch_metrics['best_loss']:
+                        epoch_metrics['best_loss'] = avg_loss
+                        epoch_metrics['best_raw_loss'] = avg_raw_loss
+                        epoch_metrics['best_accuracy'] = avg_accuracy
                         epoch_metrics['best_step'] = self.global_step
 
                     # CHINCHILLA SCALER UPDATE
@@ -2977,7 +2953,7 @@ class EnhancedConversationTrainer:
                         self.chinchilla_scaler.update_metrics(
                             step=self.global_step,
                             epoch=epoch + (batch_idx / len(train_dataloader)),
-                            loss=accumulation_metrics['loss'],
+                            loss=avg_loss,  # 🔥 FIX: Use averaged loss
                             grad_norm=opt_metrics.get('grad_norm', 0.0),
                             learning_rate=opt_metrics.get('lr', self.config.learning_rate),
                             batch_tokens=accumulation_metrics['tokens']
@@ -3003,7 +2979,7 @@ class EnhancedConversationTrainer:
                                 self.should_stop = True
                                 break
 
-                    # ✅ Get current throughput (average of recent cycles)
+                    # Get current throughput (average of recent cycles)
                     tokens_per_sec = self._calculate_throughput()
 
                     # Determine if we should log
@@ -3016,9 +2992,18 @@ class EnhancedConversationTrainer:
                     )
 
                     if should_log:
+                        # 🔥 FIX: Pass AVERAGED metrics to logging
                         self._log_training_step(
                             epoch, batch_idx, len(train_dataloader),
-                            accumulation_metrics, opt_metrics, tokens_per_sec
+                            {
+                                'loss': avg_loss,
+                                'raw_loss': avg_raw_loss,
+                                'accuracy': avg_accuracy,
+                                'throughput': cycle_throughput,
+                                'compute_time_ms': accumulation_compute_time * 1000
+                            },
+                            opt_metrics, 
+                            tokens_per_sec
                         )
                         last_log_time = time.time()
 
@@ -3030,8 +3015,14 @@ class EnhancedConversationTrainer:
                     if self.quantization_manager.is_quantized and self.global_step % 100 == 0:
                         self._log_quantization_diagnostics()
 
-                    # ✅ RESET for next accumulation cycle
-                    accumulation_metrics = {'loss': 0.0, 'raw_loss': 0.0, 'tokens': 0, 'accuracy': 0.0}
+                    # 🔥 FIX: RESET for next accumulation cycle
+                    accumulation_metrics = {
+                        'loss': 0.0, 
+                        'raw_loss': 0.0, 
+                        'tokens': 0, 
+                        'accuracy': 0.0,
+                        'step_count': 0  # 🔥 NEW: Reset counter
+                    }
                     accumulation_start_time = None
                     accumulation_compute_time = 0.0
 

@@ -1921,7 +1921,7 @@ def main():
     # 13. MONITORING & LOGGING PARAMETERS
     # ========================================================================
     monitoring_params = {
-        'verbosity': 'detailed',  #'silent', 'minimal', 'normal', 'detailed', 'debug', 'trace'
+        'verbosity': 'normal',  #'silent', 'minimal', 'normal', 'detailed', 'debug', 'trace'
         'log_level': "INFO",
         'experiment_name': f'Enhanced_Training_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
         'early_stopping_patience': 5,
