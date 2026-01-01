@@ -359,7 +359,6 @@ def load_pretrained_router(model, router_checkpoint_path: str):
         
     except Exception as e:
         print(f"\n❌ Error loading router: {e}")
-        import traceback
         traceback.print_exc()
         print("\n⚠️  Continuing with standard gates...")
         return model
@@ -2648,7 +2647,6 @@ def main():
                 
             except Exception as e:
                 print(f"\n❌ Router training failed: {e}")
-                import traceback
                 traceback.print_exc()
                 print("Continuing with standard gates...")
 

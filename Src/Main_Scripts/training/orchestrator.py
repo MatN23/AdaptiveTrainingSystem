@@ -16,7 +16,7 @@ from dataclasses import dataclass, asdict
 from collections import deque
 import threading
 import queue
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Optional
 import sys
 
@@ -37,7 +37,7 @@ warnings.filterwarnings('ignore', category=RuntimeWarning, module='numpy')
 import os
 import sys
 
-class VerbosityLevel(Enum):
+class VerbosityLevel(IntEnum):
     """Verbosity levels for orchestrator logging."""
     SILENT = 0      # Only critical errors
     MINIMAL = 1     # Major events only
@@ -1048,7 +1048,6 @@ class AdaptiveTrainingOrchestrator:
                     if consecutive_errors == 1 or consecutive_errors % 10 == 0:
                         logging.error(f"Error in monitoring loop (count: {consecutive_errors}): {e}")
                         if consecutive_errors <= 2:
-                            import traceback
                             logging.error(traceback.format_exc())
                     
                     # Stop if too many errors
@@ -1307,7 +1306,6 @@ class AdaptiveTrainingOrchestrator:
         except Exception as e:
             self.logger.error(f"Failed to execute {decision.decision_type}: {e}")
             if self.verbosity >= VerbosityLevel.DEBUG:
-                import traceback
                 self.logger.debug(traceback.format_exc())
 
     def set_verbosity(self, level: str):
@@ -1510,7 +1508,7 @@ class AdaptiveTrainingOrchestrator:
             logging.warning(f"⚠️ Loss spike detected: {loss:.4f} (threshold: {threshold:.4f})")
             
             # Create adaptive decision
-            from orchestrator import AdaptiveDecision
+            from training.orchestrator import AdaptiveDecision
             decision = AdaptiveDecision(
                 decision_type='loss_spike_response',
                 parameters={'factor': 0.5, 'reason': 'loss_spike'},
@@ -1527,7 +1525,7 @@ class AdaptiveTrainingOrchestrator:
             """Called when gradient norm exceeds threshold."""
             logging.warning(f"🚨 Gradient explosion: {grad_norm:.2f} (threshold: {threshold:.2f})")
             
-            from orchestrator import AdaptiveDecision
+            from training.orchestrator import AdaptiveDecision
             decision = AdaptiveDecision(
                 decision_type='emergency_lr_reduction',
                 parameters={'factor': 0.1, 'reason': 'gradient_explosion'},
@@ -1690,7 +1688,6 @@ class AdaptiveTrainingOrchestrator:
                 except Exception as e:
                     self.logger.error(f"Exception starting monitoring thread: {e}")
                     if self.verbosity >= VerbosityLevel.DEBUG:
-                        import traceback
                         self.logger.debug(traceback.format_exc())
             else:
                 self.logger.info("✓ Monitoring thread already running")
@@ -1874,7 +1871,6 @@ class AdaptiveTrainingOrchestrator:
             self.logger.error(f"Training failed with error: {e}")
             
             if self.verbosity >= VerbosityLevel.DEBUG:
-                import traceback
                 self.logger.debug("Full traceback:")
                 self.logger.debug(traceback.format_exc())
             

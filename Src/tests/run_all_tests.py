@@ -57,6 +57,7 @@ def main():
             str(tests_dir / 'test_integration.py'),
             str(tests_dir / 'test_performance.py'),
             str(tests_dir / 'test_orchestrator.py'),
+            str(tests_dir / 'test_initialization.py'),
         ]
         if not args.fast:
             test_files.append(str(tests_dir / 'test_e2e.py'))
