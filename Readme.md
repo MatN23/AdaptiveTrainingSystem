@@ -47,7 +47,7 @@ Adaptive Training System is a production-grade transformer training framework im
 
 **Core capabilities:**
 - **Sparse architectures:** MoE (8-64 experts), MoD (dynamic depth), hybrid configurations
-- **CUDA acceleration:** Custom kernels for RMSNorm (3-4x faster), RoPE (5-7x faster), SwiGLU (2-3x faster), MoE routing (2-4x faster), fused loss computation
+- **CUDA acceleration:** Custom kernels for RMSNorm (3-4x faster), RoPE (2-4x faster), SwiGLU (2-3x faster), MoE routing (2-4x faster), fused loss computation
 - **Metal acceleration:** Custom Metal shaders for Apple Silicon - RMSNorm (2-3x faster), RoPE (3-5x faster), SwiGLU (2-3x faster), MoE routing
 - **Adaptive orchestrator:** 18 autonomous intervention methods for training optimization
 - **Chinchilla scaling:** Automatic epoch calculation based on compute-optimal principles
@@ -86,7 +86,7 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
 Standard architecture with LLaMA/GPT-NeoX design patterns:
 - **Pre-normalization:** RMSNorm before attention/FFN (CUDA-accelerated, 3-4x faster)
 - **Grouped Query Attention:** Reduces KV cache via shared KV heads (typical ratio 4:1 or 8:1)
-- **Rotary Position Embeddings:** Length generalization with configurable theta (10000 base, 1000000 extended), CUDA-accelerated RoPE application (5-7x faster)
+- **Rotary Position Embeddings:** Length generalization with configurable theta (10000 base, 1000000 extended), CUDA-accelerated RoPE application (2-4x faster)
 - **SwiGLU activation:** Two-path gating in FFN, intermediate_size typically 8/3 × hidden_size, CUDA-accelerated (2-3x faster)
 - **Optional Flash Attention 2.x:** 2-4x speedup on Ampere+ GPUs with memory-efficient attention
 
@@ -216,7 +216,7 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
   - Loop unrolling for common hidden sizes
 - **Performance:** ~3.2ms → ~0.9ms per 1000 tokens (hidden_size=768)
 
-**2. Rotary Position Embeddings (5-7x faster)**
+**2. Rotary Position Embeddings (2-4x faster)**
 - **Optimized precompute:** Vectorized cos/sin cache generation
 - **Efficient application:** Reduced redundant memory access
 - **Key optimizations:**

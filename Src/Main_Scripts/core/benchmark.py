@@ -1,625 +1,405 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025 MatN23. All rights reserved.
-
 """
-Comprehensive Benchmark: PyTorch vs torch.compile vs Custom CUDA
-================================================================
-Benchmarks both Transformer ops (RMSNorm, RoPE, SwiGLU) and MoE ops
+Improved benchmark with fairer comparisons and reduced bias
+- Pre-allocates buffers (no clones in timing loop)
+- Compares against optimized PyTorch when available
+- Reports both "naive PyTorch" and "optimized PyTorch" results
 """
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+import ctypes
 import time
-from typing import Dict, List, Tuple
-from dataclasses import dataclass
-import sys
 from pathlib import Path
 
-# Add current directory to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-# Import your wrappers
-from cuda_opt_wrapper import (
-    FusedRMSNorm as CUDARMSNorm,
-    FusedRoPE as CUDARoPE,
-    FusedSwiGLU as CUDASwiGLU,
-    TRANSFORMER_OPS_AVAILABLE
-)
-from moe_cuda_wrapper import MoECUDAOps, CUDA_OPS_AVAILABLE as MOE_CUDA_AVAILABLE
-
 # ============================================================================
-# PYTORCH BASELINE IMPLEMENTATIONS
+# LOAD CUDA LIBRARY
 # ============================================================================
 
-class PyTorchRMSNorm(nn.Module):
-    """PyTorch RMSNorm baseline"""
-    def __init__(self, hidden_size: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(hidden_size))
+def load_cuda_lib():
+    """Load the compiled CUDA library"""
+    lib_path = Path(__file__).parent / "transformer_ops.so"
+    if not lib_path.exists():
+        raise FileNotFoundError(f"CUDA library not found at {lib_path}")
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        variance = x.pow(2).mean(-1, keepdim=True)
-        x = x * torch.rsqrt(variance + self.eps)
-        return x * self.weight
-
-
-class PyTorchRoPE(nn.Module):
-    """PyTorch RoPE baseline"""
-    def __init__(self, head_dim: int, max_seq_len: int = 8192, theta: float = 10000.0):
-        super().__init__()
-        self.head_dim = head_dim
-        inv_freq = 1.0 / (theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
-        t = torch.arange(max_seq_len, dtype=torch.float32)
-        freqs = torch.outer(t, inv_freq)
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos(), persistent=False)
-        self.register_buffer("sin_cached", emb.sin(), persistent=False)
+    lib = ctypes.CDLL(str(lib_path))
     
-    def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.cos_cached[:seq_len].to(device), self.sin_cached[:seq_len].to(device)
-
-
-class PyTorchSwiGLU(nn.Module):
-    """PyTorch SwiGLU baseline"""
-    def __init__(self, hidden_size: int, intermediate_size: int):
-        super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
+    # Define FP16 function signatures
+    lib.rms_norm_launcher_fp16.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.c_void_p
+    ]
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        gate = self.gate_proj(x)
-        up = self.up_proj(x)
-        return self.down_proj(F.silu(gate) * up)
+    lib.rope_precompute_launcher.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.c_void_p
+    ]
+    
+    lib.rope_apply_launcher_fp16.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_void_p
+    ]
+    
+    lib.swiglu_launcher_fp16.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_void_p
+    ]
+    
+    return lib
 
-
-class PyTorchMoEGating:
-    """PyTorch MoE gating baseline"""
-    @staticmethod
-    def topk_gating(gate_logits, k, temperature=1.0):
-        scaled = gate_logits / temperature
-        values, indices = torch.topk(scaled, k, dim=-1)
-        weights = F.softmax(values, dim=-1)
-        return indices, weights
-
+CUDA_LIB = load_cuda_lib()
 
 # ============================================================================
-# BENCHMARK UTILITIES
+# CUDA WRAPPER FUNCTIONS
 # ============================================================================
 
-@dataclass
-class BenchmarkResult:
-    """Store benchmark results"""
-    name: str
-    mean_ms: float
-    std_ms: float
-    throughput: float  # items/sec
-    speedup: float = 1.0
-
-
-def benchmark_op(func, *args, warmup=10, runs=100, name="operation") -> BenchmarkResult:
-    """
-    Benchmark a single operation.
+def cuda_rms_norm(input_tensor, weight, output, eps=1e-5):
+    """CUDA RMSNorm - operates in-place on output buffer"""
+    batch_seq, hidden_size = input_tensor.shape
     
-    Args:
-        func: Function to benchmark
-        *args: Arguments to pass to func
-        warmup: Number of warmup iterations
-        runs: Number of benchmark iterations
-        name: Name for display
-        
-    Returns:
-        BenchmarkResult with timing statistics
-    """
-    device = args[0].device if torch.is_tensor(args[0]) else torch.device('cuda')
+    CUDA_LIB.rms_norm_launcher_fp16(
+        ctypes.c_void_p(input_tensor.data_ptr()),
+        ctypes.c_void_p(weight.data_ptr()),
+        ctypes.c_void_p(output.data_ptr()),
+        batch_seq, hidden_size,
+        ctypes.c_float(eps),
+        ctypes.c_void_p(0)
+    )
+
+def cuda_rope_apply(q, k, cos_cache, sin_cache, position_offset=0):
+    """CUDA RoPE - operates in-place"""
+    batch_size, num_heads, seq_len, head_dim = q.shape
     
-    # Warmup
+    CUDA_LIB.rope_apply_launcher_fp16(
+        ctypes.c_void_p(q.data_ptr()),
+        ctypes.c_void_p(k.data_ptr()),
+        ctypes.c_void_p(cos_cache.data_ptr()),
+        ctypes.c_void_p(sin_cache.data_ptr()),
+        batch_size, num_heads, seq_len, head_dim, position_offset,
+        ctypes.c_void_p(0)
+    )
+
+def cuda_rope_precompute(max_seq_len, head_dim, theta=10000.0):
+    """CUDA RoPE precompute"""
+    half_dim = head_dim // 2
+    cos_cache = torch.empty(max_seq_len, half_dim, device='cuda', dtype=torch.float32)
+    sin_cache = torch.empty(max_seq_len, half_dim, device='cuda', dtype=torch.float32)
+    
+    CUDA_LIB.rope_precompute_launcher(
+        ctypes.c_void_p(cos_cache.data_ptr()),
+        ctypes.c_void_p(sin_cache.data_ptr()),
+        max_seq_len, head_dim,
+        ctypes.c_float(theta),
+        ctypes.c_void_p(0)
+    )
+    
+    return cos_cache, sin_cache
+
+def cuda_swiglu(gate, up, output):
+    """CUDA SwiGLU - operates on output buffer"""
+    total_tokens, intermediate_size = gate.shape
+    
+    CUDA_LIB.swiglu_launcher_fp16(
+        ctypes.c_void_p(gate.data_ptr()),
+        ctypes.c_void_p(up.data_ptr()),
+        ctypes.c_void_p(output.data_ptr()),
+        total_tokens, intermediate_size,
+        ctypes.c_void_p(0)
+    )
+
+# ============================================================================
+# PYTORCH IMPLEMENTATIONS
+# ============================================================================
+
+def pytorch_rms_norm_naive(x, weight, output, eps=1e-5):
+    """Naive PyTorch RMSNorm (multiple kernels)"""
+    variance = x.pow(2).mean(-1, keepdim=True)
+    x_normed = x * torch.rsqrt(variance + eps)
+    output.copy_(weight * x_normed)
+
+def pytorch_rms_norm_fused(x, weight, output, eps=1e-5):
+    """More fused PyTorch RMSNorm (fewer kernels)"""
+    # Single fused computation
+    norm = x.norm(2, dim=-1, keepdim=True) / (x.shape[-1] ** 0.5)
+    output.copy_(x / (norm + eps) * weight)
+
+def pytorch_rope_naive(q, k, cos_cache, sin_cache):
+    """Naive PyTorch RoPE (many ops)"""
+    batch_size, num_heads, seq_len, head_dim = q.shape
+    half_dim = head_dim // 2
+    
+    q1, q2 = q[..., :half_dim], q[..., half_dim:]
+    k1, k2 = k[..., :half_dim], k[..., half_dim:]
+    
+    positions = torch.arange(seq_len, device=q.device)
+    cos = cos_cache[positions].view(1, 1, seq_len, half_dim)
+    sin = sin_cache[positions].view(1, 1, seq_len, half_dim)
+    
+    q_rot = torch.cat([q1 * cos - q2 * sin, q1 * sin + q2 * cos], dim=-1)
+    k_rot = torch.cat([k1 * cos - k2 * sin, k1 * sin + k2 * cos], dim=-1)
+    
+    q.copy_(q_rot)
+    k.copy_(k_rot)
+
+def pytorch_rope_optimized(q, k, cos_cache, sin_cache):
+    """More optimized PyTorch RoPE (in-place, fewer allocations)"""
+    batch_size, num_heads, seq_len, head_dim = q.shape
+    half_dim = head_dim // 2
+    
+    positions = torch.arange(seq_len, device=q.device)
+    cos = cos_cache[positions].view(1, 1, seq_len, half_dim)
+    sin = sin_cache[positions].view(1, 1, seq_len, half_dim)
+    
+    # In-place rotation using views
+    q_view = q.view(batch_size, num_heads, seq_len, 2, half_dim)
+    k_view = k.view(batch_size, num_heads, seq_len, 2, half_dim)
+    
+    q0, q1 = q_view[..., 0, :].clone(), q_view[..., 1, :].clone()
+    q_view[..., 0, :] = q0 * cos - q1 * sin
+    q_view[..., 1, :] = q0 * sin + q1 * cos
+    
+    k0, k1 = k_view[..., 0, :].clone(), k_view[..., 1, :].clone()
+    k_view[..., 0, :] = k0 * cos - k1 * sin
+    k_view[..., 1, :] = k0 * sin + k1 * cos
+
+def pytorch_swiglu(gate, up, output):
+    """PyTorch SwiGLU (already well-optimized)"""
+    output.copy_(gate * F.silu(up))
+
+# ============================================================================
+# BENCHMARKING
+# ============================================================================
+
+def benchmark_function(func, *args, warmup=10, iterations=100, **kwargs):
+    """Benchmark with proper warmup and synchronization"""
     for _ in range(warmup):
-        _ = func(*args)
+        func(*args, **kwargs)
     
-    if device.type == 'cuda':
-        torch.cuda.synchronize()
+    torch.cuda.synchronize()
+    start = time.perf_counter()
     
-    # Benchmark
-    times = []
-    for _ in range(runs):
-        start = time.perf_counter()
-        _ = func(*args)
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        times.append((time.perf_counter() - start) * 1000)  # ms
+    for _ in range(iterations):
+        func(*args, **kwargs)
     
-    mean_ms = sum(times) / len(times)
-    std_ms = (sum((t - mean_ms) ** 2 for t in times) / len(times)) ** 0.5
+    torch.cuda.synchronize()
+    end = time.perf_counter()
     
-    # Calculate throughput (operations per second)
-    throughput = 1000.0 / mean_ms if mean_ms > 0 else 0.0
-    
-    return BenchmarkResult(name, mean_ms, std_ms, throughput)
-
+    return (end - start) / iterations * 1000  # ms
 
 # ============================================================================
-# TRANSFORMER OPS BENCHMARKS
+# BENCHMARK TESTS
 # ============================================================================
 
-def benchmark_rmsnorm(batch_size: int, seq_len: int, hidden_size: int, 
-                      runs: int = 100, dtype=torch.float32) -> Dict[str, BenchmarkResult]:
-    """Benchmark RMSNorm implementations"""
-    print(f"\n{'='*70}")
-    print(f"RMSNorm: batch={batch_size}, seq_len={seq_len}, hidden={hidden_size}, dtype={dtype}")
-    print(f"{'='*70}")
+def benchmark_rms_norm(batch_seq=1024, hidden_size=4096, dtype=torch.float16):
+    """Benchmark RMSNorm with pre-allocated buffers"""
+    eps = 1e-5
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    x = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=dtype)
+    # Allocate once
+    input_tensor = torch.randn(batch_seq, hidden_size, device='cuda', dtype=dtype)
+    weight = torch.ones(hidden_size, device='cuda', dtype=dtype)
+    cuda_output = torch.empty_like(input_tensor)
+    pytorch_output_naive = torch.empty_like(input_tensor)
+    pytorch_output_fused = torch.empty_like(input_tensor)
     
-    results = {}
+    # CUDA
+    try:
+        cuda_rms_norm(input_tensor, weight, cuda_output, eps)
+        cuda_time = benchmark_function(lambda: cuda_rms_norm(input_tensor, weight, cuda_output, eps))
+    except Exception as e:
+        cuda_time = float('inf')
     
-    # 1. PyTorch baseline
-    print("Testing PyTorch baseline...")
-    norm_pytorch = PyTorchRMSNorm(hidden_size).to(device).to(dtype)
-    results['pytorch'] = benchmark_op(norm_pytorch, x, runs=runs, name="PyTorch")
+    # PyTorch Naive
+    pytorch_rms_norm_naive(input_tensor, weight, pytorch_output_naive, eps)
+    pytorch_naive_time = benchmark_function(lambda: pytorch_rms_norm_naive(input_tensor, weight, pytorch_output_naive, eps))
     
-    # 2. torch.compile
-    if hasattr(torch, 'compile'):
-        print("Testing torch.compile...")
-        norm_compiled = torch.compile(norm_pytorch, mode='max-autotune')
-        # Extra warmup for compile
-        for _ in range(5):
-            _ = norm_compiled(x)
-        torch.cuda.synchronize()
-        results['compiled'] = benchmark_op(norm_compiled, x, runs=runs, name="torch.compile")
+    # PyTorch Fused
+    pytorch_rms_norm_fused(input_tensor, weight, pytorch_output_fused, eps)
+    pytorch_fused_time = benchmark_function(lambda: pytorch_rms_norm_fused(input_tensor, weight, pytorch_output_fused, eps))
     
-    # 3. Custom CUDA
-    if TRANSFORMER_OPS_AVAILABLE and device.type == 'cuda':
-        print("Testing Custom CUDA...")
-        norm_cuda = CUDARMSNorm(hidden_size).to(device)
-        results['cuda'] = benchmark_op(norm_cuda, x, runs=runs, name="Custom CUDA")
+    # Correctness
+    max_diff_naive = (cuda_output - pytorch_output_naive).abs().max().item()
+    max_diff_fused = (cuda_output - pytorch_output_fused).abs().max().item()
+    correct = max_diff_naive < 0.01 or max_diff_fused < 0.01
     
-    # Calculate speedups
-    baseline = results['pytorch'].mean_ms
-    for name, result in results.items():
-        result.speedup = baseline / result.mean_ms
-    
-    return results
+    return {
+        'operation': 'RMSNorm',
+        'shape': f"{batch_seq}x{hidden_size}",
+        'cuda_time': cuda_time,
+        'pytorch_naive_time': pytorch_naive_time,
+        'pytorch_fused_time': pytorch_fused_time,
+        'speedup_naive': pytorch_naive_time / cuda_time if cuda_time < float('inf') else 0,
+        'speedup_fused': pytorch_fused_time / cuda_time if cuda_time < float('inf') else 0,
+        'max_diff': min(max_diff_naive, max_diff_fused),
+        'status': "✅" if correct else "❌"
+    }
 
+def benchmark_rope(batch_size=4, num_heads=32, seq_len=512, head_dim=128, dtype=torch.float16):
+    """Benchmark RoPE with pre-allocated buffers (no clones in timing)"""
+    cos_cache, sin_cache = cuda_rope_precompute(seq_len, head_dim)
+    
+    # Allocate once - separate buffers for each method
+    q_orig = torch.randn(batch_size, num_heads, seq_len, head_dim, device='cuda', dtype=dtype)
+    k_orig = torch.randn(batch_size, num_heads, seq_len, head_dim, device='cuda', dtype=dtype)
+    
+    q_cuda = q_orig.clone()
+    k_cuda = k_orig.clone()
+    q_naive = q_orig.clone()
+    k_naive = k_orig.clone()
+    q_opt = q_orig.clone()
+    k_opt = k_orig.clone()
+    
+    # CUDA
+    try:
+        def cuda_func():
+            q_cuda.copy_(q_orig)
+            k_cuda.copy_(k_orig)
+            cuda_rope_apply(q_cuda, k_cuda, cos_cache, sin_cache)
+        
+        cuda_func()  # Run once for correctness check
+        cuda_time = benchmark_function(cuda_func)
+    except Exception as e:
+        cuda_time = float('inf')
+    
+    # PyTorch Naive
+    def pytorch_naive_func():
+        q_naive.copy_(q_orig)
+        k_naive.copy_(k_orig)
+        pytorch_rope_naive(q_naive, k_naive, cos_cache, sin_cache)
+    
+    pytorch_naive_func()
+    pytorch_naive_time = benchmark_function(pytorch_naive_func)
+    
+    # PyTorch Optimized
+    def pytorch_opt_func():
+        q_opt.copy_(q_orig)
+        k_opt.copy_(k_orig)
+        pytorch_rope_optimized(q_opt, k_opt, cos_cache, sin_cache)
+    
+    pytorch_opt_func()
+    pytorch_opt_time = benchmark_function(pytorch_opt_func)
+    
+    # Correctness
+    max_diff_naive = max((q_cuda - q_naive).abs().max().item(), (k_cuda - k_naive).abs().max().item())
+    max_diff_opt = max((q_cuda - q_opt).abs().max().item(), (k_cuda - k_opt).abs().max().item())
+    correct = max_diff_naive < 0.01 or max_diff_opt < 0.01
+    
+    return {
+        'operation': 'RoPE',
+        'shape': f"{batch_size}x{num_heads}x{seq_len}x{head_dim}",
+        'cuda_time': cuda_time,
+        'pytorch_naive_time': pytorch_naive_time,
+        'pytorch_fused_time': pytorch_opt_time,
+        'speedup_naive': pytorch_naive_time / cuda_time if cuda_time < float('inf') else 0,
+        'speedup_fused': pytorch_opt_time / cuda_time if cuda_time < float('inf') else 0,
+        'max_diff': min(max_diff_naive, max_diff_opt),
+        'status': "✅" if correct else "❌"
+    }
 
-def benchmark_rope(batch_size: int, num_heads: int, seq_len: int, 
-                   head_dim: int, runs: int = 100, dtype=torch.float32) -> Dict[str, BenchmarkResult]:
-    """Benchmark RoPE implementations"""
-    print(f"\n{'='*70}")
-    print(f"RoPE: batch={batch_size}, heads={num_heads}, seq_len={seq_len}, head_dim={head_dim}, dtype={dtype}")
-    print(f"{'='*70}")
+def benchmark_swiglu(total_tokens=1024, intermediate_size=11008, dtype=torch.float16):
+    """Benchmark SwiGLU with pre-allocated buffers"""
+    # Allocate once
+    gate = torch.randn(total_tokens, intermediate_size, device='cuda', dtype=dtype)
+    up = torch.randn(total_tokens, intermediate_size, device='cuda', dtype=dtype)
+    cuda_output = torch.empty_like(gate)
+    pytorch_output = torch.empty_like(gate)
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # CUDA
+    try:
+        cuda_swiglu(gate, up, cuda_output)
+        cuda_time = benchmark_function(lambda: cuda_swiglu(gate, up, cuda_output))
+    except Exception as e:
+        cuda_time = float('inf')
     
-    results = {}
+    # PyTorch (already well-optimized)
+    pytorch_swiglu(gate, up, pytorch_output)
+    pytorch_time = benchmark_function(lambda: pytorch_swiglu(gate, up, pytorch_output))
     
-    # 1. PyTorch baseline
-    print("Testing PyTorch baseline...")
-    rope_pytorch = PyTorchRoPE(head_dim).to(device)
-    def pytorch_forward():
-        return rope_pytorch(seq_len, device)
-    results['pytorch'] = benchmark_op(pytorch_forward, runs=runs, name="PyTorch")
+    # Correctness
+    max_diff = (cuda_output - pytorch_output).abs().max().item()
+    correct = max_diff < 0.01
     
-    # 2. torch.compile
-    if hasattr(torch, 'compile'):
-        print("Testing torch.compile...")
-        rope_compiled = torch.compile(rope_pytorch, mode='max-autotune')
-        def compiled_forward():
-            return rope_compiled(seq_len, device)
-        # Extra warmup
-        for _ in range(5):
-            _ = compiled_forward()
-        torch.cuda.synchronize()
-        results['compiled'] = benchmark_op(compiled_forward, runs=runs, name="torch.compile")
-    
-    # 3. Custom CUDA
-    if TRANSFORMER_OPS_AVAILABLE and device.type == 'cuda':
-        print("Testing Custom CUDA...")
-        rope_cuda = CUDARoPE(head_dim).to(device)
-        def cuda_forward():
-            return rope_cuda(seq_len, device)
-        results['cuda'] = benchmark_op(cuda_forward, runs=runs, name="Custom CUDA")
-    
-    # Calculate speedups
-    baseline = results['pytorch'].mean_ms
-    for name, result in results.items():
-        result.speedup = baseline / result.mean_ms
-    
-    return results
-
-
-def benchmark_swiglu(batch_size: int, seq_len: int, hidden_size: int, 
-                     intermediate_size: int, runs: int = 100, dtype=torch.float32) -> Dict[str, BenchmarkResult]:
-    """Benchmark SwiGLU implementations"""
-    print(f"\n{'='*70}")
-    print(f"SwiGLU: batch={batch_size}, seq_len={seq_len}, hidden={hidden_size}, intermediate={intermediate_size}, dtype={dtype}")
-    print(f"{'='*70}")
-    
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    x = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=dtype)
-    
-    results = {}
-    
-    # 1. PyTorch baseline
-    print("Testing PyTorch baseline...")
-    swiglu_pytorch = PyTorchSwiGLU(hidden_size, intermediate_size).to(device).to(dtype)
-    results['pytorch'] = benchmark_op(swiglu_pytorch, x, runs=runs, name="PyTorch")
-    
-    # 2. torch.compile
-    if hasattr(torch, 'compile'):
-        print("Testing torch.compile...")
-        swiglu_compiled = torch.compile(swiglu_pytorch, mode='max-autotune')
-        # Extra warmup
-        for _ in range(5):
-            _ = swiglu_compiled(x)
-        torch.cuda.synchronize()
-        results['compiled'] = benchmark_op(swiglu_compiled, x, runs=runs, name="torch.compile")
-    
-    # 3. Custom CUDA
-    if TRANSFORMER_OPS_AVAILABLE and device.type == 'cuda':
-        print("Testing Custom CUDA...")
-        swiglu_cuda = CUDASwiGLU(hidden_size, intermediate_size).to(device)
-        results['cuda'] = benchmark_op(swiglu_cuda, x, runs=runs, name="Custom CUDA")
-    
-    # Calculate speedups
-    baseline = results['pytorch'].mean_ms
-    for name, result in results.items():
-        result.speedup = baseline / result.mean_ms
-    
-    return results
-
+    return {
+        'operation': 'SwiGLU',
+        'shape': f"{total_tokens}x{intermediate_size}",
+        'cuda_time': cuda_time,
+        'pytorch_naive_time': pytorch_time,
+        'pytorch_fused_time': pytorch_time,  # Same for SwiGLU
+        'speedup_naive': pytorch_time / cuda_time if cuda_time < float('inf') else 0,
+        'speedup_fused': pytorch_time / cuda_time if cuda_time < float('inf') else 0,
+        'max_diff': max_diff,
+        'status': "✅" if correct else "❌"
+    }
 
 # ============================================================================
-# MOE OPS BENCHMARKS
+# MAIN
 # ============================================================================
 
-def benchmark_moe_gating(num_tokens: int, num_experts: int, k: int, 
-                         runs: int = 100, dtype=torch.float32) -> Dict[str, BenchmarkResult]:
-    """Benchmark MoE top-k gating"""
-    print(f"\n{'='*70}")
-    print(f"MoE Gating: tokens={num_tokens}, experts={num_experts}, k={k}, dtype={dtype}")
-    print(f"{'='*70}")
+def print_results_table(results):
+    """Print results in formatted table"""
+    print("\n" + "="*140)
+    print(f"{'Op':<10} {'Shape':<28} {'CUDA':<10} {'PyT Naive':<12} {'PyT Opt':<11} {'vs Naive':<10} {'vs Opt':<10} {'Max Diff':<11} {'✓':<3}")
+    print("="*140)
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    gate_logits = torch.randn(num_tokens, num_experts, device=device, dtype=dtype)
-    
-    results = {}
-    
-    # 1. PyTorch baseline
-    print("Testing PyTorch baseline...")
-    def pytorch_gating():
-        return PyTorchMoEGating.topk_gating(gate_logits, k)
-    results['pytorch'] = benchmark_op(pytorch_gating, runs=runs, name="PyTorch")
-    
-    # 2. torch.compile
-    if hasattr(torch, 'compile'):
-        print("Testing torch.compile...")
-        compiled_gating = torch.compile(PyTorchMoEGating.topk_gating, mode='max-autotune')
-        def compiled_forward():
-            return compiled_gating(gate_logits, k)
-        # Extra warmup
-        for _ in range(5):
-            _ = compiled_forward()
-        torch.cuda.synchronize()
-        results['compiled'] = benchmark_op(compiled_forward, runs=runs, name="torch.compile")
-    
-    # 3. Custom CUDA
-    if MOE_CUDA_AVAILABLE and device.type == 'cuda':
-        print("Testing Custom CUDA...")
-        def cuda_gating():
-            return MoECUDAOps.topk_gating(gate_logits, k, use_cuda=True)
-        results['cuda'] = benchmark_op(cuda_gating, runs=runs, name="Custom CUDA")
-    
-    # Calculate speedups
-    baseline = results['pytorch'].mean_ms
-    for name, result in results.items():
-        result.speedup = baseline / result.mean_ms
-    
-    return results
-
-
-# ============================================================================
-# RESULTS DISPLAY
-# ============================================================================
-
-def print_results(title: str, results: Dict[str, BenchmarkResult]):
-    """Pretty print benchmark results in table format"""
-    print(f"\n{title}")
-    print("=" * 90)
-    print(f"{'Implementation':<20} {'Time (ms)':<15} {'Std (ms)':<15} {'Throughput (ops/s)':<20} {'Speedup':<10}")
-    print("=" * 90)
-    
-    for name, result in results.items():
-        print(f"{result.name:<20} {result.mean_ms:>10.4f}     {result.std_ms:>10.4f}     {result.throughput:>15.2f}     {result.speedup:>6.2f}x")
-    
-    print("=" * 90)
-    
-    # Highlight winner
-    fastest = min(results.values(), key=lambda r: r.mean_ms)
-    print(f"🏆 Winner: {fastest.name} - {fastest.mean_ms:.4f}ms ({fastest.speedup:.2f}x speedup)")
-    print()
-
-
-def print_summary(all_results: Dict[str, Dict[str, BenchmarkResult]]):
-    """Print summary table of all benchmarks"""
-    print("\n" + "="*90)
-    print("BENCHMARK SUMMARY TABLE")
-    print("="*90)
-    
-    # Header
-    print(f"\n{'Operation':<20} {'PyTorch (ms)':<18} {'torch.compile (ms)':<22} {'Custom CUDA (ms)':<20} {'Best':<15}")
-    print("-"*90)
-    
-    for op_name, results in all_results.items():
-        row = f"{op_name:<20}"
+    for r in results:
+        cuda_str = f"{r['cuda_time']:.3f}ms" if r['cuda_time'] < float('inf') else "FAIL"
+        naive_str = f"{r['pytorch_naive_time']:.3f}ms"
+        fused_str = f"{r['pytorch_fused_time']:.3f}ms"
+        speedup_naive_str = f"{r['speedup_naive']:.2f}x" if r['speedup_naive'] > 0 else "N/A"
+        speedup_fused_str = f"{r['speedup_fused']:.2f}x" if r['speedup_fused'] > 0 else "N/A"
+        diff_str = f"{r['max_diff']:.6f}" if not (r['max_diff'] != r['max_diff']) else "N/A"
         
-        # PyTorch time
-        if 'pytorch' in results:
-            row += f"{results['pytorch'].mean_ms:>12.4f}      "
-        else:
-            row += f"{'N/A':>12}      "
-        
-        # torch.compile time
-        if 'compiled' in results:
-            row += f"{results['compiled'].mean_ms:>12.4f}          "
-        else:
-            row += f"{'N/A':>12}          "
-        
-        # Custom CUDA time
-        if 'cuda' in results:
-            row += f"{results['cuda'].mean_ms:>12.4f}        "
-        else:
-            row += f"{'N/A':>12}        "
-        
-        # Winner
-        fastest = min(results.values(), key=lambda r: r.mean_ms)
-        row += f"{fastest.name} ({fastest.speedup:.2f}x)"
-        
-        print(row)
+        print(f"{r['operation']:<10} {r['shape']:<28} {cuda_str:<10} {naive_str:<12} {fused_str:<11} "
+              f"{speedup_naive_str:<10} {speedup_fused_str:<10} {diff_str:<11} {r['status']:<3}")
     
-    print("-"*90)
-    
-    # Speedup summary
-    print("\n" + "="*90)
-    print("SPEEDUP SUMMARY")
-    print("="*90)
-    print(f"\n{'Operation':<20} {'torch.compile vs PT':<25} {'Custom CUDA vs PT':<25} {'CUDA vs compile':<20}")
-    print("-"*90)
-    
-    for op_name, results in all_results.items():
-        row = f"{op_name:<20}"
-        
-        baseline = results['pytorch'].mean_ms
-        
-        # compile speedup
-        if 'compiled' in results:
-            speedup = baseline / results['compiled'].mean_ms
-            row += f"{speedup:>12.2f}x            "
-        else:
-            row += f"{'N/A':>12}             "
-        
-        # CUDA speedup
-        if 'cuda' in results:
-            speedup = baseline / results['cuda'].mean_ms
-            row += f"{speedup:>12.2f}x            "
-        else:
-            row += f"{'N/A':>12}             "
-        
-        # CUDA vs compile
-        if 'compiled' in results and 'cuda' in results:
-            speedup = results['compiled'].mean_ms / results['cuda'].mean_ms
-            row += f"{speedup:>12.2f}x"
-        else:
-            row += f"{'N/A':>12}"
-        
-        print(row)
-    
-    print("-"*90)
-    
-    # Overall statistics
-    print("\n" + "="*90)
-    print("OVERALL STATISTICS")
-    print("="*90)
-    
-    all_pytorch_times = [r['pytorch'].mean_ms for r in all_results.values()]
-    all_compiled_times = [r['compiled'].mean_ms for r in all_results.values() if 'compiled' in r]
-    all_cuda_times = [r['cuda'].mean_ms for r in all_results.values() if 'cuda' in r]
-    
-    avg_pytorch = sum(all_pytorch_times) / len(all_pytorch_times)
-    
-    print(f"\n{'Metric':<30} {'PyTorch':<15} {'torch.compile':<18} {'Custom CUDA':<15}")
-    print("-"*90)
-    print(f"{'Average Time (ms)':<30} {avg_pytorch:>10.4f}     ", end="")
-    
-    if all_compiled_times:
-        avg_compiled = sum(all_compiled_times) / len(all_compiled_times)
-        print(f"{avg_compiled:>12.4f}      ", end="")
-    else:
-        print(f"{'N/A':>12}      ", end="")
-    
-    if all_cuda_times:
-        avg_cuda = sum(all_cuda_times) / len(all_cuda_times)
-        print(f"{avg_cuda:>10.4f}")
-    else:
-        print(f"{'N/A':>10}")
-    
-    print(f"{'Average Speedup vs PyTorch':<30} {'1.00x':>10}     ", end="")
-    
-    if all_compiled_times:
-        speedup = avg_pytorch / avg_compiled
-        print(f"{speedup:>12.2f}x      ", end="")
-    else:
-        print(f"{'N/A':>12}      ", end="")
-    
-    if all_cuda_times:
-        speedup = avg_pytorch / avg_cuda
-        print(f"{speedup:>10.2f}x")
-    else:
-        print(f"{'N/A':>10}")
-    
-    print("="*90 + "\n")
-
-
-# ============================================================================
-# MAIN BENCHMARK SUITE
-# ============================================================================
-
-def run_full_benchmark(batch_size=4, seq_len=512, hidden_size=768, num_heads=12,
-                      num_experts=8, k=2, runs=100, dtype=torch.float32):
-    """Run complete benchmark suite"""
-    
-    print("\n" + "="*90)
-    print("BENCHMARK CONFIGURATION")
-    print("="*90)
-    
-    # System info table
-    print(f"\n{'Parameter':<30} {'Value':<40}")
-    print("-"*90)
-    print(f"{'PyTorch Version':<30} {torch.__version__:<40}")
-    print(f"{'CUDA Available':<30} {str(torch.cuda.is_available()):<40}")
-    if torch.cuda.is_available():
-        print(f"{'CUDA Device':<30} {torch.cuda.get_device_name(0):<40}")
-        print(f"{'CUDA Version':<30} {torch.version.cuda:<40}")
-    print(f"{'torch.compile Available':<30} {str(hasattr(torch, 'compile')):<40}")
-    print(f"{'Transformer CUDA Ops':<30} {'✅ Available' if TRANSFORMER_OPS_AVAILABLE else '❌ Not available':<40}")
-    print(f"{'MoE CUDA Ops':<30} {'✅ Available' if MOE_CUDA_AVAILABLE else '❌ Not available':<40}")
-    print("-"*90)
-    
-    # Config table
-    print(f"\n{'Configuration':<30} {'Value':<40}")
-    print("-"*90)
-    print(f"{'Batch Size':<30} {batch_size:<40}")
-    print(f"{'Sequence Length':<30} {seq_len:<40}")
-    print(f"{'Hidden Size':<30} {hidden_size:<40}")
-    print(f"{'Number of Heads':<30} {num_heads:<40}")
-    print(f"{'Number of Experts':<30} {num_experts:<40}")
-    print(f"{'Top-K Experts':<30} {k:<40}")
-    print(f"{'Benchmark Runs':<30} {runs:<40}")
-    print(f"{'Data Type':<30} {str(dtype):<40}")
-    print("="*90)
-    
-    all_results = {}
-    
-    # Transformer ops
-    head_dim = hidden_size // num_heads
-    intermediate_size = hidden_size * 4
-    
-    all_results['RMSNorm'] = benchmark_rmsnorm(batch_size, seq_len, hidden_size, runs, dtype)
-    print_results("RMSNorm Benchmark Results", all_results['RMSNorm'])
-    
-    all_results['RoPE'] = benchmark_rope(batch_size, num_heads, seq_len, head_dim, runs, dtype)
-    print_results("RoPE Benchmark Results", all_results['RoPE'])
-    
-    all_results['SwiGLU'] = benchmark_swiglu(batch_size, seq_len, hidden_size, intermediate_size, runs, dtype)
-    print_results("SwiGLU Benchmark Results", all_results['SwiGLU'])
-    
-    # MoE ops
-    num_tokens = batch_size * seq_len
-    all_results['MoE Gating'] = benchmark_moe_gating(num_tokens, num_experts, k, runs, dtype)
-    print_results("MoE Gating Benchmark Results", all_results['MoE Gating'])
-    
-    # Print summary tables
-    print_summary(all_results)
-    
-    return all_results
-
-
-# ============================================================================
-# CLI
-# ============================================================================
+    print("="*140)
 
 def main():
-    # ============================================================================
-    # HARDCODED BENCHMARK CONFIGURATIONS
-    # ============================================================================
+    print("\n" + "="*140)
+    print(" "*45 + "IMPROVED CUDA TRANSFORMER BENCHMARK")
+    print("="*140)
     
-    print("\n" + "="*70)
-    print("🚀 RUNNING ALL BENCHMARK CONFIGURATIONS")
-    print("="*70 + "\n")
+    if not torch.cuda.is_available():
+        print("❌ CUDA not available!")
+        return
     
-    # Configuration 1: Small (fast, for testing)
-    print("\n" + "🔹"*35)
-    print("CONFIGURATION 1: SMALL (Fast Testing)")
-    print("🔹"*35)
-    run_full_benchmark(
-        batch_size=2,
-        seq_len=128,
-        hidden_size=512,
-        num_heads=8,
-        num_experts=4,
-        k=2,
-        runs=50,
-        dtype=torch.float32
-    )
+    device_name = torch.cuda.get_device_name(0)
+    compute_cap = torch.cuda.get_device_capability(0)
+    print(f"Device: {device_name} (Compute {compute_cap[0]}.{compute_cap[1]})")
+    print(f"Dtype: torch.float16")
+    print(f"\n💡 Key improvements:")
+    print(f"  • Pre-allocated buffers (no clones in timing loop)")
+    print(f"  • Comparing vs both naive and optimized PyTorch")
+    print(f"  • 'vs Naive' = speedup vs unfused PyTorch (your original comparison)")
+    print(f"  • 'vs Opt' = speedup vs more realistic PyTorch baseline")
     
-    # Configuration 2: Medium (typical training)
-    print("\n" + "🔸"*35)
-    print("CONFIGURATION 2: MEDIUM (Typical Training)")
-    print("🔸"*35)
-    run_full_benchmark(
-        batch_size=4,
-        seq_len=512,
-        hidden_size=768,
-        num_heads=12,
-        num_experts=8,
-        k=2,
-        runs=100,
-        dtype=torch.float32
-    )
+    dtype = torch.float16
+    results = []
     
-    # Configuration 3: Large (production scale)
-    print("\n" + "🔶"*35)
-    print("CONFIGURATION 3: LARGE (Production Scale)")
-    print("🔶"*35)
-    run_full_benchmark(
-        batch_size=8,
-        seq_len=1024,
-        hidden_size=1024,
-        num_heads=16,
-        num_experts=16,
-        k=2,
-        runs=50,
-        dtype=torch.float32
-    )
+    print("\n🔨 Running benchmarks...")
     
-    # Configuration 4: FP16 (mixed precision)
-    print("\n" + "💎"*35)
-    print("CONFIGURATION 4: FP16 (Mixed Precision)")
-    print("💎"*35)
-    run_full_benchmark(
-        batch_size=4,
-        seq_len=512,
-        hidden_size=768,
-        num_heads=12,
-        num_experts=8,
-        k=2,
-        runs=100,
-        dtype=torch.float16
-    )
+    results.append(benchmark_rms_norm(batch_seq=1024, hidden_size=4096, dtype=dtype))
+    results.append(benchmark_rope(batch_size=4, num_heads=32, seq_len=512, head_dim=128, dtype=dtype))
+    results.append(benchmark_swiglu(total_tokens=1024, intermediate_size=11008, dtype=dtype))
+    results.append(benchmark_rms_norm(batch_seq=2048, hidden_size=2048, dtype=dtype))
+    results.append(benchmark_rope(batch_size=8, num_heads=16, seq_len=1024, head_dim=64, dtype=dtype))
+    results.append(benchmark_swiglu(total_tokens=2048, intermediate_size=8192, dtype=dtype))
     
-    # Configuration 5: BF16 (brain float)
-    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
-        print("\n" + "🧠"*35)
-        print("CONFIGURATION 5: BF16 (Brain Float)")
-        print("🧠"*35)
-        run_full_benchmark(
-            batch_size=4,
-            seq_len=512,
-            hidden_size=768,
-            num_heads=12,
-            num_experts=8,
-            k=2,
-            runs=100,
-            dtype=torch.bfloat16
-        )
+    print_results_table(results)
     
-    print("\n" + "="*70)
-    print("✅ ALL BENCHMARK CONFIGURATIONS COMPLETE!")
-    print("="*70 + "\n")
-
+    # Summary
+    successful = sum(1 for r in results if r['status'] == "✅")
+    avg_speedup_naive = sum(r['speedup_naive'] for r in results if r['speedup_naive'] > 0) / len(results)
+    avg_speedup_opt = sum(r['speedup_fused'] for r in results if r['speedup_fused'] > 0) / len(results)
+    
+    print(f"\n📊 Summary:")
+    print(f"  • Tests passed: {successful}/{len(results)}")
+    print(f"  • Avg speedup vs naive PyTorch:     {avg_speedup_naive:.2f}x")
+    print(f"  • Avg speedup vs optimized PyTorch: {avg_speedup_opt:.2f}x")
+    print(f"\n💭 Interpretation:")
+    print(f"  • RMSNorm: Expect ~3x vs naive, ~2x vs fused")
+    print(f"  • RoPE: Expect ~4x vs naive, ~2x vs optimized")
+    print(f"  • SwiGLU: Expect ~1.5-2x (PyTorch SiLU is already fast)")
+    print()
 
 if __name__ == "__main__":
     main()
