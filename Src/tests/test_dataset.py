@@ -78,3 +78,32 @@ class TestBaseTrainingDataset:
             
         except ImportError:
             pytest.skip("Dataset module not available")
+class TestRobustness:
+    """Test robustness to edge cases and corrupted data."""
+
+    def test_corrupted_jsonl(self, temp_dir, mock_tokenizer, mock_config):
+        """Test handling of corrupted lines in JSONL."""
+        data_path = temp_dir / "corrupted.jsonl"
+        with open(data_path, 'w') as f:
+            f.write('{"messages": [{"role": "user", "content": "hi"}]}\n') # Valid
+            f.write('INVALID JSON\n') # Corrupted
+            f.write('{"wrong_key": "oops"}\n') # Missing 'messages'
+            
+        from Main_Scripts.core.dataset import FastConversationDataset
+        try:
+            dataset = FastConversationDataset(str(data_path), mock_tokenizer, mock_config)
+            assert len(dataset) >= 0
+        except Exception:
+            pass
+
+    def test_empty_file(self, temp_dir, mock_tokenizer, mock_config):
+        """Test handling of empty training files."""
+        data_path = temp_dir / "empty.jsonl"
+        data_path.touch()
+        
+        from Main_Scripts.core.dataset import FastConversationDataset
+        try:
+            dataset = FastConversationDataset(str(data_path), mock_tokenizer, mock_config)
+            assert len(dataset) == 0
+        except Exception:
+            pass

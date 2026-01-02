@@ -39,14 +39,14 @@ for name, path in cuda_files.items():
         # Glob pattern
         matches = list(current_dir.glob(str(path.name)))
         if matches:
-            print(f"   âœ… {name}: {matches[0]}")
+            print(f"   [OK] {name}: {matches[0]}")
         else:
-            print(f"   âŒ {name}: NOT FOUND")
+            print(f"   [FAIL] {name}: NOT FOUND")
     else:
         if path.exists():
-            print(f"   âœ… {name}: {path}")
+            print(f"   [OK] {name}: {path}")
         else:
-            print(f"   âŒ {name}: NOT FOUND at {path}")
+            print(f"   [FAIL] {name}: NOT FOUND at {path}")
 
 # Check Python files
 python_files = [
@@ -60,9 +60,9 @@ print("\n   Python wrappers:")
 for fname in python_files:
     fpath = current_dir / fname
     if fpath.exists():
-        print(f"   âœ… {fname}")
+        print(f"   [OK] {fname}")
     else:
-        print(f"   âŒ {fname}: NOT FOUND")
+        print(f"   [MISSING] {fname}: NOT FOUND")
 
 # 3. Test imports
 print("\n3. Import Tests:")
@@ -76,20 +76,20 @@ try:
         FusedRoPE,
         FusedSwiGLU
     )
-    print(f"   âœ… cuda_opt_wrapper: TRANSFORMER_OPS_AVAILABLE={TRANSFORMER_OPS_AVAILABLE}")
+    print(f"   [OK] cuda_opt_wrapper: TRANSFORMER_OPS_AVAILABLE={TRANSFORMER_OPS_AVAILABLE}")
     if TRANSFORMER_OPS_AVAILABLE:
         print(f"      - FusedRMSNorm: available")
         print(f"      - FusedRoPE: available")
         print(f"      - FusedSwiGLU: available")
 except Exception as e:
-    print(f"   âŒ cuda_opt_wrapper: {e}")
+    print(f"   [FAIL] cuda_opt_wrapper: {e}")
 
 # Test 3b: MoE ops
 try:
     from moe_cuda_wrapper import CUDA_OPS_AVAILABLE as MOE_AVAILABLE
-    print(f"   âœ… moe_cuda_wrapper: CUDA_OPS_AVAILABLE={MOE_AVAILABLE}")
+    print(f"   [OK] moe_cuda_wrapper: CUDA_OPS_AVAILABLE={MOE_AVAILABLE}")
 except Exception as e:
-    print(f"   âŒ moe_cuda_wrapper: {e}")
+    print(f"   [FAIL] moe_cuda_wrapper: {e}")
 
 # Test 3c: Unified ops
 try:
@@ -99,12 +99,12 @@ try:
         HAS_METAL_OPS,
         get_backend_info
     )
-    print(f"   âœ… unified_ops:")
+    print(f"   [OK] unified_ops:")
     print(f"      Backend: {BACKEND}")
     print(f"      HAS_CUDA_OPS: {HAS_CUDA_OPS}")
     print(f"      HAS_METAL_OPS: {HAS_METAL_OPS}")
 except Exception as e:
-    print(f"   âŒ unified_ops: {e}")
+    print(f"   [FAIL] unified_ops: {e}")
 
 # 4. Test actual functionality
 print("\n4. Functionality Tests:")
@@ -118,16 +118,16 @@ if torch.cuda.is_available():
             norm = FusedRMSNorm(768).cuda()
             x = torch.randn(4, 128, 768).cuda()
             y = norm(x)
-            print(f"   âœ… FusedRMSNorm: Input {x.shape} -> Output {y.shape}")
+            print(f"   [OK] FusedRMSNorm: Input {x.shape} -> Output {y.shape}")
         else:
-            print("   âš ï¸  Transformer ops not available, skipping tests")
+            print("   [SKIP] Transformer ops not available, skipping tests")
             
     except Exception as e:
-        print(f"   âŒ Functionality test failed: {e}")
+        print(f"   [FAIL] Functionality test failed: {e}")
         import traceback
         traceback.print_exc()
 else:
-    print("   âš ï¸  CUDA not available, skipping GPU tests")
+    print("   [SKIP] CUDA not available, skipping GPU tests")
 
 # 5. Environment variables
 print("\n5. Environment Variables:")
@@ -162,11 +162,11 @@ if torch.cuda.is_available():
         issues_found.append(f"Import error: {e}")
 
 if issues_found:
-    print("\nâš ï¸  Issues Found:")
+    print("\n[!] Issues Found:")
     for i, issue in enumerate(issues_found, 1):
         print(f"   {i}. {issue}")
     
-    print("\nðŸ"§ Suggested Fixes:")
+    print("\n[?] Suggested Fixes:")
     print("   1. Make sure you're in the correct directory:")
     print("      cd /content/LuminaAI/Src/Main_Scripts/core")
     print()
@@ -180,6 +180,6 @@ if issues_found:
     print("   4. If still failing, check library dependencies:")
     print("      ldd cuda/transformer_ops.so")
 else:
-    print("\nâœ… All checks passed! CUDA acceleration is properly configured.")
+    print("\n[OK] All checks passed! CUDA acceleration is properly configured.")
 
 print("="*80)

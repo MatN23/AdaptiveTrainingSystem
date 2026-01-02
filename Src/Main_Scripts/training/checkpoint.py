@@ -131,7 +131,7 @@ class CheckpointManager:
             
             # Load checkpoint data
             device = next(model.parameters()).device
-            checkpoint_data = torch.load(checkpoint_path, map_location=device)
+            checkpoint_data = torch.load(checkpoint_path, map_location=device, weights_only=False)
             
             # Validate checkpoint compatibility
             self._validate_checkpoint_compatibility(checkpoint_data)

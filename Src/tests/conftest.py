@@ -17,6 +17,131 @@ if str(_src_path) not in sys.path:
     sys.path.insert(0, str(_src_path))
 
 
+class MockConfig:
+    """Mock configuration for testing."""
+    # Model architecture
+    vocab_size = 1000
+    hidden_size = 128
+    num_layers = 2
+    num_heads = 4
+    num_kv_heads = 2
+    intermediate_size = 512
+    seq_length = 64
+    
+    # Training parameters
+    batch_size = 2
+    num_epochs = 2
+    learning_rate = 1e-4
+    min_lr = 1e-6
+    weight_decay = 0.01
+    max_grad_norm = 1.0
+    gradient_accumulation_steps = 2
+    save_total_limit = 3
+    
+    # Precision
+    precision = 'fp32'
+    inference_precision = 'fp32'
+    
+    # MoE/MoD
+    use_moe = False
+    use_mod = False
+    num_experts = 4
+    moe_top_k = 2
+    capacity_factor = 1.25
+    mod_capacity_factor = 0.5
+    
+    # Training configuration
+    dropout = 0.0
+    rms_norm_eps = 1e-6
+    rope_theta = 10000.0
+    init_std = 0.02
+    use_stable_embedding = True
+    tie_word_embeddings = True
+    gradient_checkpointing = False
+    
+    # Quantization
+    quantization_method = None
+    quantization_bits = None
+    
+    # DeepSpeed
+    use_deepspeed = False
+    cpu_offload = False
+    zero_stage = 0
+    
+    # Logging
+    experiment_name = "test_experiment"
+    log_level = "INFO"
+    log_every_n_steps = 10
+    
+    # Scheduler
+    use_lr_scheduler = True
+    lr_scheduler = "cosine"
+    warmup_ratio = 0.1
+    
+    # Paths
+    train_data_path = "test_train.jsonl"
+    eval_data_path = "test_eval.jsonl"
+    
+    # Adaptive LR
+    enable_adaptive_lr = True
+    allow_scheduler_override = True
+    
+    # Experiment directory (will be set by tests if needed)
+    experiment_dir = None
+    
+    def validate(self):
+        pass
+    
+    def save(self, path):
+        pass
+
+
+class MockHFTokenizer:
+    """Mock HuggingFace tokenizer that's nested inside ConversationTokenizer."""
+    def encode(self, text, add_special_tokens=False, return_tensors=None):
+        """Encode text to token IDs."""
+        if isinstance(text, list):
+            # Batch encoding
+            return [list(range(min(len(t), 50))) for t in text]
+        else:
+            # Single text encoding
+            return list(range(min(len(text), 50)))
+    
+    def decode(self, token_ids, skip_special_tokens=True):
+        """Decode token IDs to text."""
+        return "decoded text"
+
+
+class MockTokenizer:
+    """Mock ConversationTokenizer that wraps a HuggingFace tokenizer."""
+    vocab_size = 1000
+    pad_token_id = 0
+    
+    def __init__(self):
+        # Nested tokenizer (HuggingFace tokenizer)
+        self.tokenizer = MockHFTokenizer()
+    
+    special_tokens = {
+        "<|im_start|>": 1000,
+        "<|im_end|>": 1001,
+        "<|user|>": 1002,
+        "<|assistant|>": 1003,
+        "<|system|>": 1004,
+    }
+    
+    def encode_conversation(self, conversation):
+        return [1, 2, 3, 4, 5] * 10
+    
+    def encode(self, text):
+        return list(range(min(len(text), 50)))
+    
+    def decode(self, token_ids):
+        return "decoded text"
+    
+    def get_role_token(self, role):
+        return self.special_tokens.get(f"<|{role}|>", 1002)
+
+
 @pytest.fixture
 def temp_dir():
     """Create temporary directory for test files."""
@@ -28,131 +153,12 @@ def temp_dir():
 @pytest.fixture
 def mock_config():
     """Create mock configuration for testing."""
-    class MockConfig:
-        # Model architecture
-        vocab_size = 1000
-        hidden_size = 128
-        num_layers = 2
-        num_heads = 4
-        num_kv_heads = 2
-        intermediate_size = 512
-        seq_length = 64
-        
-        # Training parameters
-        batch_size = 2
-        num_epochs = 2
-        learning_rate = 1e-4
-        min_lr = 1e-6
-        weight_decay = 0.01
-        max_grad_norm = 1.0
-        gradient_accumulation_steps = 2
-        
-        # Precision
-        precision = 'fp32'
-        inference_precision = 'fp32'
-        
-        # MoE/MoD
-        use_moe = False
-        use_mod = False
-        num_experts = 4
-        moe_top_k = 2
-        capacity_factor = 1.25
-        mod_capacity_factor = 0.5
-        
-        # Training configuration
-        dropout = 0.0
-        rms_norm_eps = 1e-6
-        rope_theta = 10000.0
-        init_std = 0.02
-        use_stable_embedding = True
-        tie_word_embeddings = True
-        gradient_checkpointing = False
-        
-        # Quantization
-        quantization_method = None
-        quantization_bits = None
-        
-        # DeepSpeed
-        use_deepspeed = False
-        cpu_offload = False
-        zero_stage = 0
-        
-        # Logging
-        experiment_name = "test_experiment"
-        log_level = "INFO"
-        log_every_n_steps = 10
-        
-        # Scheduler
-        use_lr_scheduler = True
-        lr_scheduler = "cosine"
-        warmup_ratio = 0.1
-        
-        # Paths
-        train_data_path = "test_train.jsonl"
-        eval_data_path = "test_eval.jsonl"
-        
-        # Adaptive LR
-        enable_adaptive_lr = True
-        allow_scheduler_override = True
-        
-        # Experiment directory (will be set by tests if needed)
-        experiment_dir = None
-        
-        def validate(self):
-            pass
-        
-        def save(self, path):
-            pass
-    
     return MockConfig()
 
 
 @pytest.fixture
 def mock_tokenizer():
     """Create mock tokenizer for testing."""
-    class MockHFTokenizer:
-        """Mock HuggingFace tokenizer that's nested inside ConversationTokenizer."""
-        def encode(self, text, add_special_tokens=False, return_tensors=None):
-            """Encode text to token IDs."""
-            if isinstance(text, list):
-                # Batch encoding
-                return [list(range(min(len(t), 50))) for t in text]
-            else:
-                # Single text encoding
-                return list(range(min(len(text), 50)))
-        
-        def decode(self, token_ids, skip_special_tokens=True):
-            """Decode token IDs to text."""
-            return "decoded text"
-    
-    class MockTokenizer:
-        """Mock ConversationTokenizer that wraps a HuggingFace tokenizer."""
-        vocab_size = 1000
-        pad_token_id = 0
-        
-        # Nested tokenizer (HuggingFace tokenizer)
-        tokenizer = MockHFTokenizer()
-        
-        special_tokens = {
-            "<|im_start|>": 1000,
-            "<|im_end|>": 1001,
-            "<|user|>": 1002,
-            "<|assistant|>": 1003,
-            "<|system|>": 1004,
-        }
-        
-        def encode_conversation(self, conversation):
-            return [1, 2, 3, 4, 5] * 10
-        
-        def encode(self, text):
-            return list(range(min(len(text), 50)))
-        
-        def decode(self, token_ids):
-            return "decoded text"
-        
-        def get_role_token(self, role):
-            return self.special_tokens.get(f"<|{role}|>", 1002)
-    
     return MockTokenizer()
 
 
