@@ -1076,14 +1076,21 @@ class AdaptiveTrainingOrchestrator:
     
     def _process_real_time_metrics(self, metrics):
         """Process metrics in real-time with verbose logging."""
+        # ✅ Sync orchestrator state with incoming metrics
+        self.global_step = metrics.step
         self.current_metrics = metrics
         self.training_metrics_history.append(metrics)
         self.analytics.metrics_buffer.append(metrics)
         
         # Verbose metric logging
         if self.verbosity >= VerbosityLevel.DETAILED:
-            if self.global_step % 10 == 0:  # Every 10 steps in detailed mode
+            # Determine logging frequency for metrics
+            # In DETAILED, log every 10 steps. In DEBUG/TRACE, log every step.
+            log_freq = 1 if self.verbosity >= VerbosityLevel.DEBUG else 10
+            
+            if metrics.step % log_freq == 0:
                 self.logger.metric("loss", f"{metrics.loss:.6f}")
+
                 self.logger.metric("learning_rate", f"{metrics.learning_rate:.2e}")
                 self.logger.metric("grad_norm", f"{metrics.grad_norm:.4f}")
                 self.logger.metric("throughput", f"{metrics.throughput:.0f} tok/s")

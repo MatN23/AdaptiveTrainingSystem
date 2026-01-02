@@ -2881,6 +2881,11 @@ class EnhancedConversationTrainer:
             if 'compute_time_ms' in step_metrics:
                 accumulation_compute_time += step_metrics['compute_time_ms'] / 1000.0
 
+            # ✅ NEW: Populate metrics history for orchestrator reporting
+            self.metrics['train_losses'].append(step_metrics['loss'])
+            if 'accuracy' in step_metrics:
+                self.metrics.setdefault('accuracies', []).append(step_metrics['accuracy'])
+
             # Send metrics to orchestrator if monitoring is enabled
             if hasattr(self, '_monitoring_queue'):
                 try:
@@ -2918,6 +2923,12 @@ class EnhancedConversationTrainer:
                 
                 opt_metrics = self.optimizer_step()
                 self.global_step += 1
+
+                # ✅ NEW: Populate optimizer-related metrics history
+                if 'lr' in opt_metrics:
+                    self.metrics['learning_rates'].append(opt_metrics['lr'])
+                if 'grad_norm' in opt_metrics:
+                    self.metrics['gradient_norms'].append(opt_metrics['grad_norm'])
 
                 # Calculate throughput
                 if accumulation_compute_time > 0:
