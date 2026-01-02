@@ -468,35 +468,38 @@ class RotaryEmbedding(nn.Module):
     def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get cos and sin embeddings for given sequence length."""
         
-        # ✅ TRY CUDA/METAL FIRST (training or inference)
-        if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
-            try:
-                return self._impl(seq_len, device)
-            except Exception as e:
-                logging.debug(f"{BACKEND} RoPE failed: {e}, falling back to PyTorch")
-        
-        # Try CUDA implementation
-        if self._cuda_impl is not None and device.type == 'cuda':
-            try:
-                if hasattr(self._cuda_impl, 'cos_cached') and hasattr(self._cuda_impl, 'sin_cached'):
-                    cos_cache = self._cuda_impl.cos_cached[:seq_len]
-                    sin_cache = self._cuda_impl.sin_cached[:seq_len]
-                    
-                    if cos_cache is not None and sin_cache is not None:
-                        if cos_cache.device != device:
-                            cos_cache = cos_cache.to(device)
-                        if sin_cache.device != device:
-                            sin_cache = sin_cache.to(device)
-                        return cos_cache, sin_cache
-            except Exception as e:
-                logging.debug(f"CUDA RoPE failed: {e}, using PyTorch fallback")
+        # ✅ NEW: Handle cache extension FIRST
+        if seq_len > self.max_seq_len:
+            self._extend_cache(seq_len)
+            
+        # ✅ TRY CUDA/METAL FIRST (inference only or if backend supports it)
+        # Note: We skip backend if we just extended, as backend might not support it
+        if seq_len <= self.max_seq_len:
+            if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
+                try:
+                    return self._impl(seq_len, device)
+                except Exception as e:
+                    logging.debug(f"{BACKEND} RoPE failed: {e}, falling back to PyTorch")
+            
+            # Try CUDA implementation
+            if self._cuda_impl is not None and device.type == 'cuda':
+                try:
+                    if hasattr(self._cuda_impl, 'cos_cached') and hasattr(self._cuda_impl, 'sin_cached'):
+                        cos_cache = self._cuda_impl.cos_cached[:seq_len]
+                        sin_cache = self._cuda_impl.sin_cached[:seq_len]
+                        
+                        if cos_cache is not None and sin_cache is not None:
+                            if cos_cache.device != device:
+                                cos_cache = cos_cache.to(device)
+                            if sin_cache.device != device:
+                                sin_cache = sin_cache.to(device)
+                            return cos_cache, sin_cache
+                except Exception as e:
+                    logging.debug(f"CUDA RoPE failed: {e}, using PyTorch fallback")
         
         # PyTorch fallback
         if not hasattr(self, '_cos_cached') or not hasattr(self, '_sin_cached'):
             self._build_pytorch_cache(self.max_seq_len)
-        
-        if seq_len > self.max_seq_len:
-            self._extend_cache(seq_len)
         
         cos = self._cos_cached[:seq_len]
         sin = self._sin_cached[:seq_len]
@@ -1503,18 +1506,21 @@ class DenseSwiGLU(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward with CUDA acceleration (training or inference)."""
         
-        # ✅ TRY CUDA/METAL FIRST
-        if self.has_unified and hasattr(self, '_impl_backend'):
-            try:
-                return self._impl_backend(x)
-            except Exception as e:
-                logging.debug(f"Unified backend failed: {e}, falling back")
-        
-        if self.has_cuda and hasattr(self, '_cuda_backend') and x.is_cuda:
-            try:
-                return self._cuda_backend(x)
-            except Exception as e:
-                logging.debug(f"CUDA backend failed: {e}, falling back")
+        # ✅ CRITICAL: Skip backends during training to ensure gradient flow
+        # Backend parameters are separate from PyTorch parameters
+        if not self.training:
+            # ✅ TRY CUDA/METAL FIRST
+            if self.has_unified and hasattr(self, '_impl_backend'):
+                try:
+                    return self._impl_backend(x)
+                except Exception as e:
+                    logging.debug(f"Unified backend failed: {e}, falling back")
+            
+            if self.has_cuda and hasattr(self, '_cuda_backend') and x.is_cuda:
+                try:
+                    return self._cuda_backend(x)
+                except Exception as e:
+                    logging.debug(f"CUDA backend failed: {e}, falling back")
         
         # PyTorch fallback
         gate_up = self.gate_up_proj(x)
