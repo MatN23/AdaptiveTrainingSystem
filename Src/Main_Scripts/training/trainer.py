@@ -2982,8 +2982,21 @@ class EnhancedConversationTrainer:
                     # Get current throughput (average of recent cycles)
                     tokens_per_sec = self._calculate_throughput()
 
-                    # Determine if we should log
+                    # Determine if we should log - adjusted by verbosity level
                     log_frequency = getattr(self.config, 'log_every_n_steps', 50)
+                    
+                    # 🔥 NEW: Dynamically adjust logging frequency based on verbosity
+                    if hasattr(self, 'logger') and hasattr(self.logger, 'verbosity'):
+                        try:
+                            # 3 = DETAILED, 4 = DEBUG, 5 = TRACE
+                            verbosity = int(self.logger.verbosity)
+                            if verbosity >= 4: # DEBUG or higher
+                                log_frequency = 1
+                            elif verbosity >= 3: # DETAILED
+                                log_frequency = min(log_frequency, 5)
+                        except (ValueError, TypeError):
+                            pass
+
                     time_since_last_log = time.time() - last_log_time
 
                     should_log = (
