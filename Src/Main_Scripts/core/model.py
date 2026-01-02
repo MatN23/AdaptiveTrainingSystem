@@ -400,6 +400,7 @@ class RotaryEmbedding(nn.Module):
         super().__init__()
         self.dim = dim
         self.max_seq_len = max_seq_len
+        self.backend_max_seq_len = max_seq_len  # ✅ Track backend limit separately
         self.theta = theta
         self.scaling_factor = scaling_factor
         
@@ -472,9 +473,9 @@ class RotaryEmbedding(nn.Module):
         if seq_len > self.max_seq_len:
             self._extend_cache(seq_len)
             
-        # ✅ TRY CUDA/METAL FIRST (inference only or if backend supports it)
-        # Note: We skip backend if we just extended, as backend might not support it
-        if seq_len <= self.max_seq_len:
+        # ✅ TRY CUDA/METAL FIRST
+        # ONLY if seq_len is within backend's INITIAL capacity
+        if seq_len <= self.backend_max_seq_len:
             if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
                 try:
                     return self._impl(seq_len, device)
