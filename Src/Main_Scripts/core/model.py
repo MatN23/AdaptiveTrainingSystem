@@ -318,11 +318,20 @@ class RMSNorm(nn.Module):
         input_dtype = x.dtype
         
         # ✅ FIX: In training mode, always use PyTorch to ensure gradients
-        if self.training:
-            x_normed = self._norm_pytorch(x)
-            if self.elementwise_affine:
-                x_normed = x_normed * self.weight.float()
-            return x_normed.to(input_dtype)
+        # TRY OPTIMIZED BACKENDS FIRST (Training & Inference)
+        # Use unified backend if available
+        if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
+            try:
+                return self._impl(x)
+            except Exception:
+                pass
+        
+        # Fallback to direct CUDA if unified failed or unavailable
+        if hasattr(self, '_cuda_impl') and self._cuda_impl is not None and x.is_cuda:
+            try:
+                return self._cuda_impl(x)
+            except Exception:
+                pass
         
         # Inference: try optimized backends
         if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
@@ -1122,15 +1131,26 @@ class MoEFFNLayer(nn.Module):
         # === ROUTING ===
         gate_logits = self.gate(x_flat)
         
-        # ✅ USE CUDA DURING TRAINING TOO!
+        # Temperature scaling for routing
+        scaled_logits = gate_logits / self.routing_temperature
+
+        # ✅ USE CUDA FOR FAST TOP-K (Training & Inference)
         if self.use_cuda_ops and MoECUDAOps is not None and x.is_cuda:
             try:
-                top_k_indices, top_k_probs = MoECUDAOps.topk_gating(
+                # Use CUDA for fast index selection
+                top_k_indices, _ = MoECUDAOps.topk_gating(
                     gate_logits,
                     self.top_k,
                     temperature=self.routing_temperature,
                     use_cuda=True
                 )
+                
+                # ✅ CRITICAL: Re-compute weights in PyTorch using gathered logits.
+                # This ensures the gradient path to gate_logits is preserved!
+                # Without this, the gating network (router) NOT learn.
+                top_k_logits = torch.gather(scaled_logits, -1, top_k_indices)
+                top_k_probs = F.softmax(top_k_logits, dim=-1)
+                
             except Exception as e:
                 logging.warning(f"CUDA routing failed: {e}")
                 top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
@@ -1376,55 +1396,40 @@ class DenseSwiGLUWithMoD(nn.Module):
         nn.init.normal_(self.down_proj.weight, mean=0.0, std=output_std)
     
     def forward(self, x: torch.Tensor):
-        """Forward with guaranteed gradient flow."""
+        """Forward with guaranteed gradient flow and optional acceleration."""
+        # 1. Handle MoD routing if enabled
+        routing_weights = None
+        aux_loss = None
+        if self.use_mod:
+            routing_weights, routing_probs, aux_loss = self.router(x)
         
-        # ✅ TRAINING: Always use PyTorch
-        if self.training:
-            # Get routing if MoD enabled
-            if self.use_mod:
-                routing_weights, routing_probs, aux_loss = self.router(x)
-            
-            # Compute FFN with our own parameters
-            gate_up = self.gate_up_proj(x)
-            gate, up = gate_up.chunk(2, dim=-1)
-            ffn_output = self.down_proj(F.silu(gate) * up)
-            
-            # Apply routing if MoD
-            if self.use_mod:
-                output = ffn_output * routing_weights
-                return output, aux_loss
-            else:
-                return ffn_output, None
-        
-        # INFERENCE: Can use optimized backends
-        if not self.use_mod:
-            if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
-                try:
-                    return self._cuda_swiglu(x), None
-                except:
-                    pass
-            
-            gate_up = self.gate_up_proj(x)
-            gate, up = gate_up.chunk(2, dim=-1)
-            return self.down_proj(F.silu(gate) * up), None
-        
-        # MoD inference path
-        routing_weights, routing_probs, aux_loss = self.router(x)
-        
-        if self.use_cuda and hasattr(self, '_cuda_swiglu') and x.is_cuda:
+        # 2. Try optimized backends first (for both Training & Inference)
+        # We only use this if not in MoD mode (MoD logic is still PyTorch-primary)
+        if not self.use_mod and HAS_TRANSFORMER_CUDA and x.is_cuda:
             try:
-                ffn_output = self._cuda_swiglu(x)
-            except:
                 gate_up = self.gate_up_proj(x)
                 gate, up = gate_up.chunk(2, dim=-1)
-                ffn_output = self.down_proj(F.silu(gate) * up)
-        else:
-            gate_up = self.gate_up_proj(x)
-            gate, up = gate_up.chunk(2, dim=-1)
-            ffn_output = self.down_proj(F.silu(gate) * up)
+                # Use THE FUSED ACTIVATION but OUR OWN WEIGHTS
+                ffn_output = self.down_proj(fused_swiglu(gate, up))
+                
+                if self.use_mod:
+                    return ffn_output * routing_weights, aux_loss
+                else:
+                    return ffn_output, None
+            except:
+                pass
         
-        output = ffn_output * routing_weights
-        return output, aux_loss
+        # 3. PyTorch path (Fallback or default training path)
+        gate_up = self.gate_up_proj(x)
+        gate, up = gate_up.chunk(2, dim=-1)
+        ffn_output = self.down_proj(F.silu(gate) * up)
+        
+        # 4. Apply MoD routing if applicable
+        if self.use_mod:
+            output = ffn_output * routing_weights
+            return output, aux_loss
+        else:
+            return ffn_output, None
 
 class DenseSwiGLU(nn.Module):
     """
@@ -1507,21 +1512,15 @@ class DenseSwiGLU(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward with CUDA acceleration (training or inference)."""
         
-        # ✅ CRITICAL: Skip backends during training to ensure gradient flow
-        # Backend parameters are separate from PyTorch parameters
-        if not self.training:
-            # ✅ TRY CUDA/METAL FIRST
-            if self.has_unified and hasattr(self, '_impl_backend'):
-                try:
-                    return self._impl_backend(x)
-                except Exception as e:
-                    logging.debug(f"Unified backend failed: {e}, falling back")
-            
-            if self.has_cuda and hasattr(self, '_cuda_backend') and x.is_cuda:
-                try:
-                    return self._cuda_backend(x)
-                except Exception as e:
-                    logging.debug(f"CUDA backend failed: {e}, falling back")
+        # TRY CUDA FIRST (Training & Inference)
+        if HAS_TRANSFORMER_CUDA and x.is_cuda:
+            try:
+                gate_up = self.gate_up_proj(x)
+                gate, up = gate_up.chunk(2, dim=-1)
+                # Use THE FUSED ACTIVATION but OUR OWN WEIGHTS
+                return self.down_proj(fused_swiglu(gate, up))
+            except Exception as e:
+                logging.debug(f"Fused activation failed: {e}, falling back")
         
         # PyTorch fallback
         gate_up = self.gate_up_proj(x)

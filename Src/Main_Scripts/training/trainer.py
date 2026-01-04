@@ -2253,14 +2253,9 @@ class EnhancedConversationTrainer:
                 return self.fused_loss(logits, labels, loss_weights, pad_token_id)
         except Exception as e:
             logging.debug(f"FusedLoss failed, using PyTorch fallback: {e}")
-        # ✅ FALLBACK: Original PyTorch implementation
-        # Shift for next-token prediction
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-
         # Flatten for loss computation
-        flat_logits = shift_logits.view(-1, shift_logits.size(-1))
-        flat_labels = shift_labels.view(-1)
+        flat_logits = logits.view(-1, logits.size(-1))
+        flat_labels = labels.view(-1)
 
         # Create mask for valid tokens (non-padding)
         pad_token_id = getattr(self.tokenizer, 'pad_token_id', 0)

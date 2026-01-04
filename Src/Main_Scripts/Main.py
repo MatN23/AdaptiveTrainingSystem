@@ -1624,7 +1624,18 @@ def main():
     # ========================================================================
     
     # Base model configuration
-    config_choice = 'debug'  # Options: 'debug', 'debug_200m', 'b1', 'b7', 'b14', 'b50', 'b100', 'b200', 'b300'
+    config_choice = 'debug'  # Options: 'debug', 'lean_8gb', 'debug_200m', 'b1', 'b7', 'b14', 'b200', 'b300'
+    
+    # Auto-detect low memory environments (like 8GB Macs)
+    try:
+        import psutil
+        total_mem_gb = psutil.virtual_memory().total / (1024**3)
+        if total_mem_gb < 9.0 and config_choice == 'debug':
+            print(f"  ⚠️  LOW MEMORY DETECTED: {total_mem_gb:.1f}GB RAM")
+            print(f"  Automatically switching to 'lean_8gb' preset for stability")
+            config_choice = 'lean_8gb'
+    except:
+        pass
     
     # Training mode selection
     use_adaptive_training = TRAINING_INFRASTRUCTURE_AVAILABLE  # Orchestrator with AI-driven optimization
@@ -2086,7 +2097,6 @@ def main():
         if hasattr(ConfigPresets, config_choice):
             config = getattr(ConfigPresets, config_choice)()
             print(f"Base configuration loaded successfully")
-            config.use_cuda_moe = False
         else:
             raise ValueError(f"Unknown config preset: {config_choice}")
 

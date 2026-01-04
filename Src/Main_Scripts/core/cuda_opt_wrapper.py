@@ -236,6 +236,25 @@ class SwiGLUFunction(Function):
         return grad_gate, grad_up
 
 
+def fused_swiglu(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
+    """
+    Apply fused SwiGLU activation (gate * silu(up)) using CUDA kernel.
+    Maintains gradient flow to inputs.
+    """
+    if not TRANSFORMER_OPS_AVAILABLE or not gate.is_cuda or _transformer_ops_lib is None:
+        return gate * torch.nn.functional.silu(up)
+    
+    try:
+        original_shape = gate.shape
+        gate_flat = gate.view(-1, gate.shape[-1]).contiguous().float()
+        up_flat = up.view(-1, up.shape[-1]).contiguous().float()
+        
+        output = SwiGLUFunction.apply(gate_flat, up_flat)
+        return output.view(original_shape)
+    except Exception:
+        return gate * torch.nn.functional.silu(up)
+
+
 # ============================================================================
 # MODULE WRAPPERS
 # ============================================================================
