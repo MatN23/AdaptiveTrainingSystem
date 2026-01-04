@@ -2307,9 +2307,8 @@ class EnhancedConversationTrainer:
 
         # ✅ APPLY LOSS WEIGHTS FOR TRAINING
         if loss_weights is not None:
-            # Shift and flatten loss weights to match tokens
-            shift_weights = loss_weights[..., 1:].contiguous()
-            flat_weights = shift_weights.view(-1)
+            # Weights already match labels shape
+            flat_weights = loss_weights.view(-1)
 
             # Apply both mask and weights
             weighted_loss_per_token = loss_per_token * flat_weights * mask
