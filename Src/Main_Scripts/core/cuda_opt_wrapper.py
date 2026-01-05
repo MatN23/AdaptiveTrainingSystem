@@ -84,13 +84,18 @@ def _load_transformer_ops():
 # AUTOGRAD FUNCTIONS FOR CUDA KERNELS
 # ============================================================================
 
+# ============================================================================
+# AUTOGRAD FUNCTIONS FOR CUDA KERNELS
+# ============================================================================
+
 class RMSNormFunction(Function):
-    """Autograd function for RMSNorm CUDA kernel"""
+    """Autograd function for RMSNorm CUDA kernel with FP16 support"""
     
     @staticmethod
     def forward(ctx, x, weight, eps):
         original_shape = x.shape
-        x_flat = x.view(-1, weight.shape[0]).contiguous().float()
+        # Flatten but keep dtype
+        x_flat = x.view(-1, weight.shape[0]).contiguous()
         
         batch_seq = x_flat.size(0)
         hidden_size = weight.shape[0]
@@ -98,19 +103,35 @@ class RMSNormFunction(Function):
         
         stream = torch.cuda.current_stream().cuda_stream
         
-        _transformer_ops_lib.rms_norm_launcher(
-            ctypes.c_void_p(x_flat.data_ptr()),
-            ctypes.c_void_p(weight.data.data_ptr()),
-            ctypes.c_void_p(output.data_ptr()),
-            ctypes.c_int(batch_seq),
-            ctypes.c_int(hidden_size),
-            ctypes.c_float(eps),
-            ctypes.c_void_p(stream)
-        )
+        # Dispatch based on dtype
+        if x.dtype == torch.float16:
+            _transformer_ops_lib.rms_norm_launcher_fp16(
+                ctypes.c_void_p(x_flat.data_ptr()),
+                ctypes.c_void_p(weight.data.data_ptr()),
+                ctypes.c_void_p(output.data_ptr()),
+                ctypes.c_int(batch_seq),
+                ctypes.c_int(hidden_size),
+                ctypes.c_float(eps),
+                ctypes.c_void_p(stream)
+            )
+        else:
+            # Fallback to FP32 (convert if needed, though we prefer native)
+            if x.dtype != torch.float32:
+                x_flat = x_flat.float()
+                output = output.float()
+                
+            _transformer_ops_lib.rms_norm_launcher(
+                ctypes.c_void_p(x_flat.data_ptr()),
+                ctypes.c_void_p(weight.data.data_ptr()),
+                ctypes.c_void_p(output.data_ptr()),
+                ctypes.c_int(batch_seq),
+                ctypes.c_int(hidden_size),
+                ctypes.c_float(eps),
+                ctypes.c_void_p(stream)
+            )
         
-        torch.cuda.synchronize()
-        
-        ctx.save_for_backward(x_flat, weight, output)
+        #ctx.save_for_backward(x_flat, weight, output) # Save tensor for backward
+        ctx.save_for_backward(x, weight) # Save original x to avoid flat shape issues
         ctx.eps = eps
         ctx.original_shape = original_shape
         
@@ -118,49 +139,73 @@ class RMSNormFunction(Function):
     
     @staticmethod
     def backward(ctx, grad_output):
-        x_flat, weight, output = ctx.saved_tensors
+        x, weight = ctx.saved_tensors
         eps = ctx.eps
         
-        grad_output_flat = grad_output.contiguous().view_as(x_flat)
+        # Naive backward for now - can optimize later
+        # We re-compute for simplicity and correctness
+        x = x.float()
+        weight = weight.float()
+        grad_output = grad_output.float()
         
         hidden_size = weight.shape[0]
-        variance = x_flat.pow(2).mean(-1, keepdim=True)
+        variance = x.pow(2).mean(-1, keepdim=True)
         rstd = torch.rsqrt(variance + eps)
         
-        grad_weight = (grad_output_flat * x_flat * rstd.expand_as(x_flat)).sum(0)
-        grad_input = grad_output_flat * weight.unsqueeze(0) * rstd
-        mean_grad = (grad_input * x_flat).sum(-1, keepdim=True) / hidden_size
-        grad_input = grad_input - x_flat * mean_grad * rstd.pow(2)
+        x_normed = x * rstd
         
-        return grad_input.view(ctx.original_shape), grad_weight, None
+        grad_weight = (grad_output * x_normed).sum(dim=tuple(range(grad_output.ndim - 1)))
+        
+        scale = rstd / hidden_size
+        grad_x = scale * (hidden_size * grad_output * weight - 
+                          (grad_output * weight * x_normed).sum(-1, keepdim=True) * x_normed - 
+                          (grad_output * weight).sum(-1, keepdim=True))
+        
+        return grad_x.type_as(weight), grad_weight.type_as(weight), None
 
 
 class RoPEFunction(Function):
-    """Autograd function for RoPE CUDA kernel"""
+    """Autograd function for RoPE CUDA kernel with FP16 support"""
     
     @staticmethod
     def forward(ctx, q, k, cos_cache, sin_cache, position_offset):
         batch_size, num_heads, seq_len, head_dim = q.shape
         
-        q_out = q.contiguous().float().clone()
-        k_out = k.contiguous().float().clone()
+        q_out = q.contiguous()
+        k_out = k.contiguous()
         
         stream = torch.cuda.current_stream().cuda_stream
         
-        _transformer_ops_lib.rope_apply_launcher(
-            ctypes.c_void_p(q_out.data_ptr()),
-            ctypes.c_void_p(k_out.data_ptr()),
-            ctypes.c_void_p(cos_cache.data_ptr()),
-            ctypes.c_void_p(sin_cache.data_ptr()),
-            ctypes.c_int(batch_size),
-            ctypes.c_int(num_heads),
-            ctypes.c_int(seq_len),
-            ctypes.c_int(head_dim),
-            ctypes.c_int(position_offset),
-            ctypes.c_void_p(stream)
-        )
-        
-        torch.cuda.synchronize()
+        if q.dtype == torch.float16:
+            _transformer_ops_lib.rope_apply_launcher_fp16(
+                ctypes.c_void_p(q_out.data_ptr()),
+                ctypes.c_void_p(k_out.data_ptr()),
+                ctypes.c_void_p(cos_cache.data_ptr()),
+                ctypes.c_void_p(sin_cache.data_ptr()),
+                ctypes.c_int(batch_size),
+                ctypes.c_int(num_heads),
+                ctypes.c_int(seq_len),
+                ctypes.c_int(head_dim),
+                ctypes.c_int(position_offset),
+                ctypes.c_void_p(stream)
+            )
+        else:
+             if q.dtype != torch.float32:
+                q_out = q_out.float()
+                k_out = k_out.float()
+                
+             _transformer_ops_lib.rope_apply_launcher(
+                ctypes.c_void_p(q_out.data_ptr()),
+                ctypes.c_void_p(k_out.data_ptr()),
+                ctypes.c_void_p(cos_cache.data_ptr()),
+                ctypes.c_void_p(sin_cache.data_ptr()),
+                ctypes.c_int(batch_size),
+                ctypes.c_int(num_heads),
+                ctypes.c_int(seq_len),
+                ctypes.c_int(head_dim),
+                ctypes.c_int(position_offset),
+                ctypes.c_void_p(stream)
+            )
         
         ctx.save_for_backward(cos_cache, sin_cache)
         ctx.position_offset = position_offset
@@ -196,26 +241,46 @@ class RoPEFunction(Function):
 
 
 class SwiGLUFunction(Function):
-    """Autograd function for SwiGLU CUDA kernel"""
+    """Autograd function for SwiGLU CUDA kernel with FP16 support"""
     
     @staticmethod
     def forward(ctx, gate, up):
         total_tokens, intermediate_size = gate.shape
         
-        output = torch.empty_like(gate)
+        gate_contig = gate.contiguous()
+        up_contig = up.contiguous()
+        output = torch.empty_like(gate_contig)
         
         stream = torch.cuda.current_stream().cuda_stream
         
-        _transformer_ops_lib.swiglu_launcher(
-            ctypes.c_void_p(gate.data_ptr()),
-            ctypes.c_void_p(up.data_ptr()),
-            ctypes.c_void_p(output.data_ptr()),
-            ctypes.c_int(total_tokens),
-            ctypes.c_int(intermediate_size),
-            ctypes.c_void_p(stream)
-        )
+        # Kernel implements gate * silu(up).
+        # We want standard SwiGLU: silu(gate) * up.
+        # So we swap inputs: pass 'up' as kernel's 'gate', and 'gate' as kernel's 'up'.
+        # Result: up * silu(gate) == silu(gate) * up.
         
-        torch.cuda.synchronize()
+        if gate.dtype == torch.float16:
+            _transformer_ops_lib.swiglu_launcher_fp16(
+                ctypes.c_void_p(up_contig.data_ptr()),   # kernel_gate <- up
+                ctypes.c_void_p(gate_contig.data_ptr()), # kernel_up   <- gate
+                ctypes.c_void_p(output.data_ptr()),
+                ctypes.c_int(total_tokens),
+                ctypes.c_int(intermediate_size),
+                ctypes.c_void_p(stream)
+            )
+        else:
+            if gate.dtype != torch.float32:
+                 gate_contig = gate_contig.float()
+                 up_contig = up_contig.float()
+                 output = output.float()
+                 
+            _transformer_ops_lib.swiglu_launcher(
+                ctypes.c_void_p(up_contig.data_ptr()),   # kernel_gate <- up
+                ctypes.c_void_p(gate_contig.data_ptr()), # kernel_up   <- gate
+                ctypes.c_void_p(output.data_ptr()),
+                ctypes.c_int(total_tokens),
+                ctypes.c_int(intermediate_size),
+                ctypes.c_void_p(stream)
+            )
         
         ctx.save_for_backward(gate, up)
         
@@ -225,6 +290,7 @@ class SwiGLUFunction(Function):
     def backward(ctx, grad_output):
         gate, up = ctx.saved_tensors
         
+        # Simple PyTorch backward for correctness
         sigmoid_up = torch.sigmoid(up)
         silu_up = up * sigmoid_up
         
@@ -246,12 +312,13 @@ def fused_swiglu(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
     
     try:
         original_shape = gate.shape
-        gate_flat = gate.view(-1, gate.shape[-1]).contiguous().float()
-        up_flat = up.view(-1, up.shape[-1]).contiguous().float()
+        gate_flat = gate.view(-1, gate.shape[-1])
+        up_flat = up.view(-1, up.shape[-1])
         
         output = SwiGLUFunction.apply(gate_flat, up_flat)
         return output.view(original_shape)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"SwiGLU failed: {e}")
         return gate * torch.nn.functional.silu(up)
 
 
