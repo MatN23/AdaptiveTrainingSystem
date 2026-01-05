@@ -162,7 +162,7 @@ class MoECUDAOps:
     """
     
     @staticmethod
-    def topk_gating(gate_logits, k, temperature=1.0, use_cuda=True):
+    def topk_gating(gate_logits, k, temperature=1.0, use_cuda=True, out_indices=None, out_weights=None):
         """
         Top-k gating with softmax normalization.
         
@@ -171,6 +171,8 @@ class MoECUDAOps:
             k: Number of experts to select
             temperature: Temperature for routing
             use_cuda: Whether to use CUDA acceleration
+            out_indices: Pre-allocated buffer for indices
+            out_weights: Pre-allocated buffer for weights
             
         Returns:
             indices: [num_tokens, k] int64
@@ -181,17 +183,23 @@ class MoECUDAOps:
         # Try CUDA with automatic dtype conversion
         if use_cuda and CUDA_OPS_AVAILABLE and gate_logits.is_cuda:
             try:
-                # Convert to float32 for CUDA kernel
-                gate_logits_f32 = to_compute_dtype(gate_logits)
+                # Convert to float32 only if needed
+                gate_logits_f32 = to_compute_dtype(gate_logits) if original_dtype != torch.float32 else gate_logits
                 
                 # Run CUDA operation
                 indices, weights = moe_cuda_ops.topk_gating(gate_logits_f32, k, temperature)
                 
-                # Convert weights back to original dtype
-                weights = from_compute_dtype(weights, original_dtype)
-                
-                # Verify output dtypes
-                assert indices.dtype == torch.int64, f"Expected int64 indices, got {indices.dtype}"
+                # Copy to output buffers if provided (OPTIMIZATION)
+                if out_indices is not None:
+                    out_indices.copy_(indices)
+                    indices = out_indices
+                if out_weights is not None:
+                    # Convert to target dtype during copy
+                    out_weights.copy_(from_compute_dtype(weights, out_weights.dtype))
+                    weights = out_weights
+                else:
+                    # Convert weights back to original dtype
+                    weights = from_compute_dtype(weights, original_dtype)
                 
                 return indices, weights
                 
@@ -210,7 +218,7 @@ class MoECUDAOps:
         return indices, weights
     
     @staticmethod
-    def dispatch_tokens(tokens, indices, num_experts, capacity, use_cuda=True):
+    def dispatch_tokens(tokens, indices, num_experts, capacity, use_cuda=True, out_expert_inputs=None, out_token_map=None):
         """
         Dispatch tokens to experts.
         
@@ -220,6 +228,8 @@ class MoECUDAOps:
             num_experts: Number of experts
             capacity: Capacity per expert
             use_cuda: Whether to use CUDA acceleration
+            out_expert_inputs: Pre-allocated buffer [num_experts, capacity, hidden_dim]
+            out_token_map: Pre-allocated buffer [num_experts, capacity]
             
         Returns:
             expert_inputs: [num_experts, capacity, hidden_dim] same dtype as input
@@ -229,8 +239,8 @@ class MoECUDAOps:
         
         if use_cuda and CUDA_OPS_AVAILABLE and tokens.is_cuda:
             try:
-                # Convert tokens to float32
-                tokens_f32 = to_compute_dtype(tokens)
+                # Convert tokens to float32 only if needed
+                tokens_f32 = to_compute_dtype(tokens) if original_dtype != torch.float32 else tokens
                 
                 # Ensure indices are int64
                 if indices.dtype != torch.int64:
@@ -241,8 +251,17 @@ class MoECUDAOps:
                     tokens_f32, indices, num_experts, capacity
                 )
                 
-                # Convert expert_inputs back to original dtype
-                expert_inputs = from_compute_dtype(expert_inputs, original_dtype)
+                # Optimization: reuse buffers
+                if out_expert_inputs is not None:
+                    out_expert_inputs.copy_(from_compute_dtype(expert_inputs, out_expert_inputs.dtype))
+                    expert_inputs = out_expert_inputs
+                else:
+                    # Convert expert_inputs back to original dtype
+                    expert_inputs = from_compute_dtype(expert_inputs, original_dtype)
+                
+                if out_token_map is not None:
+                    out_token_map.copy_(token_map)
+                    token_map = out_token_map
                 
                 return expert_inputs, token_map
                 
@@ -280,7 +299,7 @@ class MoECUDAOps:
         return expert_inputs, token_map
     
     @staticmethod
-    def combine_expert_outputs(expert_outputs, token_map, weights, num_tokens, k, use_cuda=True):
+    def combine_expert_outputs(expert_outputs, token_map, weights, num_tokens, k, use_cuda=True, out_combined=None):
         """
         Combine expert outputs with weights.
         
@@ -291,6 +310,7 @@ class MoECUDAOps:
             num_tokens: Number of tokens
             k: Number of experts per token
             use_cuda: Whether to use CUDA acceleration
+            out_combined: Pre-allocated buffer [num_tokens, hidden_dim]
             
         Returns:
             combined: [num_tokens, hidden_dim] same dtype as expert_outputs
@@ -299,17 +319,22 @@ class MoECUDAOps:
         
         if use_cuda and CUDA_OPS_AVAILABLE and expert_outputs.is_cuda:
             try:
-                # Convert to float32
-                expert_outputs_f32 = to_compute_dtype(expert_outputs)
-                weights_f32 = to_compute_dtype(weights)
+                # Convert only if needed
+                expert_outputs_f32 = to_compute_dtype(expert_outputs) if original_dtype != torch.float32 else expert_outputs
+                weights_f32 = to_compute_dtype(weights) if weights.dtype != torch.float32 else weights
                 
                 # Run CUDA operation
                 combined = moe_cuda_ops.combine_expert_outputs(
                     expert_outputs_f32, token_map, weights_f32, num_tokens, k
                 )
                 
-                # Convert back to original dtype
-                combined = from_compute_dtype(combined, original_dtype)
+                # Optimization: reuse buffer
+                if out_combined is not None:
+                    out_combined.copy_(from_compute_dtype(combined, out_combined.dtype))
+                    combined = out_combined
+                else:
+                    # Convert back to original dtype
+                    combined = from_compute_dtype(combined, original_dtype)
                 
                 return combined
                 

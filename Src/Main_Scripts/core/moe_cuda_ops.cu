@@ -29,9 +29,6 @@
     cudaError_t err = cudaGetLastError();                                      \
     TORCH_CHECK(err == cudaSuccess,                                            \
                 "CUDA kernel launch failed: ", cudaGetErrorString(err));       \
-    err = cudaDeviceSynchronize();                                             \
-    TORCH_CHECK(err == cudaSuccess,                                            \
-                "CUDA kernel execution failed: ", cudaGetErrorString(err));    \
   } while (0)
 
 #define CHECK_CUDA(x) TORCH_CHECK(x.is_cuda(), #x " must be a CUDA tensor")

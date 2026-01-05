@@ -234,32 +234,26 @@ class FusedLoss:
             ctypes.c_void_p(stream)
         )
         
-        # OPTIMIZATION: Don't sync here - let PyTorch handle it
-        # Only sync when accessing .item()
+        # OPTIMIZATION: Don't sync here - keep everything on GPU
+        # valid_tokens = self._valid_tokens_out.item()  # REMOVED: Implicit sync
         
-        valid_tokens = self._valid_tokens_out.item()  # Implicit sync
+        # Compute final values on GPU
+        valid_mask = (self._valid_tokens_out > 0)
         
-        if valid_tokens > 0:
-            # OPTIMIZATION: Avoid unnecessary .item() calls
-            loss_val = self._loss_out.item() / valid_tokens
-            accuracy_val = self._accuracy_out.item() / valid_tokens
-        else:
-            loss_val = 0.0
-            accuracy_val = 0.0
+        # Use torch.where or safe division to avoid NaN if valid_tokens is 0
+        loss_tensor = torch.where(valid_mask, self._loss_out / self._valid_tokens_out.float(), torch.tensor(0.0, device=logits.device))
+        accuracy_tensor = torch.where(valid_mask, self._accuracy_out / self._valid_tokens_out.float(), torch.tensor(0.0, device=logits.device))
         
-        # OPTIMIZATION: Compute perplexity on GPU, return tensor
-        loss_tensor = torch.tensor(loss_val, device=logits.device, dtype=torch.float32)
-        
-        # Clamp loss for perplexity stability
-        clamped = min(loss_val, 15.0)
-        perplexity = torch.tensor(clamped, device=logits.device).exp()
+        # Clamp loss for perplexity stability (on GPU)
+        clamped_loss = torch.clamp(loss_tensor, 0.0, 15.0)
+        perplexity = clamped_loss.exp()
         
         return {
             'loss': loss_tensor.requires_grad_(True),  # Add gradient tracking
-            'raw_loss': loss_tensor,
+            'raw_loss': loss_tensor.detach(),
             'perplexity': perplexity,
-            'valid_tokens': torch.tensor(valid_tokens, device=logits.device, dtype=torch.int64),
-            'accuracy': torch.tensor(accuracy_val, device=logits.device, dtype=torch.float32)
+            'valid_tokens': self._valid_tokens_out.clone(),
+            'accuracy': accuracy_tensor
         }
     
     def _pytorch_fallback(self, logits, labels, loss_weights, pad_token_id):
