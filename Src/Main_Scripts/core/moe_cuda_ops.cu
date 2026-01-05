@@ -62,139 +62,83 @@ __device__ __forceinline__ float warp_reduce_max(float val) {
 }
 
 // ============================================================================
-// ULTRA-OPTIMIZED TOP-K GATING - SINGLE WARP, REGISTER-ONLY
+// CORRECT TOP-K GATING - ONE THREAD PER TOKEN
 // ============================================================================
 
-// SINGLE PASS: Each warp processes one token entirely in registers
-// No shared memory, no global memory except final write
-// 3-5x faster than original
+// Simple, correct implementation: one thread handles one token completely
+// No warp-level merge needed - avoids all the synchronization bugs
+// Still fast because num_experts is typically small (8-64)
 template <int K>
 __global__ void topk_gating_kernel_single_pass(
     const float *__restrict__ gate_logits, int64_t *__restrict__ top_k_indices,
     float *__restrict__ top_k_weights, const int num_tokens,
     const int num_experts, const float temperature) {
-  const int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) / WARP_SIZE;
-  const int lane_id = threadIdx.x % WARP_SIZE;
-  const int token_idx = warp_id;
+
+  const int token_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (token_idx >= num_tokens)
     return;
 
   const float *token_logits = gate_logits + token_idx * num_experts;
 
-  // Each thread maintains K best values in registers
+  // Each thread maintains its own top-K in registers
   float best_vals[MAX_K];
   int best_idxs[MAX_K];
 
 #pragma unroll
   for (int i = 0; i < K; i++) {
     best_vals[i] = -INFINITY;
-    best_idxs[i] = -1;
+    best_idxs[i] = 0; // Default to expert 0, not -1
   }
 
-  // SINGLE PASS: Scan all experts once, maintain top-K in registers
-  for (int expert_id = lane_id; expert_id < num_experts;
-       expert_id += WARP_SIZE) {
-    float val = __ldg(&token_logits[expert_id]) / temperature;
+  // Single pass: scan all experts, maintain sorted top-K
+  for (int expert_id = 0; expert_id < num_experts; expert_id++) {
+    float val = token_logits[expert_id] / temperature;
 
-    // Insert into sorted top-K (unrolled for K=2, general for others)
-    if (K == 2) {
-      if (val > best_vals[0]) {
-        best_vals[1] = best_vals[0];
-        best_idxs[1] = best_idxs[0];
-        best_vals[0] = val;
-        best_idxs[0] = expert_id;
-      } else if (val > best_vals[1]) {
-        best_vals[1] = val;
-        best_idxs[1] = expert_id;
+    // Check if this value should be inserted into top-K
+    if (val > best_vals[K - 1]) {
+      // Find insertion point
+      int insert_pos = K - 1;
+      while (insert_pos > 0 && val > best_vals[insert_pos - 1]) {
+        insert_pos--;
       }
-    } else {
-// General case for K > 2
-#pragma unroll
-      for (int i = 0; i < K; i++) {
-        if (val > best_vals[i]) {
-// Shift down
-#pragma unroll
-          for (int j = K - 1; j > i; j--) {
-            best_vals[j] = best_vals[j - 1];
-            best_idxs[j] = best_idxs[j - 1];
-          }
-          best_vals[i] = val;
-          best_idxs[i] = expert_id;
-          break;
-        }
+
+      // Shift elements down
+      for (int j = K - 1; j > insert_pos; j--) {
+        best_vals[j] = best_vals[j - 1];
+        best_idxs[j] = best_idxs[j - 1];
       }
+
+      // Insert new value
+      best_vals[insert_pos] = val;
+      best_idxs[insert_pos] = expert_id;
     }
   }
 
-// SINGLE PASS: Warp-level top-K merge using shuffle
-// ✅ FIXED: Properly invalidate winning experts across ALL slots
+  // Softmax normalization over top-K
+  float max_logit = best_vals[0];
+#pragma unroll
+  for (int i = 1; i < K; i++) {
+    max_logit = fmaxf(max_logit, best_vals[i]);
+  }
+
+  float sum_exp = 0.0f;
 #pragma unroll
   for (int i = 0; i < K; i++) {
-    float global_best = best_vals[i];
-    int global_idx = best_idxs[i];
-
-// Find max across warp
-#pragma unroll
-    for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
-      float other_val = __shfl_down_sync(0xffffffff, global_best, offset);
-      int other_idx = __shfl_down_sync(0xffffffff, global_idx, offset);
-
-      if (other_val > global_best) {
-        global_best = other_val;
-        global_idx = other_idx;
-      }
-    }
-
-    // Broadcast winner to all lanes
-    global_best = __shfl_sync(0xffffffff, global_best, 0);
-    global_idx = __shfl_sync(0xffffffff, global_idx, 0);
-
-// ✅ CRITICAL FIX: Invalidate winning expert across ALL slots in ALL lanes
-// The winning expert must be removed from consideration for future iterations
-#pragma unroll
-    for (int j = 0; j < K; j++) {
-      if (best_idxs[j] == global_idx) {
-        best_vals[j] = -INFINITY;
-        best_idxs[j] = -1; // Mark as invalid
-      }
-    }
-
-    // Store final result (only lane 0)
-    if (lane_id == 0) {
-      best_vals[i] = global_best;
-      best_idxs[i] = global_idx;
-    }
+    float exp_val = expf(best_vals[i] - max_logit);
+    best_vals[i] = exp_val;
+    sum_exp += exp_val;
   }
 
-  // SINGLE PASS: Softmax normalization (only lane 0 has valid data)
-  if (lane_id == 0) {
-    // Find max for numerical stability
-    float max_logit = best_vals[0];
-#pragma unroll
-    for (int i = 1; i < K; i++) {
-      max_logit = fmaxf(max_logit, best_vals[i]);
-    }
-
-    // Compute exp and sum
-    float sum_exp = 0.0f;
-#pragma unroll
-    for (int i = 0; i < K; i++) {
-      float exp_val = expf(best_vals[i] - max_logit);
-      best_vals[i] = exp_val;
-      sum_exp += exp_val;
-    }
-
-    // Normalize and write output
-    const float inv_sum = __fdividef(1.0f, sum_exp);
-    int64_t *out_indices = top_k_indices + token_idx * K;
-    float *out_weights = top_k_weights + token_idx * K;
+  // Write output
+  const float inv_sum = 1.0f / (sum_exp + 1e-9f); // Add epsilon for safety
+  int64_t *out_indices = top_k_indices + token_idx * K;
+  float *out_weights = top_k_weights + token_idx * K;
 
 #pragma unroll
-    for (int i = 0; i < K; i++) {
-      out_weights[i] = best_vals[i] * inv_sum;
-      out_indices[i] = (int64_t)best_idxs[i];
-    }
+  for (int i = 0; i < K; i++) {
+    out_weights[i] = best_vals[i] * inv_sum;
+    out_indices[i] = (int64_t)best_idxs[i];
   }
 }
 
@@ -360,10 +304,9 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
 
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-  // Launch config: one warp per token
-  const int warps_per_block = 8;
-  const int threads = warps_per_block * WARP_SIZE;
-  const int blocks = (num_tokens + warps_per_block - 1) / warps_per_block;
+  // Launch config: one thread per token (simpler and correct)
+  const int threads = 256;
+  const int blocks = (num_tokens + threads - 1) / threads;
 
   // Dispatch based on K (template specialization for optimal performance)
   if (k == 2) {
