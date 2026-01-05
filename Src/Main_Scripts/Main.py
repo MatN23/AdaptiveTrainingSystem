@@ -131,6 +131,7 @@ try:
     from core.tokenizer import ConversationTokenizer
     from core.model import DeepSeekTransformer, DeepSeekConfig
     from core.dataset import ConversationDataset, create_dataloader
+    from core.triton_ops import replace_linear_with_fp8, is_triton_available
     print("✓ Core modules loaded")
 except ImportError as e:
     print(f"ERROR: Could not import core modules: {e}")
@@ -2327,6 +2328,19 @@ def main():
 
         base_model.apply(init_weights_for_fp16)
         print("✓ Applied FP16-safe weight initialization")
+
+        # Apply Triton FP8 Emulation (Optional)
+        if getattr(config, 'use_triton_fp8', False):
+            print_section("Applying Triton FP8 Emulation")
+            if is_triton_available():
+                # Replace Linear layers (except heads/embeddings usually, but replace_linear handles nn.Linear)
+                # Typically we might want to skip the output head or embeddings?
+                # nn.Embedding is not nn.Linear. Output head probably is.
+                # For now, replace all.
+                replace_linear_with_fp8(base_model)
+                print("✓ Replaced Linear layers with TritonFP8Linear")
+            else:
+                print("⚠️ Triton not available - skipping FP8 emulation")
 
         # Determine backend and wrap model
         backend_choice = backend_params.get('backend', 'pytorch')

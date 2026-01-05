@@ -63,6 +63,7 @@ class Config:
     gradient_checkpointing: bool = True
     tie_word_embeddings: bool = True
     use_flash_attention: bool = True
+    use_triton_fp8: bool = False
     
     # MoE parameters
     use_moe: bool = True
