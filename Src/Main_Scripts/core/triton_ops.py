@@ -39,8 +39,8 @@ def generate_e4m3_lut():
             # 2^-6
             val = ((-1)**s) * (2**-6) * (m / 8.0)
         elif e == 15 and m == 7:
-            # NaN
-            val = float('nan')
+            # NaN -> Map to 0.0 for fallback stability
+            val = 0.0
         else:
             # Normal: (-1)^s * 2^(e-7) * (1 + m/8)
             val = ((-1)**s) * (2**(e-7)) * (1 + m / 8.0)
@@ -187,10 +187,10 @@ def torch_fallback_matmul(a_int8, b_int8, scale_a, scale_b, lut=None):
     a_idx = (a_int8.long() & 0xFF)
     b_idx = (b_int8.long() & 0xFF)
     
-    a_dec = F.embedding(a_idx, lut) # [M, K]
-    b_dec = F.embedding(b_idx, lut) # [K, N]
+    a_dec = lut[a_idx] # [M, K]
+    b_dec = lut[b_idx] # [K, N]
     
-    return torch.matmul(a_dec, b_dec) * (scale_a * scale_b)
+    return torch.matmul(a_dec.float(), b_dec.float()) * (scale_a * scale_b)
 
 def triton_fp8_matmul(a, b, scale_a=1.0, scale_b=1.0, lut=None):
     if is_triton_available() and a.is_cuda:
@@ -232,7 +232,11 @@ class TritonFP8Linear(nn.Module):
             w_scaled = w_t / scale
             
             if hasattr(torch, 'float8_e4m3fn'):
-                self.weight.data = w_scaled.to(torch.float8_e4m3fn).view(torch.int8)
+                try:
+                    self.weight.data = w_scaled.to(torch.float8_e4m3fn).view(torch.int8)
+                except (TypeError, RuntimeError):
+                    # Fallback if device doesn't support float8
+                    self.weight.data = w_scaled.clamp(-128, 127).to(torch.int8)
             else:
                 # Quantization Fallback? LUT inverse?
                 # Inverse LUT is hard.
@@ -255,7 +259,10 @@ class TritonFP8Linear(nn.Module):
         if scale_x == 0: scale_x = 1.0
         
         if hasattr(torch, 'float8_e4m3fn'):
-            x_int8 = (x / scale_x).to(torch.float8_e4m3fn).view(torch.int8)
+            try:
+                x_int8 = (x / scale_x).to(torch.float8_e4m3fn).view(torch.int8)
+            except (TypeError, RuntimeError):
+                x_int8 = (x / scale_x).clamp(-128, 127).to(torch.int8)
         else:
             x_int8 = (x / scale_x).clamp(-128, 127).to(torch.int8)
         

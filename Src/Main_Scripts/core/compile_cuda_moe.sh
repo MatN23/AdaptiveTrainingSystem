@@ -221,7 +221,7 @@ NVCC_CMD+=" -I${TORCH_INCLUDE}/torch/csrc/api/include"
 
 # Compilation flags
 NVCC_CMD+=" -c"
-NVCC_CMD+=" -std=c++14"
+NVCC_CMD+=" -std=c++17"
 NVCC_CMD+=" --compiler-options '-fPIC'"
 NVCC_CMD+=" -DTORCH_EXTENSION_NAME=moe_cuda_ext"
 NVCC_CMD+=" -DTORCH_API_INCLUDE_EXTENSION_H"
@@ -306,12 +306,14 @@ LINK_CMD+=" -fPIC"
 
 # Library paths
 LINK_CMD+=" -L${TORCH_LIB}"
+LINK_CMD+=" -L/usr/local/cuda/lib64"
 
 # Libraries to link against
 LINK_CMD+=" -ltorch"
 LINK_CMD+=" -lc10"
 LINK_CMD+=" -ltorch_cpu"
 LINK_CMD+=" -ltorch_cuda"
+LINK_CMD+=" -ltorch_python" 
 
 # CUDA libraries
 LINK_CMD+=" -lcudart"

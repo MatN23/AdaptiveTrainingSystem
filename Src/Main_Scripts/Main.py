@@ -128,10 +128,15 @@ except ImportError as e:
         sys.exit(1)
 
 try:
-    from core.tokenizer import ConversationTokenizer
-    from core.model import DeepSeekTransformer, DeepSeekConfig
-    from core.dataset import ConversationDataset, create_dataloader
     from core.triton_ops import replace_linear_with_fp8, is_triton_available
+    print("Triton ops loaded properly")
+except ImportError as e:
+    print("Triton ops not loaded")
+
+try:
+    from core.tokenizer import ConversationTokenizer
+    from core.model import DeepSeekTransformer, DeepSeekConfig, HAS_CUDA_OPS, BACKEND
+    from core.dataset import ConversationDataset, create_dataloader
     print("✓ Core modules loaded")
 except ImportError as e:
     print(f"ERROR: Could not import core modules: {e}")
@@ -2330,6 +2335,17 @@ def main():
         print("✓ Applied FP16-safe weight initialization")
 
         # Apply Triton FP8 Emulation (Optional)
+        # FORCE DISABLE per user request
+        config.use_triton_fp8 = False
+        print("🚫 Triton FP8 Emulation: DISABLED (User Request)")
+        
+        # Verify Standard CUDA Backend
+        if HAS_TRANSFORMER_CUDA:
+            print(f"✅ Standard CUDA Backend: ACTIVE ({BACKEND.upper()})")
+            print("   (Using optimized RMSNorm, RoPE, SwiGLU kernels)")
+        else:
+            print("⚠️  Standard CUDA Backend: INACTIVE (Using PyTorch fallback)")
+
         if getattr(config, 'use_triton_fp8', False):
             print_section("Applying Triton FP8 Emulation")
             if is_triton_available():

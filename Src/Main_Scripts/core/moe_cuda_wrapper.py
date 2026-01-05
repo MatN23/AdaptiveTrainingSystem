@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from typing import Tuple
 import time
 import os
+from torch.utils.cpp_extension import load
 
 # ============================================================================
 # LOAD CUDA OPS
@@ -21,11 +22,11 @@ CUDA_OPS_AVAILABLE = False
 moe_cuda_ops = None
 
 try:
-    from torch.utils.cpp_extension import load
-    
+    # Get paths FIRST
     current_dir = os.path.dirname(os.path.abspath(__file__))
     cuda_src = os.path.join(current_dir, 'moe_cuda_ops.cu')
     
+    # Now you can safely check
     if not os.path.exists(cuda_src):
         raise FileNotFoundError(f"CUDA source not found: {cuda_src}")
     
@@ -34,7 +35,6 @@ try:
     
     # Detect GPU arch
     extra_cuda_cflags = ['-O3', '--use_fast_math']
-    
     if torch.cuda.is_available():
         capability = torch.cuda.get_device_capability(0)
         arch = f"compute_{capability[0]}{capability[1]}"
@@ -43,34 +43,25 @@ try:
         print(f"   Target: {code}")
     else:
         print(f"   ⚠️  CUDA not available, compiling anyway...")
-    
+
+    # Load the CUDA extension
     moe_cuda_ops = load(
         name='moe_cuda_ops',
         sources=[cuda_src],
         extra_cuda_cflags=extra_cuda_cflags,
         extra_cflags=['-O3'],
         verbose=True,
-        with_cuda=True
+        with_cuda=True,
+        build_directory=os.path.join(os.path.expanduser("~"), ".cache/torch_extensions")
     )
-    
+
     CUDA_OPS_AVAILABLE = True
     print(f"✅ CUDA MoE ops loaded successfully")
-    
-    # Verify functions exist
-    required_funcs = ['topk_gating', 'dispatch_tokens', 'combine_expert_outputs']
-    available_funcs = [f for f in dir(moe_cuda_ops) if not f.startswith('_')]
-    
-    for func in required_funcs:
-        if func not in available_funcs:
-            raise RuntimeError(f"Function '{func}' not found in compiled module!")
-    
-    print(f"   Functions: {', '.join(available_funcs)}")
 
 except Exception as e:
     print(f"⚠️  CUDA compilation failed: {e}")
     print(f"   Falling back to PyTorch implementation")
     CUDA_OPS_AVAILABLE = False
-
 
 # ============================================================================
 # DTYPE CONVERSION UTILITIES

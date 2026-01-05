@@ -25,8 +25,11 @@ def _find_so_files():
         Path(__file__).parent.parent,
         Path.cwd(),
         Path.cwd() / "training",
+        Path.cwd() / "core",  # Added core folder
+        Path(__file__).parent.parent / "core", # Absolute core folder reference
         Path("/content/LuminaAI/Src/Main_Scripts"),
         Path("/content/LuminaAI/Src/Main_Scripts/training"),
+        Path("/content/LuminaAI/Src/Main_Scripts/core"), # Explicit core path
     ]
     
     for location in possible_locations:
@@ -53,8 +56,78 @@ def _load_cuda_libraries():
     
     loss_lib_path, grad_lib_path = _find_so_files()
     
+    loss_lib_path, grad_lib_path = _find_so_files()
+    
+    # JIT Compile if not found
     if loss_lib_path is None or grad_lib_path is None:
-        logger.warning("❌ CUDA kernel .so files not found!")
+        logger.warning("⚠️  Pre-compiled CUDA kernels not found - attempting JIT compilation...")
+        try:
+             from torch.utils.cpp_extension import load
+             import os
+             
+             # Compilation flags
+             cxx_flags = ['-O3']
+             nvcc_flags = ['-O3', '--use_fast_math']
+             if torch.cuda.get_device_capability()[0] >= 8:
+                 nvcc_flags.append('--generate-code=arch=compute_80,code=sm_80')
+             
+             training_dir = Path(__file__).parent
+             if not training_dir.exists(): 
+                # Fallback for colab/weird paths
+                training_dir = Path("/content/LuminaAI/Src/Main_Scripts/training")
+
+             logger.info(f"🔨 Compiling fused_loss from {training_dir}...")
+             _fused_loss_lib = load(
+                 name='fused_loss',
+                 sources=[str(training_dir / 'fused_loss.cu')],
+                 extra_cflags=cxx_flags,
+                 extra_cuda_cflags=nvcc_flags,
+                 verbose=True
+             )
+             
+             logger.info(f"🔨 Compiling fused_grad_clip from {training_dir}...")
+             _fused_grad_clip_lib = load(
+                 name='fused_grad_clip',
+                 sources=[str(training_dir / 'fused_grad_clip.cu')],
+                 extra_cflags=cxx_flags,
+                 extra_cuda_cflags=nvcc_flags,
+                 verbose=True
+             )
+             
+             # For JIT loaded modules, we access functions differently than ctypes.CDLL
+             # But to keep the wrapper class code compatible, we can try to wrap them or just set the global vars
+             # The wrapper classes use _fused_loss_lib.fused_cross_entropy_accuracy_launcher(...)
+             # The JIT loaded module will have that function directly accessible.
+             # However, the wrapper expects ctypes pointers. JIT loaded functions usually take torch tensors directly.
+             # This suggests we should use the JIT-loaded module directly in a separate path or adapter.
+             
+             # CRITICAL FIX: The existing wrapper classes explicitly use ctypes! 
+             # JIT 'load' returns a python module binding, NOT a CDLL.
+             # So we cannot just assign it to _fused_loss_lib and expect ctypes calls to work.
+             
+             # Better instruction: Run the compile script to generate the .so, THEN load it via CDLL.
+             import subprocess
+             
+             compile_script = training_dir / "compile_kernels.sh"
+             if compile_script.exists():
+                 logger.info(f"Running compilation script: {compile_script}")
+                 os.chmod(compile_script, 0o755)
+                 result = subprocess.run([str(compile_script)], capture_output=True, text=True, cwd=str(training_dir))
+                 if result.returncode == 0:
+                     logger.info("✅ Compilation successful!")
+                     # Try finding .so files again
+                     loss_lib_path, grad_lib_path = _find_so_files()
+                 else:
+                     logger.error(f"❌ Compilation failed:\n{result.stderr}")
+             else:
+                 logger.error(f"❌ compile_kernels.sh not found at {compile_script}")
+
+        except Exception as e:
+            logger.error(f"❌ JIT/Compilation failed: {e}")
+            
+    # Re-check after potential compilation
+    if loss_lib_path is None or grad_lib_path is None:
+        logger.warning("❌ CUDA kernel .so files not found even after compilation attempt!")
         return False
     
     try:
