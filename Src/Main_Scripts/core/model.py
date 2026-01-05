@@ -1134,28 +1134,37 @@ class MoEFFNLayer(nn.Module):
         # Temperature scaling for routing
         scaled_logits = gate_logits / self.routing_temperature
 
-        # ✅ USE CUDA FOR FAST TOP-K (Training & Inference)
+        # ✅ USE CUDA FOR FAST TOP-K (with index validation)
         if self.use_cuda_ops and MoECUDAOps is not None and x.is_cuda:
             try:
                 # Use CUDA for fast index selection
-                top_k_indices, _ = MoECUDAOps.topk_gating(
+                top_k_indices, cuda_probs = MoECUDAOps.topk_gating(
                     gate_logits,
                     self.top_k,
                     temperature=self.routing_temperature,
                     use_cuda=True
                 )
                 
-                # ✅ CRITICAL: Re-compute weights in PyTorch using gathered logits.
-                # This ensures the gradient path to gate_logits is preserved!
-                # Without this, the gating network (router) NOT learn.
-                top_k_logits = torch.gather(scaled_logits, -1, top_k_indices)
-                top_k_probs = F.softmax(top_k_logits, dim=-1)
+                # ✅ VALIDATE INDICES - CUDA kernel can produce bad indices
+                num_experts = gate_logits.size(-1)
+                invalid_mask = (top_k_indices < 0) | (top_k_indices >= num_experts)
                 
+                if invalid_mask.any():
+                    # Bad indices detected - fall back to PyTorch for this batch
+                    logging.warning(f"CUDA gating produced invalid indices, falling back to PyTorch")
+                    top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
+                else:
+                    # ✅ CRITICAL: Re-compute weights in PyTorch using gathered logits.
+                    # This ensures the gradient path to gate_logits is preserved!
+                    top_k_logits = torch.gather(scaled_logits, -1, top_k_indices)
+                    top_k_probs = F.softmax(top_k_logits, dim=-1)
+                    
             except Exception as e:
                 logging.warning(f"CUDA routing failed: {e}")
                 top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
         else:
             top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
+
         
         # === EXPERT COMPUTATION ===
         output = self._compute_experts_vectorized(x_flat, top_k_indices, top_k_probs)
