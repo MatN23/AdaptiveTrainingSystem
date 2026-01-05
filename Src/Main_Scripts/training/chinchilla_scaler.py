@@ -19,6 +19,25 @@ from datetime import datetime
 from pathlib import Path
 
 
+def _to_scalar(val):
+    """Robust conversion of any tensor/numpy type to Python scalar."""
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return val
+    if torch.is_tensor(val):
+        return val.item()
+    if hasattr(val, 'item') and callable(val.item):
+        try:
+            return val.item()
+        except:
+            pass
+    try:
+        return float(val)
+    except:
+        return 0.0
+
+
 @dataclass
 class ScalingMetrics:
     """Comprehensive metrics for scaling decisions."""
@@ -44,8 +63,8 @@ class ConvergenceDetector:
         self.grad_norm_history = deque(maxlen=window_size)
         
     def update(self, loss: float, grad_norm: float):
-        self.loss_history.append(loss)
-        self.grad_norm_history.append(grad_norm)
+        self.loss_history.append(_to_scalar(loss))
+        self.grad_norm_history.append(_to_scalar(grad_norm))
     
     def detect_plateau(self, threshold: float = 0.001) -> Tuple[bool, float]:
         if len(self.loss_history) < self.window_size:
@@ -124,11 +143,11 @@ class ComputeEfficiencyTracker:
         flops_used = tokens_processed * self.model_flops
         efficiency = loss_reduction / max(flops_used, 1e-20)
         
-        self.efficiency_history.append(efficiency)
+        self.efficiency_history.append(_to_scalar(efficiency))
         self.metrics.append({
-            'tokens': tokens_processed,
-            'loss_reduction': loss_reduction,
-            'efficiency': efficiency
+            'tokens': _to_scalar(tokens_processed),
+            'loss_reduction': _to_scalar(loss_reduction),
+            'efficiency': _to_scalar(efficiency)
         })
     
     def get_current_efficiency(self) -> float:
@@ -160,7 +179,7 @@ class AdaptiveCurriculumManager:
         self.learning_velocity = deque(maxlen=50)
         
     def update_learning_velocity(self, loss_reduction: float):
-        self.learning_velocity.append(loss_reduction)
+        self.learning_velocity.append(_to_scalar(loss_reduction))
     
     def get_recommended_difficulty(self) -> float:
         if len(self.learning_velocity) < 10:
@@ -285,6 +304,14 @@ class EnhancedChinchillaScaler:
     
     def update_metrics(self, step: int, epoch: float, loss: float, 
                       grad_norm: float, learning_rate: float, batch_tokens: int):
+        # Defensive conversion: Ensure all inputs are basic Python types
+        loss = _to_scalar(loss)
+        grad_norm = _to_scalar(grad_norm)
+        learning_rate = _to_scalar(learning_rate)
+        batch_tokens = _to_scalar(batch_tokens)
+        step = int(_to_scalar(step))
+        epoch = float(_to_scalar(epoch))
+        
         self.tokens_processed += batch_tokens
         
         if self.initial_loss is None:

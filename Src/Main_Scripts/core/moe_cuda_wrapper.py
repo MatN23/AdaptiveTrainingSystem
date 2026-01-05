@@ -44,6 +44,10 @@ try:
     else:
         print(f"   ⚠️  CUDA not available, compiling anyway...")
 
+    # Ensure build directory exists
+    build_dir = os.path.join(os.path.expanduser("~"), ".cache/torch_extensions")
+    os.makedirs(build_dir, exist_ok=True)
+
     # Load the CUDA extension
     moe_cuda_ops = load(
         name='moe_cuda_ops',
@@ -52,7 +56,7 @@ try:
         extra_cflags=['-O3'],
         verbose=True,
         with_cuda=True,
-        build_directory=os.path.join(os.path.expanduser("~"), ".cache/torch_extensions")
+        build_directory=build_dir
     )
 
     CUDA_OPS_AVAILABLE = True

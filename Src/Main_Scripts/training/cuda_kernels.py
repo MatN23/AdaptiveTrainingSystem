@@ -76,13 +76,18 @@ def _load_cuda_libraries():
                 # Fallback for colab/weird paths
                 training_dir = Path("/content/LuminaAI/Src/Main_Scripts/training")
 
+             import os
+             build_dir = os.path.join(os.path.expanduser("~"), ".cache/torch_extensions")
+             os.makedirs(build_dir, exist_ok=True)
+
              logger.info(f"🔨 Compiling fused_loss from {training_dir}...")
              _fused_loss_lib = load(
                  name='fused_loss',
                  sources=[str(training_dir / 'fused_loss.cu')],
                  extra_cflags=cxx_flags,
                  extra_cuda_cflags=nvcc_flags,
-                 verbose=True
+                 verbose=True,
+                 build_directory=build_dir
              )
              
              logger.info(f"🔨 Compiling fused_grad_clip from {training_dir}...")
@@ -91,7 +96,8 @@ def _load_cuda_libraries():
                  sources=[str(training_dir / 'fused_grad_clip.cu')],
                  extra_cflags=cxx_flags,
                  extra_cuda_cflags=nvcc_flags,
-                 verbose=True
+                 verbose=True,
+                 build_directory=build_dir
              )
              
              # For JIT loaded modules, we access functions differently than ctypes.CDLL

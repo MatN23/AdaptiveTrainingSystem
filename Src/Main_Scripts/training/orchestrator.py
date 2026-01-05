@@ -1027,6 +1027,8 @@ class AdaptiveTrainingOrchestrator:
     def start_real_time_monitoring(self):
         """Start real-time monitoring thread."""
         def monitoring_loop():
+            consecutive_errors = 0
+            max_consecutive_errors = 5
             while self.is_training and not self.should_stop:
                 try:
                     # Get latest metrics with timeout to allow checking should_stop

@@ -135,7 +135,7 @@ except ImportError as e:
 
 try:
     from core.tokenizer import ConversationTokenizer
-    from core.model import DeepSeekTransformer, DeepSeekConfig, HAS_CUDA_OPS, BACKEND
+    from core.model import DeepSeekTransformer, DeepSeekConfig, HAS_CUDA_OPS, HAS_TRANSFORMER_CUDA, BACKEND
     from core.dataset import ConversationDataset, create_dataloader
     print("✓ Core modules loaded")
 except ImportError as e:
