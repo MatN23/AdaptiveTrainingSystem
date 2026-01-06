@@ -1190,19 +1190,11 @@ class EnhancedConversationTrainer:
             # Use the module-level TrainingMetrics defined above
             MetricsClass = TrainingMetrics
         
-        loss = self.metrics.get('train_losses', [0])[-1] if self.metrics.get('train_losses') else 0.0
-        if isinstance(loss, torch.Tensor):
-            loss = loss.item()
-            
-        grad_norm = self.metrics.get('gradient_norms', [0])[-1] if self.metrics.get('gradient_norms') else 0.0
-        if isinstance(grad_norm, torch.Tensor):
-            grad_norm = grad_norm.item()
-
         return MetricsClass(
             epoch=self.current_epoch,
             step=self.global_step,
-            loss=loss,
-            grad_norm=grad_norm,
+            loss=self.metrics.get('train_losses', [0])[-1] if self.metrics.get('train_losses') else 0.0,
+            grad_norm=self.metrics.get('gradient_norms', [0])[-1] if self.metrics.get('gradient_norms') else 0.0,
             learning_rate=self.metrics.get('learning_rates', [0])[-1] if self.metrics.get('learning_rates') else self.config.learning_rate,
             expert_utilization=self._extract_moe_routing_stats(),
             memory_usage=self._get_memory_usage(),
@@ -2338,6 +2330,13 @@ class EnhancedConversationTrainer:
             # Fallback for numerical issues
             perplexity = torch.tensor(float('inf'), device=logits.device)
 
+        # ✅ WARNING: Check if loss was clamped
+        if raw_loss_for_ppl.item() > 15.0:
+            logging.warning(
+                f"Loss {raw_loss_for_ppl.item():.2f} exceeds safe range for perplexity. "
+                f"Clamped to 15.0 (perplexity = {math.exp(15.0):.0f})"
+            )
+
         return {
             'loss': final_loss,              # For backprop (potentially weighted)
             'raw_loss': raw_loss_for_ppl,    # For logging (always unweighted)
@@ -2354,8 +2353,8 @@ class EnhancedConversationTrainer:
         else:
             return self._standard_train_step(batch)
     
-    def _deepspeed_train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """DeepSpeed training step with non-blocking metric collection."""
+    def _deepspeed_train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
+        """DeepSpeed training step with ACCURATE throughput."""
         batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
         
         input_ids = batch.get('input_ids')
@@ -2365,12 +2364,17 @@ class EnhancedConversationTrainer:
         
         if input_ids is None or input_ids.numel() == 0:
             return {
-                'loss': torch.tensor(0.0, device=self.device),
-                'raw_loss': torch.tensor(0.0, device=self.device),
-                'perplexity': torch.tensor(float('inf'), device=self.device),
-                'valid_tokens': torch.tensor(0, device=self.device),
-                'accuracy': torch.tensor(0.0, device=self.device)
+                'loss': 0.0,
+                'raw_loss': 0.0,
+                'perplexity': float('inf'),
+                'valid_tokens': 0,
+                'accuracy': 0.0
             }
+        
+        # ✅ START TIMING
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        compute_start = time.perf_counter()
         
         try:
             output = self.deepspeed_engine(input_ids, attention_mask)
@@ -2394,13 +2398,27 @@ class EnhancedConversationTrainer:
             
             self.deepspeed_engine.backward(loss)
             
-            # ✅ RETURN TENSORS - No syncs or .item() calls here
+            # ✅ END TIMING
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            compute_time = time.perf_counter() - compute_start
+            
+            # ✅ ACCURATE THROUGHPUT
+            num_tokens = loss_dict['valid_tokens'].item() if hasattr(loss_dict['valid_tokens'], 'item') else float(loss_dict['valid_tokens'])
+            step_throughput = num_tokens / compute_time if compute_time > 0 else 0.0
+            
+            self.throughput_window.append(step_throughput)
+            if len(self.throughput_window) > self.throughput_window_size:
+                self.throughput_window.pop(0)
+            
             return {
-                'loss': loss,
-                'raw_loss': loss_dict['raw_loss'],
-                'perplexity': loss_dict['perplexity'],
-                'valid_tokens': loss_dict['valid_tokens'],
-                'accuracy': loss_dict['accuracy']
+                'loss': loss.item() if hasattr(loss, 'item') else float(loss),
+                'raw_loss': loss_dict['raw_loss'].item() if hasattr(loss_dict['raw_loss'], 'item') else float(loss_dict['raw_loss']),
+                'perplexity': loss_dict['perplexity'].item() if hasattr(loss_dict['perplexity'], 'item') else float(loss_dict['perplexity']),
+                'valid_tokens': num_tokens,
+                'accuracy': loss_dict['accuracy'].item() if hasattr(loss_dict['accuracy'], 'item') else float(loss_dict['accuracy']),
+                'compute_time_ms': compute_time * 1000,
+                'throughput': step_throughput
             }
             
         except Exception as e:
@@ -2413,8 +2431,8 @@ class EnhancedConversationTrainer:
                 'accuracy': 0.0
             }
         
-    def _standard_train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """Standard PyTorch training step with non-blocking metric collection."""
+    def _standard_train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
+        """Standard PyTorch training step with ACCURATE throughput measurement."""
         self.model.train()
         
         batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
@@ -2426,12 +2444,17 @@ class EnhancedConversationTrainer:
         
         if input_ids is None or input_ids.numel() == 0:
             return {
-                'loss': torch.tensor(0.0, device=self.device),
-                'raw_loss': torch.tensor(0.0, device=self.device),
-                'perplexity': torch.tensor(float('inf'), device=self.device),
-                'valid_tokens': torch.tensor(0, device=self.device),
-                'accuracy': torch.tensor(0.0, device=self.device)
+                'loss': 0.0,
+                'raw_loss': 0.0,
+                'perplexity': float('inf'),
+                'valid_tokens': 0,
+                'accuracy': 0.0
             }
+        
+        # ✅ START TIMING - Right before actual computation
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        compute_start = time.perf_counter()
         
         # === FORWARD PASS ===
         with self._get_autocast_context(for_inference=False):
@@ -2450,14 +2473,14 @@ class EnhancedConversationTrainer:
         
         loss = loss_dict['loss']
         
-        # Check for invalid loss (must be a tensor comparison to avoid stall)
         if torch.isnan(loss).any() or torch.isinf(loss).any():
+            print("Invalid loss detected, skipping batch")
             return {
-                'loss': torch.tensor(0.0, device=self.device),
-                'raw_loss': torch.tensor(0.0, device=self.device),
-                'perplexity': torch.tensor(float('inf'), device=self.device),
-                'valid_tokens': torch.tensor(0, device=self.device),
-                'accuracy': torch.tensor(0.0, device=self.device)
+                'loss': 0.0,
+                'raw_loss': 0.0,
+                'perplexity': float('inf'),
+                'valid_tokens': 0,
+                'accuracy': 0.0
             }
         
         # === BACKWARD PASS ===
@@ -2466,13 +2489,27 @@ class EnhancedConversationTrainer:
         else:
             loss.backward()
         
-        # ✅ RETURN TENSORS - No .item() calls here to avoid CPU-GPU stall
+        # ✅ END TIMING - Right after computation finishes
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        compute_time = time.perf_counter() - compute_start
+        
+        # ✅ ACCURATE THROUGHPUT - Only actual compute time
+        num_tokens = loss_dict['valid_tokens'].item()
+        if compute_time > 0:
+            step_throughput = num_tokens / compute_time
+            self.throughput_window.append(step_throughput)
+            if len(self.throughput_window) > self.throughput_window_size:
+                self.throughput_window.pop(0)
+        
         return {
-            'loss': loss,
-            'raw_loss': loss_dict['raw_loss'],
-            'perplexity': loss_dict['perplexity'],
-            'valid_tokens': loss_dict['valid_tokens'],
-            'accuracy': loss_dict['accuracy']
+            'loss': loss.item(),
+            'raw_loss': loss_dict['raw_loss'].item(),
+            'perplexity': loss_dict['perplexity'].item(),
+            'valid_tokens': loss_dict['valid_tokens'].item(),
+            'accuracy': loss_dict['accuracy'].item(),
+            'compute_time_ms': compute_time * 1000,  # ✅ NEW: Track actual compute time
+            'throughput': step_throughput if compute_time > 0 else 0.0  # ✅ NEW: Per-step throughput
         }
     
     def optimizer_step(self) -> Dict[str, float]:
@@ -2808,6 +2845,7 @@ class EnhancedConversationTrainer:
 
         # Track accumulation cycle timing
         accumulation_start_time = None
+        accumulation_compute_time = 0.0
 
         print(f"Starting epoch {epoch + 1} with {len(train_dataloader)} batches")
         print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
@@ -2825,16 +2863,33 @@ class EnhancedConversationTrainer:
             
             # Start timing accumulation cycle
             if accumulation_start_time is None:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
                 accumulation_start_time = time.perf_counter()
+                accumulation_compute_time = 0.0
             
-            # Get step metrics (tensors)
+            # Get step metrics (includes per-step compute time)
             step_metrics = self.train_step(batch)
+
+            # Accumulate compute time from this micro-batch
+            if 'compute_time_ms' in step_metrics:
+                accumulation_compute_time += step_metrics['compute_time_ms'] / 1000.0
 
             # ✅ NEW: Populate metrics history for orchestrator reporting
             self.metrics['train_losses'].append(step_metrics['loss'])
             if 'accuracy' in step_metrics:
                 self.metrics.setdefault('accuracies', []).append(step_metrics['accuracy'])
 
+            # Send metrics to orchestrator if monitoring is enabled
+            if hasattr(self, '_monitoring_queue'):
+                try:
+                    current_metrics = self.get_current_metrics()
+                    self._monitoring_queue.put(current_metrics, block=False)
+                except queue.Full:
+                    pass
+                except Exception as e:
+                    if self.global_step % 100 == 0:
+                        logging.debug(f"Could not send metrics to orchestrator: {e}")
 
             # Skip invalid batches
             if step_metrics['loss'] == 0.0 or math.isnan(step_metrics['loss']) or math.isinf(step_metrics['loss']):
@@ -2850,25 +2905,15 @@ class EnhancedConversationTrainer:
             
             # Take optimizer step after full accumulation
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                # Calculate throughput using wall clock over accumulation cycle
-                accumulation_total_time = time.perf_counter() - accumulation_start_time
-                
-                # 🔥 FIX: Calculate averages ONLY when taking optimizer step (using tensors)
+                # 🔥 FIX: Calculate averages ONLY when taking optimizer step
                 if accumulation_metrics['step_count'] > 0:
-                    avg_loss_tensor = accumulation_metrics['loss'] / accumulation_metrics['step_count']
-                    avg_raw_loss_tensor = accumulation_metrics['raw_loss'] / accumulation_metrics['step_count']
-                    avg_accuracy_tensor = accumulation_metrics['accuracy'] / accumulation_metrics['step_count']
-                    
-                    # Pull values to CPU once per accumulation cycle
-                    avg_loss = avg_loss_tensor.item()
-                    avg_raw_loss = avg_raw_loss_tensor.item()
-                    avg_accuracy = avg_accuracy_tensor.item()
-                    total_tokens = accumulation_metrics['tokens'].item()
+                    avg_loss = accumulation_metrics['loss'] / accumulation_metrics['step_count']
+                    avg_raw_loss = accumulation_metrics['raw_loss'] / accumulation_metrics['step_count']
+                    avg_accuracy = accumulation_metrics['accuracy'] / accumulation_metrics['step_count']
                 else:
                     avg_loss = 0.0
                     avg_raw_loss = 0.0
                     avg_accuracy = 0.0
-                    total_tokens = 0
                 
                 opt_metrics = self.optimizer_step()
                 self.global_step += 1
@@ -2879,20 +2924,9 @@ class EnhancedConversationTrainer:
                 if 'grad_norm' in opt_metrics:
                     self.metrics['gradient_norms'].append(opt_metrics['grad_norm'])
 
-                # ✅ Send metrics to orchestrator ONLY after optimizer step
-                if hasattr(self, '_monitoring_queue'):
-                    try:
-                        current_metrics = self.get_current_metrics()
-                        self._monitoring_queue.put(current_metrics, block=False)
-                    except queue.Full:
-                        pass
-                    except Exception as e:
-                        if self.global_step % 100 == 0:
-                            logging.debug(f"Could not send metrics to orchestrator: {e}")
-
                 # Calculate throughput
-                if accumulation_total_time > 0:
-                    cycle_throughput = total_tokens / accumulation_total_time
+                if accumulation_compute_time > 0:
+                    cycle_throughput = accumulation_metrics['tokens'] / accumulation_compute_time
                 else:
                     cycle_throughput = 0.0
                 
@@ -2906,7 +2940,7 @@ class EnhancedConversationTrainer:
                 if avg_loss > 0:
                     epoch_metrics['total_loss'] += avg_loss
                     epoch_metrics['total_raw_loss'] += avg_raw_loss
-                    epoch_metrics['total_tokens'] += total_tokens
+                    epoch_metrics['total_tokens'] += accumulation_metrics['tokens']
                     epoch_metrics['total_accuracy'] += avg_accuracy
                     epoch_metrics['num_batches'] += 1
                     if 'grad_norm' in opt_metrics and opt_metrics['grad_norm'] is not None:
@@ -2927,7 +2961,7 @@ class EnhancedConversationTrainer:
                             loss=avg_loss,  # 🔥 FIX: Use averaged loss
                             grad_norm=opt_metrics.get('grad_norm', 0.0),
                             learning_rate=opt_metrics.get('lr', self.config.learning_rate),
-                            batch_tokens=total_tokens
+                            batch_tokens=accumulation_metrics['tokens']
                         )
                         
                         # Check for early stopping every 500 steps
@@ -3008,6 +3042,7 @@ class EnhancedConversationTrainer:
                         'step_count': 0  # 🔥 NEW: Reset counter
                     }
                     accumulation_start_time = None
+                    accumulation_compute_time = 0.0
 
         # Calculate epoch summary
         epoch_time = time.time() - epoch_start_time
