@@ -2411,15 +2411,15 @@ class EnhancedConversationTrainer:
             if len(self.throughput_window) > self.throughput_window_size:
                 self.throughput_window.pop(0)
             
-                return {
-                    'loss': loss,  # Keep as tensor
-                    'raw_loss': loss_dict['raw_loss'],  # Keep as tensor
-                    'perplexity': loss_dict['perplexity'],  # Keep as tensor
-                    'valid_tokens': num_tokens,  # This is already a number
-                    'accuracy': loss_dict['accuracy'],  # Keep as tensor
-                    'compute_time_ms': compute_time * 1000,
-                    'throughput': step_throughput
-                }
+            return {
+                'loss': loss.item() if hasattr(loss, 'item') else float(loss),
+                'raw_loss': loss_dict['raw_loss'].item() if hasattr(loss_dict['raw_loss'], 'item') else float(loss_dict['raw_loss']),
+                'perplexity': loss_dict['perplexity'].item() if hasattr(loss_dict['perplexity'], 'item') else float(loss_dict['perplexity']),
+                'valid_tokens': num_tokens,
+                'accuracy': loss_dict['accuracy'].item() if hasattr(loss_dict['accuracy'], 'item') else float(loss_dict['accuracy']),
+                'compute_time_ms': compute_time * 1000,
+                'throughput': step_throughput
+            }
             
         except Exception as e:
             print(f"DeepSpeed training step error: {e}")
@@ -2503,13 +2503,13 @@ class EnhancedConversationTrainer:
                 self.throughput_window.pop(0)
         
         return {
-            'loss': loss,  # Keep as tensor
-            'raw_loss': loss_dict['raw_loss'],  # Keep as tensor
-            'perplexity': loss_dict['perplexity'],  # Keep as tensor
-            'valid_tokens': loss_dict['valid_tokens'],  # Keep as tensor
-            'accuracy': loss_dict['accuracy'],  # Keep as tensor
-            'compute_time_ms': compute_time * 1000,
-            'throughput': step_throughput if compute_time > 0 else 0.0
+            'loss': loss.item(),
+            'raw_loss': loss_dict['raw_loss'].item(),
+            'perplexity': loss_dict['perplexity'].item(),
+            'valid_tokens': loss_dict['valid_tokens'].item(),
+            'accuracy': loss_dict['accuracy'].item(),
+            'compute_time_ms': compute_time * 1000,  # ✅ NEW: Track actual compute time
+            'throughput': step_throughput if compute_time > 0 else 0.0  # ✅ NEW: Per-step throughput
         }
     
     def optimizer_step(self) -> Dict[str, float]:
@@ -2812,7 +2812,7 @@ class EnhancedConversationTrainer:
         return status
     
     def train_epoch(self, train_dataloader, epoch: int):
-        """Train one epoch with optimized throughput tracking - ZERO unnecessary GPU syncs."""
+        """Train one epoch with ACCURATE throughput tracking over full accumulation cycles."""
         if self.use_deepspeed:
             self.deepspeed_engine.train()
         else:
@@ -2831,17 +2831,15 @@ class EnhancedConversationTrainer:
             'best_step': 0,
         }
 
-        # ✅ NEW: Initialize accumulation metrics as GPU tensors
-        gradient_accumulation_steps = getattr(self.config, 'gradient_accumulation_steps', 1)
-        
         accumulation_metrics = {
-            'loss': torch.tensor(0.0, device=self.device),
-            'raw_loss': torch.tensor(0.0, device=self.device),
-            'tokens': 0,  # Keep as int (not a training metric)
-            'accuracy': torch.tensor(0.0, device=self.device),
-            'step_count': 0
+            'loss': 0.0,
+            'raw_loss': 0.0,
+            'tokens': 0,
+            'accuracy': 0.0,
+            'step_count': 0  # 🔥 NEW: Track how many steps accumulated
         }
 
+        gradient_accumulation_steps = getattr(self.config, 'gradient_accumulation_steps', 1)
         epoch_start_time = time.time()
         last_log_time = time.time()
 
@@ -2870,40 +2868,48 @@ class EnhancedConversationTrainer:
                 accumulation_start_time = time.perf_counter()
                 accumulation_compute_time = 0.0
             
-            # ✅ CRITICAL: train_step now returns TENSORS, not floats
+            # Get step metrics (includes per-step compute time)
             step_metrics = self.train_step(batch)
 
             # Accumulate compute time from this micro-batch
             if 'compute_time_ms' in step_metrics:
                 accumulation_compute_time += step_metrics['compute_time_ms'] / 1000.0
 
-            # ✅ CRITICAL FIX: Check for invalid loss BEFORE accumulation
-            # Use tensor operations (no sync yet)
-            loss_tensor = step_metrics['loss']
-            if torch.isnan(loss_tensor).any() or torch.isinf(loss_tensor).any():
-                print(f"Skipping batch {batch_idx} due to invalid loss")
+            # ✅ NEW: Populate metrics history for orchestrator reporting
+            self.metrics['train_losses'].append(step_metrics['loss'])
+            if 'accuracy' in step_metrics:
+                self.metrics.setdefault('accuracies', []).append(step_metrics['accuracy'])
+
+            # Send metrics to orchestrator if monitoring is enabled
+            if hasattr(self, '_monitoring_queue'):
+                try:
+                    current_metrics = self.get_current_metrics()
+                    self._monitoring_queue.put(current_metrics, block=False)
+                except queue.Full:
+                    pass
+                except Exception as e:
+                    if self.global_step % 100 == 0:
+                        logging.debug(f"Could not send metrics to orchestrator: {e}")
+
+            # Skip invalid batches
+            if step_metrics['loss'] == 0.0 or math.isnan(step_metrics['loss']) or math.isinf(step_metrics['loss']):
+                print(f"Skipping batch {batch_idx} due to invalid loss: {step_metrics['loss']}")
                 continue
             
-            # ✅ NEW: Accumulate GPU tensors (NO .item() calls = NO GPU sync)
-            accumulation_metrics['loss'] += loss_tensor.detach()
-            accumulation_metrics['raw_loss'] += step_metrics['raw_loss'].detach()
-            accumulation_metrics['tokens'] += step_metrics['valid_tokens'].item() if isinstance(step_metrics['valid_tokens'], torch.Tensor) else step_metrics['valid_tokens']
-            accumulation_metrics['accuracy'] += step_metrics['accuracy'].detach()
-            accumulation_metrics['step_count'] += 1
+            # 🔥 FIX: Accumulate WITHOUT division (we'll divide at the end)
+            accumulation_metrics['loss'] += step_metrics['loss']
+            accumulation_metrics['raw_loss'] += step_metrics['raw_loss']
+            accumulation_metrics['tokens'] += step_metrics['valid_tokens']
+            accumulation_metrics['accuracy'] += step_metrics['accuracy']
+            accumulation_metrics['step_count'] += 1  # 🔥 NEW: Count steps
             
             # Take optimizer step after full accumulation
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                # ✅ CRITICAL: Single sync point - compute averages on GPU first, then .item() once
+                # 🔥 FIX: Calculate averages ONLY when taking optimizer step
                 if accumulation_metrics['step_count'] > 0:
-                    # Compute averages on GPU (fast tensor ops)
-                    avg_loss_tensor = accumulation_metrics['loss'] / accumulation_metrics['step_count']
-                    avg_raw_loss_tensor = accumulation_metrics['raw_loss'] / accumulation_metrics['step_count']
-                    avg_accuracy_tensor = accumulation_metrics['accuracy'] / accumulation_metrics['step_count']
-                    
-                    # ✅ SINGLE SYNC: Now convert to Python floats (3 GPU syncs instead of 15+)
-                    avg_loss = avg_loss_tensor.item()
-                    avg_raw_loss = avg_raw_loss_tensor.item()
-                    avg_accuracy = avg_accuracy_tensor.item()
+                    avg_loss = accumulation_metrics['loss'] / accumulation_metrics['step_count']
+                    avg_raw_loss = accumulation_metrics['raw_loss'] / accumulation_metrics['step_count']
+                    avg_accuracy = accumulation_metrics['accuracy'] / accumulation_metrics['step_count']
                 else:
                     avg_loss = 0.0
                     avg_raw_loss = 0.0
@@ -2912,20 +2918,11 @@ class EnhancedConversationTrainer:
                 opt_metrics = self.optimizer_step()
                 self.global_step += 1
 
-                # ✅ NEW: Populate metrics history (now using floats from single sync)
-                self.metrics['train_losses'].append(avg_loss)
-                if 'learning_rates' not in self.metrics:
-                    self.metrics['learning_rates'] = []
-                if 'gradient_norms' not in self.metrics:
-                    self.metrics['gradient_norms'] = []
-                if 'accuracies' not in self.metrics:
-                    self.metrics['accuracies'] = []
-                
+                # ✅ NEW: Populate optimizer-related metrics history
                 if 'lr' in opt_metrics:
                     self.metrics['learning_rates'].append(opt_metrics['lr'])
                 if 'grad_norm' in opt_metrics:
                     self.metrics['gradient_norms'].append(opt_metrics['grad_norm'])
-                self.metrics['accuracies'].append(avg_accuracy)
 
                 # Calculate throughput
                 if accumulation_compute_time > 0:
@@ -2939,7 +2936,7 @@ class EnhancedConversationTrainer:
                     if len(self.throughput_window) > self.throughput_window_size:
                         self.throughput_window.pop(0)
 
-                # Update epoch metrics with averaged values
+                # 🔥 FIX: Update epoch metrics with AVERAGED loss
                 if avg_loss > 0:
                     epoch_metrics['total_loss'] += avg_loss
                     epoch_metrics['total_raw_loss'] += avg_raw_loss
@@ -2961,7 +2958,7 @@ class EnhancedConversationTrainer:
                         self.chinchilla_scaler.update_metrics(
                             step=self.global_step,
                             epoch=epoch + (batch_idx / len(train_dataloader)),
-                            loss=avg_loss,
+                            loss=avg_loss,  # 🔥 FIX: Use averaged loss
                             grad_norm=opt_metrics.get('grad_norm', 0.0),
                             learning_rate=opt_metrics.get('lr', self.config.learning_rate),
                             batch_tokens=accumulation_metrics['tokens']
@@ -2993,13 +2990,14 @@ class EnhancedConversationTrainer:
                     # Determine if we should log - adjusted by verbosity level
                     log_frequency = getattr(self.config, 'log_every_n_steps', 50)
                     
-                    # Dynamically adjust logging frequency based on verbosity
+                    # 🔥 NEW: Dynamically adjust logging frequency based on verbosity
                     if hasattr(self, 'logger') and hasattr(self.logger, 'verbosity'):
                         try:
+                            # 3 = DETAILED, 4 = DEBUG, 5 = TRACE
                             verbosity = int(self.logger.verbosity)
-                            if verbosity >= 4:  # DEBUG or higher
+                            if verbosity >= 4: # DEBUG or higher
                                 log_frequency = 1
-                            elif verbosity >= 3:  # DETAILED
+                            elif verbosity >= 3: # DETAILED
                                 log_frequency = min(log_frequency, 5)
                         except (ValueError, TypeError):
                             pass
@@ -3012,7 +3010,7 @@ class EnhancedConversationTrainer:
                     )
 
                     if should_log:
-                        # ✅ GOOD: Pass floats to logging (already converted once)
+                        # 🔥 FIX: Pass AVERAGED metrics to logging
                         self._log_training_step(
                             epoch, batch_idx, len(train_dataloader),
                             {
@@ -3035,45 +3033,16 @@ class EnhancedConversationTrainer:
                     if self.quantization_manager.is_quantized and self.global_step % 100 == 0:
                         self._log_quantization_diagnostics()
 
-                    # ✅ NEW: Reset accumulation metrics as GPU tensors
+                    # 🔥 FIX: RESET for next accumulation cycle
                     accumulation_metrics = {
-                        'loss': torch.tensor(0.0, device=self.device),
-                        'raw_loss': torch.tensor(0.0, device=self.device),
-                        'tokens': 0,
-                        'accuracy': torch.tensor(0.0, device=self.device),
-                        'step_count': 0
+                        'loss': 0.0, 
+                        'raw_loss': 0.0, 
+                        'tokens': 0, 
+                        'accuracy': 0.0,
+                        'step_count': 0  # 🔥 NEW: Reset counter
                     }
                     accumulation_start_time = None
                     accumulation_compute_time = 0.0
-
-        # ✅ NEW: Handle partial accumulation at epoch end
-        if accumulation_metrics['step_count'] > 0:
-            print(f"\nProcessing final partial accumulation ({accumulation_metrics['step_count']} steps)")
-            
-            # Compute averages on GPU
-            avg_loss_tensor = accumulation_metrics['loss'] / accumulation_metrics['step_count']
-            avg_raw_loss_tensor = accumulation_metrics['raw_loss'] / accumulation_metrics['step_count']
-            avg_accuracy_tensor = accumulation_metrics['accuracy'] / accumulation_metrics['step_count']
-            
-            # Single sync
-            avg_loss = avg_loss_tensor.item()
-            avg_raw_loss = avg_raw_loss_tensor.item()
-            avg_accuracy = avg_accuracy_tensor.item()
-            
-            # Take final optimizer step
-            opt_metrics = self.optimizer_step()
-            self.global_step += 1
-            
-            # Update epoch metrics
-            epoch_metrics['total_loss'] += avg_loss
-            epoch_metrics['total_raw_loss'] += avg_raw_loss
-            epoch_metrics['total_tokens'] += accumulation_metrics['tokens']
-            epoch_metrics['total_accuracy'] += avg_accuracy
-            epoch_metrics['num_batches'] += 1
-            if 'grad_norm' in opt_metrics and opt_metrics['grad_norm'] is not None:
-                epoch_metrics['grad_norm_sum'] += opt_metrics['grad_norm']
-            
-            print(f"Partial accumulation complete: Loss={avg_loss:.4f}, Acc={avg_accuracy:.1%}")
 
         # Calculate epoch summary
         epoch_time = time.time() - epoch_start_time
