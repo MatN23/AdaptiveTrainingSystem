@@ -52,9 +52,11 @@ Adaptive Training System is a production-grade transformer training framework im
 - **Adaptive orchestrator:** 18 autonomous intervention methods for training optimization
 - **Chinchilla scaling:** Automatic epoch calculation based on compute-optimal principles
 - **Multi-GPU training:** DeepSpeed ZeRO (stages 1-3), FSDP, ColossalAI with efficient gradient synchronization
-- **Precision support:** FP32, FP16, BF16, mixed precision, FP8 (H100+)
+- **Precision support:** FP32, FP16, BF16, mixed precision, FP8 (H100+ via Triton)
+- **Advanced Quantization:** 4-bit/8-bit support via AutoGPTQ and Optimum Quanto
 - **Hardware targets:** CUDA (Volta-Hopper), Apple Silicon (M1-M4) with Metal acceleration, CPU
 - **Data handling:** Memory-mapped datasets, Apache Arrow zero-copy, automatic caching
+- **Router Optimization:** Fine-tuning mode and adapter loading for MoE routers
 - **Recovery systems:** Automatic OOM handling, gradient explosion recovery, checkpoint rollback
 
 **Framework positioning:**
@@ -197,6 +199,13 @@ Combined token-level (MoE) and layer-level (MoD) sparsity with coordinated CUDA 
 - **Fast experimentation:** Smaller active compute enables rapid iteration
 - **Inference optimization:** Reduced memory and compute for deployment
 - **Multi-task learning:** Different experts and depths specialize per task
+
+### Router Optimization
+
+**Specialized Router Management:**
+- **Router Fine-tuning:** Isolate and train only the routing layers (`gate_proj`) while freezing other parameters. Helps specialize routing logic without catastrophic forgetting in experts.
+- **Adapter Loading:** Load pre-trained router weights independently. Useful for transferring routing strategies between similar models.
+- **Dynamic Fine-tuning:** Enable router training during specific phases of the main training loop.
 
 ---
 
@@ -444,6 +453,17 @@ The framework detects hardware and selects optimal precision with CUDA kernel co
 6. If CPU: Select `fp32` (reduced precision offers no benefit, CUDA kernels unavailable)
 
 **Override:** Set precision explicitly via configuration if automatic selection is suboptimal or for specific debugging/testing requirements.
+
+### Supported Frameworks & Integrations
+
+**Quantization & Inference:**
+- **AutoGPTQ:** 4-bit quantization support for efficient inference and fine-tuning on consumer hardware.
+- **Optimum Quanto:** Dynamic quantization support (8-bit/4-bit) for flexible deployment.
+- **OpenAI Triton:** High-performance FP8 kernels for H100+ architectures.
+
+**Model Compatibility:**
+- **DeepSeek Config Adapter:** Auto-convert training configurations to DeepSeek-compatible formats.
+- **HuggingFace Interop:** Seamless integration with `transformers` for dataset loading and tokenization.
 
 ### Hardware-Specific Recommendations
 
