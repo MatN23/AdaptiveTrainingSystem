@@ -1659,8 +1659,8 @@ def main():
         'use_lr_scheduler': True,
         'lr_scheduler': "cosine",  # cosine, constant, or linear
         'warmup_ratio': 0.02,
-        'batch_size': 240,
-        'gradient_accumulation_steps': 1,
+        'batch_size': 30,
+        'gradient_accumulation_steps': 8,
         
         'precision': "fp16",
         'inference_precision': "fp16",
