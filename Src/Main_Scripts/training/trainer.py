@@ -3167,6 +3167,10 @@ class EnhancedConversationTrainer:
             if compute_time > 0:
                 perf_info += f" ({compute_time:.1f}ms)"
             
+            kernel_info = ""
+            if hasattr(self, 'fused_loss') and self.fused_loss is not None and getattr(self.fused_loss, 'enabled', False):
+                kernel_info = " | 🚀 Kernels"
+            
             log_message = (
                 f"Epoch {epoch+1} | Step {self.global_step:6d} | "
                 f"Batch {batch_idx+1:4d}/{total_batches} | "
@@ -3176,7 +3180,7 @@ class EnhancedConversationTrainer:
                 f"LR: {lr:.2e} | "
                 f"GradNorm: {grad_norm:.4f} | "
                 f"{perf_info}"
-                f"{mode_info}{precision_info_str}{quant_info}{memory_info}"
+                f"{mode_info}{kernel_info}{precision_info_str}{quant_info}{memory_info}"
             )
             
             print(f"[TRAINING] {log_message}")

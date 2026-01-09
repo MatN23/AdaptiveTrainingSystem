@@ -148,6 +148,7 @@ def _load_cuda_libraries():
         _cuda_libs_loaded = True
         CUSTOM_KERNELS_AVAILABLE = True
         logger.info("✅  Custom CUDA kernels loaded successfully!")
+        print("DEBUG: _cuda_libs_loaded set to TRUE")
         return True
         
     except Exception as e:
@@ -163,6 +164,10 @@ class FusedLoss:
     
     def __init__(self):
         self.enabled = _cuda_libs_loaded and _fused_loss_lib is not None
+        if self.enabled:
+             print("DEBUG: FusedLoss initialized in CUDA mode")
+        else:
+             print(f"DEBUG: FusedLoss initialized in FALLBACK mode. loaded={_cuda_libs_loaded}, lib={_fused_loss_lib is not None}")
         
         # Pre-allocate output tensors (OPTIMIZATION: reuse across calls)
         if self.enabled and torch.cuda.is_available():
@@ -191,9 +196,15 @@ class FusedLoss:
             Dict with keys: loss, raw_loss, perplexity, valid_tokens, accuracy
         """
         # Fast path: no weights, CUDA enabled
+        # Fast path: no weights, CUDA enabled
         if self.enabled and loss_weights is None:
+            # print("DEBUG: Calling CUDA FusedLoss implementation") 
             return self._cuda_implementation(logits, labels, pad_token_id)
         else:
+            if self.enabled and loss_weights is not None:
+                print("DEBUG: FusedLoss falling back to PyTorch because loss_weights is present")
+            elif not self.enabled:
+                print("DEBUG: FusedLoss falling back to PyTorch because CUDA is disabled")
             return self._pytorch_fallback(logits, labels, loss_weights, pad_token_id)
     
     def _cuda_implementation(self, logits, labels, pad_token_id):
