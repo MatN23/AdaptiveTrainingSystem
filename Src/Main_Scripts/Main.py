@@ -1654,15 +1654,15 @@ def main():
         'use_mod': True,
         'use_cuda_moe': True,
         'num_epochs': 20,
-        'learning_rate': 1e-4,
+        'learning_rate': 3e-4,
         'min_lr': 1e-6,
         'use_lr_scheduler': True,
         'lr_scheduler': "cosine",  # cosine, constant, or linear
-        'warmup_ratio': 0.02,
+        'warmup_ratio': 0.1,
         'batch_size': 30,
         'gradient_accumulation_steps': 8,
         
-        'precision': "fp16",
+        'precision': "fp32",
         'inference_precision': "fp16",
         'num_experts': 8,
         'moe_top_k': 2,

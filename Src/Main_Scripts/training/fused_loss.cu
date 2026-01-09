@@ -1,11 +1,9 @@
 // Copyright (c) 2025 MatN23. All rights reserved.
-// ULTRA-OPTIMIZED fused_loss.cu - Back to V4 + Better Optimizations
+// FIXED VERSION - Corrected label_logit retrieval bug
 //
-// Revert persistent kernel, add instead:
-// - Wider SIMD (8 elements)
-// - Branchless operations
-// - Better register usage
-// - Manual loop unrolling
+// BUG FIXED: Label logit was being lost when multiple threads processed
+// different parts of the vocabulary. Now uses atomic flag to find correct
+// value.
 //
 // Compile with:
 // nvcc -O3 -arch=sm_75 --use_fast_math --ptxas-options=-v \
@@ -51,7 +49,7 @@ warp_reduce_softmax_state(SoftmaxState state) {
   return state;
 }
 
-// OPTIMIZED: Single-pass with 8-wide SIMD and branchless operations
+// FIXED: Single-pass with corrected label_logit retrieval
 __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
     const float *__restrict__ logits, const int64_t *__restrict__ labels,
     const float *__restrict__ loss_weights, const int64_t pad_token_id,
@@ -75,7 +73,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   }
 
   // =========================================================================
-  // COALESCED VECTORIZED ACCESS (True Grid-Stride)
+  // COALESCED VECTORIZED ACCESS
   // =========================================================================
   SoftmaxState state;
   state.m = -FLT_MAX;
@@ -84,6 +82,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   state.argmax_idx = 0;
 
   float label_logit = 0.0f;
+  bool found_label = false; // ✅ FIX: Track if we found the label
 
   // Reinterpret row as float4 vectors for perfect coalescing
   const int num_vecs = vocab_size / 4;
@@ -93,7 +92,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   for (int i = threadIdx.x; i < num_vecs; i += blockDim.x) {
     float4 vals = __ldg(&logit_row_vec[i]);
 
-    // Process each element in float4 (compiler will unroll this)
+    // Process each element in float4
     float elems[4] = {vals.x, vals.y, vals.z, vals.w};
 
 #pragma unroll
@@ -110,8 +109,10 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
         state.argmax_idx = idx;
       }
 
+      // ✅ FIX: Mark that we found the label
       if (idx == (int)label) {
         label_logit = x;
+        found_label = true;
       }
     }
   }
@@ -129,8 +130,10 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
       state.argmax_idx = i;
     }
 
+    // ✅ FIX: Mark that we found the label
     if (i == (int)label) {
       label_logit = x;
+      found_label = true;
     }
   }
 
@@ -143,10 +146,24 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   __shared__ float smem_d[32];
   __shared__ float smem_argmax_val[32];
   __shared__ int smem_argmax_idx[32];
-  __shared__ float smem_label_logit[256];
+  __shared__ float smem_label_logit_value; // ✅ BULLETPROOF: Single value
+  __shared__ int smem_label_found_flag;    // ✅ BULLETPROOF: Atomic flag
 
   const int lane = threadIdx.x & 31;
   const int wid = threadIdx.x >> 5;
+
+  // Initialize shared memory ONCE
+  if (threadIdx.x == 0) {
+    smem_label_logit_value = 0.0f;
+    smem_label_found_flag = 0;
+  }
+  __syncthreads();
+
+  // If this thread found the label, atomically write it
+  if (found_label) {
+    atomicExch(&smem_label_logit_value, label_logit);
+    atomicExch(&smem_label_found_flag, 1);
+  }
 
   if (lane == 0) {
     smem_m[wid] = state.m;
@@ -154,7 +171,6 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
     smem_argmax_val[wid] = state.argmax_val;
     smem_argmax_idx[wid] = state.argmax_idx;
   }
-  smem_label_logit[threadIdx.x] = label_logit;
   __syncthreads();
 
   // =========================================================================
@@ -191,22 +207,22 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
     const float sum_exp = smem_d[0];
     const int pred_idx = smem_argmax_idx[0];
 
-    // Find label_logit across threads (in case labels were distributed)
-    float final_label_logit = smem_label_logit[0];
-#pragma unroll
-    for (int i = 1; i < 256; i++) {
-      final_label_logit = fmaxf(final_label_logit, smem_label_logit[i]);
-    }
-
-    // If label_logit wasn't found (should be impossible due to range check
-    // above)
-    if (final_label_logit == 0.0f && label >= 0 && label < vocab_size) {
+    // ✅ BULLETPROOF: Read atomic flag
+    float final_label_logit;
+    if (smem_label_found_flag == 1) {
+      final_label_logit = smem_label_logit_value;
+    } else {
+      // Fallback: directly read from global memory
       final_label_logit = __ldg(&logit_row[label]);
     }
 
+    // Compute loss using numerically stable formula
     const float loss =
         -((final_label_logit - max_logit) - __logf(sum_exp + 1e-10f));
-    const float weighted_loss = weight * fminf(loss, 100.0f);
+
+    // Clamp loss to prevent overflow
+    const float clamped_loss = fminf(loss, 100.0f);
+    const float weighted_loss = weight * clamped_loss;
     const float accuracy = (pred_idx == (int)label) ? 1.0f : 0.0f;
 
     atomicAdd(loss_out, weighted_loss);
@@ -232,7 +248,7 @@ void fused_cross_entropy_accuracy_launcher(
     cudaMemsetAsync(total_weight_out, 0, sizeof(float), stream);
   }
 
-  // One block per token (this works best for this workload!)
+  // One block per token
   const int num_blocks = total_tokens;
   const int threads = 256;
 

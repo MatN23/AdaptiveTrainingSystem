@@ -1,5 +1,5 @@
 // Copyright (c) 2025 MatN23. All rights reserved.
-// INSANELY FAST fused_grad_clip.cu - Single-pass with persistent threads
+// FIXED: Proper grid synchronization using two-kernel approach
 //
 // Compile with:
 // nvcc -O3 -arch=sm_75 --use_fast_math --ptxas-options=-v \
@@ -22,18 +22,16 @@ __device__ __forceinline__ float warp_reduce_sum(float val) {
   return val;
 }
 
-// SINGLE KERNEL - Compute norm + clip in one pass!
-// Uses persistent threads and grid-stride loop
+// ============================================================================
+// KERNEL 1: Compute gradient norm
+// ============================================================================
 __global__ void __launch_bounds__(256, 8)
-    fused_norm_and_clip_kernel(float **__restrict__ grad_ptrs,
-                               const int *__restrict__ grad_sizes,
-                               const int num_tensors, const float max_norm,
-                               float *__restrict__ norm_out) {
+    compute_grad_norm_kernel(float **__restrict__ grad_ptrs,
+                             const int *__restrict__ grad_sizes,
+                             const int num_tensors,
+                             float *__restrict__ norm_out) {
   __shared__ float smem[32];
 
-  // =========================================================================
-  // PASS 1: Compute total norm squared (grid-stride loop)
-  // =========================================================================
   float thread_norm_sq = 0.0f;
 
   // Each thread processes elements from all tensors
@@ -84,44 +82,16 @@ __global__ void __launch_bounds__(256, 8)
   if (threadIdx.x == 0) {
     atomicAdd(norm_out, block_norm_sq);
   }
+}
 
-  // Sync entire grid (cooperative groups style)
-  __threadfence();
-  __syncthreads();
-
-  // =========================================================================
-  // PASS 2: Clip gradients if needed (same kernel!)
-  // =========================================================================
-  // First block computes the clip coefficient
-  __shared__ float clip_coef_shared;
-
-  if (blockIdx.x == 0 && threadIdx.x == 0) {
-    const float total_norm = sqrtf(*norm_out);
-    const float coef = fminf(max_norm / (total_norm + 1e-6f), 1.0f);
-    clip_coef_shared = coef;
-  }
-  __syncthreads();
-
-  // Broadcast clip coef to all blocks (via global memory)
-  __shared__ float local_clip_coef;
-  if (threadIdx.x == 0) {
-    if (blockIdx.x == 0) {
-      // First block writes
-      atomicExch(norm_out + 1, clip_coef_shared);
-      local_clip_coef = clip_coef_shared;
-    } else {
-      // Other blocks read (spin wait)
-      float coef;
-      do {
-        coef = atomicAdd(norm_out + 1, 0.0f); // Atomic read
-      } while (coef == 0.0f && clip_coef_shared < 0.999f);
-      local_clip_coef = coef;
-    }
-  }
-  __syncthreads();
-  const float clip_coef = local_clip_coef;
-
-  // Only clip if needed
+// ============================================================================
+// KERNEL 2: Apply gradient clipping
+// ============================================================================
+__global__ void __launch_bounds__(256, 8)
+    apply_grad_clip_kernel(float **__restrict__ grad_ptrs,
+                           const int *__restrict__ grad_sizes,
+                           const int num_tensors, const float clip_coef) {
+  // Early exit if no clipping needed
   if (clip_coef >= 0.999f)
     return;
 
@@ -153,30 +123,38 @@ __global__ void __launch_bounds__(256, 8)
   }
 }
 
+// ============================================================================
+// HOST LAUNCHER - TWO KERNEL APPROACH
+// ============================================================================
 extern "C" {
 
 float fused_grad_clip_launcher(float **grad_ptrs_device, int *grad_sizes_device,
                                int num_tensors, float max_norm,
                                cudaStream_t stream) {
-  // Allocate output buffer (2 floats: norm_sq and clip_coef)
+  // Allocate output buffer
   float *norm_buffer;
-  cudaMallocAsync(&norm_buffer, 2 * sizeof(float), stream);
-  cudaMemsetAsync(norm_buffer, 0, 2 * sizeof(float), stream);
+  cudaMallocAsync(&norm_buffer, sizeof(float), stream);
+  cudaMemsetAsync(norm_buffer, 0, sizeof(float), stream);
 
-  // Launch single kernel that does EVERYTHING
   const int threads = 256;
-  const int blocks = 256; // High occupancy
+  const int blocks = 256;
 
-  fused_norm_and_clip_kernel<<<blocks, threads, 0, stream>>>(
-      grad_ptrs_device, grad_sizes_device, num_tensors, max_norm, norm_buffer);
+  // KERNEL 1: Compute norm (ALL blocks must finish)
+  compute_grad_norm_kernel<<<blocks, threads, 0, stream>>>(
+      grad_ptrs_device, grad_sizes_device, num_tensors, norm_buffer);
 
-  // Read back the norm
+  // Read back the norm squared (IMPLICIT SYNC - kernel must finish!)
   float total_norm_sq;
   cudaMemcpyAsync(&total_norm_sq, norm_buffer, sizeof(float),
                   cudaMemcpyDeviceToHost, stream);
-  cudaStreamSynchronize(stream);
+  cudaStreamSynchronize(stream); // ✅ CRITICAL: Wait for norm computation
 
   const float total_norm = sqrtf(total_norm_sq);
+  const float clip_coef = fminf(max_norm / (total_norm + 1e-6f), 1.0f);
+
+  // KERNEL 2: Apply clipping with computed coefficient
+  apply_grad_clip_kernel<<<blocks, threads, 0, stream>>>(
+      grad_ptrs_device, grad_sizes_device, num_tensors, clip_coef);
 
   cudaFreeAsync(norm_buffer, stream);
 
