@@ -65,7 +65,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
 
   const int64_t label = labels[token_idx];
 
-  const float *logit_row = logits + (size_t)token_idx * vocab_size;
+  const float *logit_row = logits + (int64_t)token_idx * vocab_size;
   const float weight =
       (loss_weights != nullptr) ? loss_weights[token_idx] : 1.0f;
 

@@ -105,8 +105,8 @@ __global__ void __launch_bounds__(BLOCK_SIZE, 4)
     return;
 
   const int tid = threadIdx.x;
-  const T *x = input + token_idx * hidden_size;
-  T *y = output + token_idx * hidden_size;
+  const T *x = input + (int64_t)token_idx * hidden_size;
+  T *y = output + (int64_t)token_idx * hidden_size;
 
   // Compute sum of squares with higher precision
   float sum_sq = 0.0f;
@@ -181,10 +181,11 @@ __global__ void __launch_bounds__(128, 4)
   if (batch_idx >= batch_size || head_idx >= num_heads || pos_idx >= seq_len)
     return;
 
-  const int base_offset =
-      ((batch_idx * num_heads + head_idx) * seq_len + pos_idx) * head_dim;
+  const int64_t base_offset =
+      ((int64_t)(batch_idx * num_heads + head_idx) * seq_len + pos_idx) *
+      head_dim;
   const int half_dim = head_dim >> 1;
-  const int cache_offset = (position_offset + pos_idx) * half_dim;
+  const int64_t cache_offset = (int64_t)(position_offset + pos_idx) * half_dim;
 
   // Process pairs of dimensions
   for (int i = tid; i < half_dim; i += blockDim.x) {
@@ -226,7 +227,7 @@ __global__ void __launch_bounds__(BLOCK_SIZE, 4)
     return;
 
   const int tid = threadIdx.x;
-  const int offset = token_idx * intermediate_size;
+  const int64_t offset = (int64_t)token_idx * intermediate_size;
 
   // Process 4 elements per thread
   for (int i = tid * 4; i < intermediate_size; i += BLOCK_SIZE * 4) {
@@ -282,9 +283,11 @@ void rms_norm_launcher_bf16(const __nv_bfloat16 *input,
                             const __nv_bfloat16 *weight, __nv_bfloat16 *output,
                             int batch_seq, int hidden_size, float eps,
                             cudaStream_t stream) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   const int threads = 256;
   rms_norm_kernel_ultra<__nv_bfloat16, 256><<<batch_seq, threads, 0, stream>>>(
       input, weight, output, batch_seq, hidden_size, eps);
+#endif
   CUDA_CHECK(cudaGetLastError());
 }
 
@@ -326,10 +329,12 @@ void rope_apply_launcher_bf16(__nv_bfloat16 *q, __nv_bfloat16 *k,
                               int batch_size, int num_heads, int seq_len,
                               int head_dim, int position_offset,
                               cudaStream_t stream) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   dim3 blocks(seq_len, num_heads, batch_size);
   rope_apply_ultra<__nv_bfloat16>
       <<<blocks, 128, 0, stream>>>(q, k, cos, sin, batch_size, num_heads,
                                    seq_len, head_dim, position_offset);
+#endif
   CUDA_CHECK(cudaGetLastError());
 }
 
@@ -352,8 +357,10 @@ void swiglu_launcher_fp16(const __half *gate, const __half *up, __half *output,
 void swiglu_launcher_bf16(const __nv_bfloat16 *gate, const __nv_bfloat16 *up,
                           __nv_bfloat16 *output, int total_tokens,
                           int intermediate_size, cudaStream_t stream) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   swiglu_kernel_ultra<__nv_bfloat16, 256><<<total_tokens, 256, 0, stream>>>(
       gate, up, output, total_tokens, intermediate_size);
+#endif
   CUDA_CHECK(cudaGetLastError());
 }
 }

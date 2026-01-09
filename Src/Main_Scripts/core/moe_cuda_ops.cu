@@ -78,7 +78,7 @@ __global__ void topk_gating_kernel_warp_parallel(
   if (token_idx >= num_tokens)
     return;
 
-  const float *token_logits = gate_logits + token_idx * num_experts;
+  const float *token_logits = gate_logits + (int64_t)token_idx * num_experts;
 
   // Each thread handles a subset of experts
   float local_best_vals[MAX_K];
@@ -152,8 +152,8 @@ __global__ void topk_gating_kernel_warp_parallel(
   // 4. Write output (thread 0 only per token)
   if (lane == 0) {
     const float inv_sum = 1.0f / (sum_exp + 1e-9f);
-    int64_t *out_indices = top_k_indices + token_idx * K;
-    float *out_weights = top_k_weights + token_idx * K;
+    int64_t *out_indices = top_k_indices + (int64_t)token_idx * K;
+    float *out_weights = top_k_weights + (int64_t)token_idx * K;
 
 #pragma unroll
     for (int i = 0; i < K; i++) {
@@ -180,8 +180,8 @@ __global__ void dispatch_tokens_kernel_single_pass(
   if (token_idx >= num_tokens)
     return;
 
-  const float *token_data = tokens + token_idx * hidden_dim;
-  const int64_t *token_experts = top_k_indices + token_idx * K;
+  const float *token_data = tokens + (int64_t)token_idx * hidden_dim;
+  const int64_t *token_experts = top_k_indices + (int64_t)token_idx * K;
 
   // Shared memory for positions (minimal usage)
   __shared__ int shared_pos[MAX_K];
@@ -216,12 +216,13 @@ __global__ void dispatch_tokens_kernel_single_pass(
 
     // Write token map (thread 0 only)
     if (tid == 0) {
-      token_map[expert_id * capacity + pos] = token_idx * K + i;
+      token_map[(int64_t)expert_id * capacity + pos] =
+          (int64_t)token_idx * K + i;
     }
 
     // Vectorized copy (all threads)
     float *expert_input =
-        expert_inputs + (expert_id * capacity + pos) * hidden_dim;
+        expert_inputs + (int64_t)(expert_id * capacity + pos) * hidden_dim;
     float4 *expert_vec = reinterpret_cast<float4 *>(expert_input);
 
 #pragma unroll 4
@@ -257,7 +258,8 @@ __global__ void combine_expert_outputs_kernel_single_pass(
     return;
 
   // Load token info
-  const int64_t token_weight_idx = token_map[expert_id * capacity + pos];
+  const int64_t token_weight_idx =
+      token_map[(int64_t)expert_id * capacity + pos];
   if (token_weight_idx < 0)
     return;
 
@@ -268,9 +270,10 @@ __global__ void combine_expert_outputs_kernel_single_pass(
   const float weight = __ldg(&top_k_weights[token_weight_idx]);
 
   // SINGLE PASS: Vectorized weighted addition with atomic adds
-  const float *expert_out =
-      expert_outputs + (expert_id * capacity + pos) * hidden_dim;
-  float *output = combined_output + token_idx * hidden_dim;
+  const int64_t expert_offset =
+      (int64_t)(expert_id * capacity + pos) * hidden_dim;
+  const float *expert_out = expert_outputs + expert_offset;
+  float *output = combined_output + (int64_t)token_idx * hidden_dim;
 
   const int vec_hidden = (hidden_dim / VEC_SIZE) * VEC_SIZE;
   const float4 *expert_vec = reinterpret_cast<const float4 *>(expert_out);
