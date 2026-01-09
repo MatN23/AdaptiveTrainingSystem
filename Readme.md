@@ -526,7 +526,7 @@ Free GPU training demonstration requiring no local setup with CUDA acceleration 
 **Configuration:**
 - Model: `debug` preset (14m total, 2m active, 8 experts, 2 top-k)
 - Dataset: Small conversational corpus (~200 samples, ~2.5M tokens)
-- Training: 12 epochs, batch_size=25, gradient_accumulation=8, effective_batch_size=200
+- Training: 12 epochs, batch_size=30, gradient_accumulation=8, effective_batch_size=240
 - Precision: Mixed FP16 (automatic for T4) with CUDA-accelerated operations
 - Learning rate: 1e-4 with cosine warmup and decay
 - CUDA kernels: Automatically compiled on first run (1-2 minutes compilation time)
@@ -534,7 +534,7 @@ Free GPU training demonstration requiring no local setup with CUDA acceleration 
 **Observable behaviors:**
 - System diagnostics: Hardware detection, precision selection, CUDA kernel loading
 - Chinchilla scaling: Optimal token calculation (20× parameters), epoch recommendations
-- Training metrics: Loss progression (~2.5 → ~2.0), throughput (~1400 tok/s with CUDA vs ~600 tok/s without)
+- Training metrics: Loss progression (~2.5 → ~2.0), throughput (~53–55k tok/s with CUDA vs ~30k tok/s without)
 - Orchestrator: Health checks every 100 steps, intervention decisions
 - Expert statistics: Utilization distribution, routing entropy, load balance
 - CUDA performance: Real-time speedup metrics, per-operation timing, memory efficiency
@@ -965,6 +965,13 @@ Health check output includes status (healthy/warning/critical), detected issues,
 Throughput measurements on reference hardware configurations with and without CUDA acceleration. All benchmarks use sequence_length=2048, batch_size optimized per GPU, mixed precision training with gradient checkpointing.
 
 ### Single GPU Performance
+
+**Google Colab T4 (15.8GB, Turing, sm_75):**
+- **debug (14M total, 2M active):**
+  - With CUDA: ~53,000–55,000 tokens/second, batch_size=30, grad_steps=8
+  - Without CUDA (PyTorch): ~30,000 tokens/second, batch_size=30, grad_steps=8
+  - Speedup: ~1.8×
+- Memory efficiency: High utilization with optimized kernels
 
 **NVIDIA RTX 3090 (24GB, Ampere, sm_80):**
 - **b1 (1B active):**
