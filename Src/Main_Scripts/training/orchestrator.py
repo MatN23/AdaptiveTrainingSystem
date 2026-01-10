@@ -163,12 +163,12 @@ class TrainingMetrics:
     """Comprehensive training metrics for adaptive intelligence."""
     epoch: int
     step: int
-    loss: float
-    grad_norm: float
-    learning_rate: float
+    loss: Any              # Allowed to be Tensor (sync later)
+    grad_norm: Any         # Allowed to be Tensor (sync later)
+    learning_rate: Any
     expert_utilization: Dict[str, float]
     memory_usage: Dict[str, float]
-    throughput: float
+    throughput: Any        # Allowed to be Tensor
     semantic_coherence: float
     factual_accuracy: float
     reasoning_score: float
@@ -1077,7 +1077,21 @@ class AdaptiveTrainingOrchestrator:
         logging.info("Started real-time monitoring thread")
     
     def _process_real_time_metrics(self, metrics):
-        """Process metrics in real-time with verbose logging."""
+        """Process metrics in real-time with verbose logging and ASYNCHRONOUS sync."""
+        
+        # 🔥 CRITICAL PERFORMANCE FIX: Move .item() calls to this background thread
+        # This prevents the training loop from stalling while waiting for the GPU
+        def sync_tensor(val):
+            if isinstance(val, torch.Tensor):
+                return val.item()
+            return val
+
+        # Synchronize only what we need for history/analytics in this thread
+        metrics.loss = sync_tensor(metrics.loss)
+        metrics.grad_norm = sync_tensor(metrics.grad_norm)
+        metrics.learning_rate = sync_tensor(metrics.learning_rate)
+        metrics.throughput = sync_tensor(metrics.throughput)
+
         # ✅ Sync orchestrator state with incoming metrics
         self.global_step = metrics.step
         self.current_metrics = metrics
@@ -1092,7 +1106,6 @@ class AdaptiveTrainingOrchestrator:
             
             if metrics.step % log_freq == 0:
                 self.logger.metric("loss", f"{metrics.loss:.6f}")
-
                 self.logger.metric("learning_rate", f"{metrics.learning_rate:.2e}")
                 self.logger.metric("grad_norm", f"{metrics.grad_norm:.4f}")
                 self.logger.metric("throughput", f"{metrics.throughput:.0f} tok/s")

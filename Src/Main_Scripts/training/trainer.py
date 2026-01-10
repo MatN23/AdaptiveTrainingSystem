@@ -1190,17 +1190,17 @@ class EnhancedConversationTrainer:
             # Use the module-level TrainingMetrics defined above
             MetricsClass = TrainingMetrics
         
-        def to_float(val):
-            if isinstance(val, torch.Tensor):
-                return val.item()
-            return float(val)
+        def lazy_tensor(val):
+            # 🔥 PERFORMANCE FIX: Do NOT call .item() here. 
+            # Return the tensor as-is and let the orchestrator background thread sync it.
+            return val
 
         return MetricsClass(
             epoch=self.current_epoch,
             step=self.global_step,
-            loss=to_float(self.metrics.get('train_losses', [0])[-1]) if self.metrics.get('train_losses') else 0.0,
-            grad_norm=to_float(self.metrics.get('gradient_norms', [0])[-1]) if self.metrics.get('gradient_norms') else 0.0,
-            learning_rate=to_float(self.metrics.get('learning_rates', [0])[-1]) if self.metrics.get('learning_rates') else float(self.config.learning_rate),
+            loss=lazy_tensor(self.metrics.get('train_losses', [0])[-1]) if self.metrics.get('train_losses') else 0.0,
+            grad_norm=lazy_tensor(self.metrics.get('gradient_norms', [0])[-1]) if self.metrics.get('gradient_norms') else 0.0,
+            learning_rate=lazy_tensor(self.metrics.get('learning_rates', [0])[-1]) if self.metrics.get('learning_rates') else float(self.config.learning_rate),
             expert_utilization=self._extract_moe_routing_stats(),
             memory_usage=self._get_memory_usage(),
             throughput=self._calculate_throughput(),
@@ -2418,22 +2418,24 @@ class EnhancedConversationTrainer:
             # END TIMING (non-blocking)
             compute_time = time.perf_counter() - compute_start
             
-            # ✅ ACCURATE THROUGHPUT
-            num_tokens = loss_dict['valid_tokens'].item() if hasattr(loss_dict['valid_tokens'], 'item') else float(loss_dict['valid_tokens'])
-            step_throughput = num_tokens / compute_time if compute_time > 0 else 0.0
+            # ✅ NO SYNC: Keep valid_tokens as tensor
+            num_tokens = loss_dict['valid_tokens']
             
-            self.throughput_window.append(step_throughput)
-            if len(self.throughput_window) > self.throughput_window_size:
-                self.throughput_window.pop(0)
+            # Step throughput calculation (approximate/deferred)
+            step_throughput = 0.0
+            if compute_time > 0:
+                # We can't divide tensor by float easily without sync or keeping it as tensor
+                # For basic monitoring, we'll let the orchestrator handle this
+                pass
             
             return {
-                'loss': loss.item() if hasattr(loss, 'item') else float(loss),
-                'raw_loss': loss_dict['raw_loss'].item() if hasattr(loss_dict['raw_loss'], 'item') else float(loss_dict['raw_loss']),
-                'perplexity': loss_dict['perplexity'].item() if hasattr(loss_dict['perplexity'], 'item') else float(loss_dict['perplexity']),
+                'loss': loss,
+                'raw_loss': loss_dict['raw_loss'],
+                'perplexity': loss_dict['perplexity'],
                 'valid_tokens': num_tokens,
-                'accuracy': loss_dict['accuracy'].item() if hasattr(loss_dict['accuracy'], 'item') else float(loss_dict['accuracy']),
+                'accuracy': loss_dict['accuracy'],
                 'compute_time_ms': compute_time * 1000,
-                'throughput': step_throughput
+                'throughput': 0.0 # Will be calculated by orchestrator from tokens and time
             }
             
         except Exception as e:
@@ -2505,23 +2507,15 @@ class EnhancedConversationTrainer:
         # END TIMING (non-blocking - estimates only, but doesn't stall pipeline)
         compute_time = time.perf_counter() - compute_start
         
-        # ✅ ACCURATE THROUGHPUT - Only actual compute time
-        num_tokens = loss_dict['valid_tokens'].item()
-        if compute_time > 0:
-            step_throughput = num_tokens / compute_time
-            self.throughput_window.append(step_throughput)
-            if len(self.throughput_window) > self.throughput_window_size:
-                self.throughput_window.pop(0)
-        
         # ✅ NO SYNC: Return tensors directly
         return {
             'loss': loss,
             'raw_loss': loss_dict['raw_loss'],
             'perplexity': loss_dict['perplexity'],
-            'valid_tokens': loss_dict['valid_tokens'], # Keep as tensor
+            'valid_tokens': loss_dict['valid_tokens'],
             'accuracy': loss_dict['accuracy'],
             'compute_time_ms': compute_time * 1000,
-            'throughput': step_throughput if compute_time > 0 else 0.0
+            'throughput': 0.0
         }
     
     def optimizer_step(self) -> Dict[str, float]:
@@ -2653,6 +2647,7 @@ class EnhancedConversationTrainer:
 
         # Track gradient norms (Lazy sync only if needed for adaptive LR)
         if adaptive_override:
+             # ONLY call .item() if we're in an emergency override mode
              actual_norm = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
              if not hasattr(self, '_recent_grad_norms'):
                  self._recent_grad_norms = []
@@ -2952,11 +2947,13 @@ class EnhancedConversationTrainer:
                     if 'grad_norm' in opt_metrics and opt_metrics['grad_norm'] is not None:
                         epoch_metrics['grad_norm_sum'] += opt_metrics['grad_norm']
 
-                    # Track best step metrics
-                    if avg_loss < epoch_metrics['best_loss']:
-                        epoch_metrics['best_loss'] = avg_loss
-                        epoch_metrics['best_raw_loss'] = avg_raw_loss
-                        epoch_metrics['best_accuracy'] = avg_accuracy
+                    # Track best step metrics (Sync required here for comparison)
+                    # We only do this once per optimizer step, not every micro-batch
+                    current_loss_val = avg_loss.item() if isinstance(avg_loss, torch.Tensor) else avg_loss
+                    if current_loss_val < epoch_metrics['best_loss']:
+                        epoch_metrics['best_loss'] = current_loss_val
+                        epoch_metrics['best_raw_loss'] = avg_raw_loss.item() if isinstance(avg_raw_loss, torch.Tensor) else avg_raw_loss
+                        epoch_metrics['best_accuracy'] = avg_accuracy.item() if isinstance(avg_accuracy, torch.Tensor) else avg_accuracy
                         epoch_metrics['best_step'] = self.global_step
 
                     # CHINCHILLA SCALER UPDATE

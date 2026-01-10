@@ -122,15 +122,28 @@ void fused_grad_clip_launcher(float **grad_ptrs_device, int *grad_sizes_device,
   float *clip_coef_out = norm_buffer + 2;
   float *final_norm_out = norm_buffer + 3;
 
-  int num_blocks;
-  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&num_blocks,
-                                                fused_grad_clip_kernel, 256, 0);
+  static int cached_num_blocks = -1;
+  static int cached_num_sms = -1;
 
-  int device;
-  cudaGetDevice(&device);
-  int num_sms;
-  cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, device);
-  num_blocks *= num_sms;
+  if (cached_num_blocks == -1) {
+    int blocks_per_sm;
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &blocks_per_sm, fused_grad_clip_kernel, 256, 0);
+
+    int device;
+    cudaGetDevice(&device);
+    cudaDeviceGetAttribute(&cached_num_sms, cudaDevAttrMultiProcessorCount,
+                           device);
+
+    // Optimal grid size to fill the GPU
+    cached_num_blocks = blocks_per_sm * cached_num_sms;
+
+    // Optional: Safety limit for very large GPUs
+    if (cached_num_blocks > 2048)
+      cached_num_blocks = 2048;
+  }
+
+  int num_blocks = cached_num_blocks;
 
   void *kernel_args[] = {&grad_ptrs_device, &grad_sizes_device, &num_tensors,
                          &max_norm,         &norm_out_double,   &clip_coef_out,
