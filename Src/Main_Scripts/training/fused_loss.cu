@@ -263,3 +263,164 @@ void fused_cross_entropy_accuracy_launcher(
 }
 
 } // extern "C"
+
+// ============================================================================
+// BACKWARD KERNEL: Computes gradient of cross-entropy loss w.r.t. logits
+// grad_logits[i] = (softmax[i] - 1{i == label}) * grad_output * weight / N
+// ============================================================================
+
+__global__ void __launch_bounds__(256, 4) fused_cross_entropy_backward(
+    const float *__restrict__ logits, const int64_t *__restrict__ labels,
+    const float *__restrict__ loss_weights, const int64_t pad_token_id,
+    const float grad_output,      // Scalar upstream gradient (typically 1.0)
+    const float inv_valid_tokens, // 1.0 / valid_token_count for mean reduction
+    float *__restrict__ grad_logits, // Output: gradient w.r.t. logits
+    const int total_tokens, const int vocab_size) {
+
+  const int token_idx = blockIdx.x;
+  if (token_idx >= total_tokens)
+    return;
+
+  const int64_t label = labels[token_idx];
+  const float weight =
+      (loss_weights != nullptr) ? loss_weights[token_idx] : 1.0f;
+
+  // Output row
+  float *grad_row = grad_logits + (int64_t)token_idx * vocab_size;
+
+  // Skip padding - zero gradient
+  if (label == pad_token_id || label < 0 || label >= vocab_size) {
+    for (int i = threadIdx.x; i < vocab_size; i += blockDim.x) {
+      grad_row[i] = 0.0f;
+    }
+    return;
+  }
+
+  const float *logit_row = logits + (int64_t)token_idx * vocab_size;
+
+  // ===========================================================================
+  // Pass 1: Find max logit for numerical stability (parallel reduction)
+  // ===========================================================================
+  float local_max = -FLT_MAX;
+  for (int i = threadIdx.x; i < vocab_size; i += blockDim.x) {
+    local_max = fmaxf(local_max, __ldg(&logit_row[i]));
+  }
+
+// Warp reduction for max
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    local_max = fmaxf(local_max, __shfl_xor_sync(FULL_MASK, local_max, offset));
+  }
+
+  __shared__ float smem_max[32];
+  const int lane = threadIdx.x & 31;
+  const int wid = threadIdx.x >> 5;
+
+  if (lane == 0)
+    smem_max[wid] = local_max;
+  __syncthreads();
+
+  if (wid == 0) {
+    local_max = (lane < 8) ? smem_max[lane] : -FLT_MAX;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      local_max =
+          fmaxf(local_max, __shfl_xor_sync(FULL_MASK, local_max, offset));
+    }
+    if (lane == 0)
+      smem_max[0] = local_max;
+  }
+  __syncthreads();
+
+  const float max_logit = smem_max[0];
+
+  // ===========================================================================
+  // Pass 2: Compute sum of exp(logit - max) for softmax denominator
+  // ===========================================================================
+  float local_sum = 0.0f;
+  for (int i = threadIdx.x; i < vocab_size; i += blockDim.x) {
+    local_sum += __expf(__ldg(&logit_row[i]) - max_logit);
+  }
+
+// Warp reduction for sum
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    local_sum += __shfl_xor_sync(FULL_MASK, local_sum, offset);
+  }
+
+  __shared__ float smem_sum[32];
+  if (lane == 0)
+    smem_sum[wid] = local_sum;
+  __syncthreads();
+
+  if (wid == 0) {
+    local_sum = (lane < 8) ? smem_sum[lane] : 0.0f;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      local_sum += __shfl_xor_sync(FULL_MASK, local_sum, offset);
+    }
+    if (lane == 0)
+      smem_sum[0] = local_sum;
+  }
+  __syncthreads();
+
+  const float sum_exp = smem_sum[0];
+  const float inv_sum = 1.0f / (sum_exp + 1e-10f);
+
+  // ===========================================================================
+  // Pass 3: Compute gradient: grad = (softmax - one_hot) * weight * grad_out /
+  // N
+  // ===========================================================================
+  const float scale = grad_output * weight * inv_valid_tokens;
+
+  // Vectorized writes for perfect coalescing
+  const int num_vecs = vocab_size / 4;
+  float4 *grad_row_vec = reinterpret_cast<float4 *>(grad_row);
+
+  for (int i = threadIdx.x; i < num_vecs; i += blockDim.x) {
+    float4 logits_v = __ldg(reinterpret_cast<const float4 *>(logit_row) + i);
+    float4 grad_v;
+
+    int base_idx = i * 4;
+#pragma unroll
+    for (int j = 0; j < 4; j++) {
+      float logit_val = (&logits_v.x)[j];
+      float softmax_val = __expf(logit_val - max_logit) * inv_sum;
+      float one_hot = ((base_idx + j) == (int)label) ? 1.0f : 0.0f;
+      (&grad_v.x)[j] = (softmax_val - one_hot) * scale;
+    }
+
+    grad_row_vec[i] = grad_v;
+  }
+
+  // Handle remainder
+  for (int i = num_vecs * 4 + threadIdx.x; i < vocab_size; i += blockDim.x) {
+    float logit_val = __ldg(&logit_row[i]);
+    float softmax_val = __expf(logit_val - max_logit) * inv_sum;
+    float one_hot = (i == (int)label) ? 1.0f : 0.0f;
+    grad_row[i] = (softmax_val - one_hot) * scale;
+  }
+}
+
+extern "C" {
+
+void fused_cross_entropy_backward_launcher(
+    const float *logits, const int64_t *labels, const float *loss_weights,
+    int64_t pad_token_id, float grad_output, float inv_valid_tokens,
+    float *grad_logits, int total_tokens, int vocab_size, cudaStream_t stream) {
+
+  const int num_blocks = total_tokens;
+  const int threads = 256;
+
+  fused_cross_entropy_backward<<<num_blocks, threads, 0, stream>>>(
+      logits, labels, loss_weights, pad_token_id, grad_output, inv_valid_tokens,
+      grad_logits, total_tokens, vocab_size);
+
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    fprintf(stderr, "CUDA backward kernel error: %s\n",
+            cudaGetErrorString(err));
+  }
+}
+
+} // extern "C"

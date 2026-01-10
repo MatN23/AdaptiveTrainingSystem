@@ -285,6 +285,13 @@ class EnhancedChinchillaScaler:
     
     def update_metrics(self, step: int, epoch: float, loss: float, 
                       grad_norm: float, learning_rate: float, batch_tokens: int):
+        
+        # ✅ FIX: Safely convert tensors to floats to avoid NumPy errors
+        if isinstance(loss, torch.Tensor): loss = loss.item()
+        if isinstance(grad_norm, torch.Tensor): grad_norm = grad_norm.item()
+        if isinstance(learning_rate, torch.Tensor): learning_rate = learning_rate.item()
+        if isinstance(batch_tokens, torch.Tensor): batch_tokens = int(batch_tokens.item())
+        
         self.tokens_processed += batch_tokens
         
         if self.initial_loss is None:

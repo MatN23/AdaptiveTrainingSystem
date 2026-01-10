@@ -109,12 +109,12 @@ __global__ void fused_grad_clip_kernel(float **grad_ptrs, const int *grad_sizes,
 
 extern "C" {
 
-float fused_grad_clip_launcher(float **grad_ptrs_device, int *grad_sizes_device,
-                               int num_tensors, float max_norm,
-                               float *norm_buffer, cudaStream_t stream) {
+void fused_grad_clip_launcher(float **grad_ptrs_device, int *grad_sizes_device,
+                              int num_tensors, float max_norm,
+                              float *norm_buffer, cudaStream_t stream) {
 
   if (norm_buffer == nullptr)
-    return -1.0f;
+    return;
 
   cudaMemsetAsync(norm_buffer, 0, 16, stream);
 
@@ -146,15 +146,7 @@ float fused_grad_clip_launcher(float **grad_ptrs_device, int *grad_sizes_device,
   if (err != cudaSuccess) {
     fprintf(stderr, "CUDA Cooperative Launch Failed: %s\n",
             cudaGetErrorString(err));
-    return -1.0f;
   }
-
-  float host_norm = 0.0f;
-  cudaMemcpyAsync(&host_norm, final_norm_out, sizeof(float),
-                  cudaMemcpyDeviceToHost, stream);
-  cudaStreamSynchronize(stream);
-
-  return host_norm;
 }
 
 } // extern "C"

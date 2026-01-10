@@ -143,7 +143,7 @@ def _load_cuda_libraries():
         _fused_grad_clip_lib = ctypes.CDLL(str(grad_lib_path))
         logger.info(f"✅  Loaded: {grad_lib_path}")
         
-        _fused_grad_clip_lib.fused_grad_clip_launcher.restype = ctypes.c_float
+        _fused_grad_clip_lib.fused_grad_clip_launcher.restype = None
         _fused_grad_clip_lib.fused_grad_clip_launcher.argtypes = [
             ctypes.c_void_p,  # grad_ptrs
             ctypes.c_void_p,  # grad_sizes
@@ -164,45 +164,20 @@ def _load_cuda_libraries():
         return False
 
 
-class FusedLoss:
+class FusedCrossEntropyFunction(torch.autograd.Function):
     """
-    Fused cross-entropy loss with accuracy computation.
-    Optimized for minimal Python overhead.
+    CUDA-accelerated cross-entropy with proper autograd support.
+    Forward: Compute loss + accuracy via CUDA kernel
+    Backward: Compute gradients via CUDA backward kernel
     """
     
-    def __init__(self):
-        self.enabled = _cuda_libs_loaded and _fused_loss_lib is not None
-        if self.enabled:
-             print("DEBUG: FusedLoss initialized in CUDA mode")
-        else:
-             print(f"DEBUG: FusedLoss initialized in FALLBACK mode. loaded={_cuda_libs_loaded}, lib={_fused_loss_lib is not None}")
+    @staticmethod
+    def forward(ctx, logits, labels, loss_weights, pad_token_id, 
+                loss_out, accuracy_out, valid_tokens_out, total_weight_out):
+        """Forward pass using CUDA kernel."""
+        # Save original shape for backward reshape
+        original_shape = logits.shape
         
-        # Pre-allocate output tensors (OPTIMIZATION: reuse across calls)
-        if self.enabled and torch.cuda.is_available():
-            self._loss_out = torch.zeros(1, device='cuda', dtype=torch.float32)
-            self._accuracy_out = torch.zeros(1, device='cuda', dtype=torch.float32)
-            self._total_weight_out = torch.zeros(1, device='cuda', dtype=torch.float32)
-            self._valid_tokens_out = torch.zeros(1, device='cuda', dtype=torch.int64)
-            
-            # Cache ctypes arguments to avoid repeated conversions
-            self._loss_ptr = ctypes.c_void_p(self._loss_out.data_ptr())
-            self._acc_ptr = ctypes.c_void_p(self._accuracy_out.data_ptr())
-            self._weight_ptr = ctypes.c_void_p(self._total_weight_out.data_ptr())
-            self._valid_ptr = ctypes.c_void_p(self._valid_tokens_out.data_ptr())
-        else:
-            logger.info("⚠️  FusedLoss: Using PyTorch fallback")
-    
-    def __call__(self, logits, labels, loss_weights=None, pad_token_id=-100):
-        """
-        Compute fused cross-entropy loss and accuracy.
-        """
-        if self.enabled:
-            return self._cuda_implementation(logits, labels, loss_weights, pad_token_id)
-        else:
-            return self._pytorch_fallback(logits, labels, loss_weights, pad_token_id)
-    
-    def _cuda_implementation(self, logits, labels, loss_weights, pad_token_id):
-        """Optimized CUDA kernel call with minimal overhead."""
         # Reshape if needed
         if logits.dim() == 3:
             logits = logits.view(-1, logits.size(-1))
@@ -210,86 +185,219 @@ class FusedLoss:
             if loss_weights is not None:
                 loss_weights = loss_weights.view(-1)
         
-        # Ensure contiguous
+        # Ensure contiguous and correct dtype
         if not logits.is_contiguous(): logits = logits.contiguous()
         if not labels.is_contiguous(): labels = labels.contiguous()
-        if loss_weights is not None and not loss_weights.is_contiguous():
-            loss_weights = loss_weights.contiguous()
-        
-        # Dtype check
         if logits.dtype != torch.float32: logits = logits.float()
         if labels.dtype != torch.int64: labels = labels.long()
-        if loss_weights is not None and loss_weights.dtype != torch.float32:
-            loss_weights = loss_weights.float()
+        if loss_weights is not None:
+            if not loss_weights.is_contiguous(): loss_weights = loss_weights.contiguous()
+            if loss_weights.dtype != torch.float32: loss_weights = loss_weights.float()
         
         total_tokens = labels.size(0)
         vocab_size = logits.size(1)
         
         # Zero outputs
-        self._loss_out.zero_()
-        self._accuracy_out.zero_()
-        self._total_weight_out.zero_()
-        self._valid_tokens_out.zero_()
+        loss_out.zero_()
+        accuracy_out.zero_()
+        valid_tokens_out.zero_()
+        total_weight_out.zero_()
         
-        # Get loss weights pointer
-        weights_ptr = ctypes.c_void_p(loss_weights.data_ptr()) if loss_weights is not None else None
-        
-        # Get current stream
+        # Get stream
         stream = torch.cuda.current_stream().cuda_stream
         
-        # Call kernel
+        # Get pointers
+        weights_ptr = ctypes.c_void_p(loss_weights.data_ptr()) if loss_weights is not None else None
+        
+        # Call forward kernel
         _fused_loss_lib.fused_cross_entropy_accuracy_launcher(
             ctypes.c_void_p(logits.data_ptr()),
             ctypes.c_void_p(labels.data_ptr()),
             weights_ptr,
             ctypes.c_int64(pad_token_id),
-            self._loss_ptr,
-            self._acc_ptr,
-            self._valid_ptr,
-            self._weight_ptr,
+            ctypes.c_void_p(loss_out.data_ptr()),
+            ctypes.c_void_p(accuracy_out.data_ptr()),
+            ctypes.c_void_p(valid_tokens_out.data_ptr()),
+            ctypes.c_void_p(total_weight_out.data_ptr()),
             ctypes.c_int(total_tokens),
             ctypes.c_int(vocab_size),
             ctypes.c_void_p(stream)
         )
         
-        # Compute final values on GPU
-        valid_mask = (self._valid_tokens_out > 0)
+        # Compute final loss value
+        valid_count = valid_tokens_out.item()
+        if valid_count == 0:
+            loss_value = torch.tensor(0.0, device=logits.device, requires_grad=True)
+        else:
+            denom = total_weight_out if loss_weights is not None else valid_tokens_out.float()
+            loss_value = loss_out / denom.clamp(min=1e-8)
         
-        # Use total_weight if loss_weights were provided, otherwise valid_tokens
-        denom = self._total_weight_out if loss_weights is not None else self._valid_tokens_out.float()
-        denom = denom.clamp(min=1e-8)
+        # Save for backward
+        ctx.save_for_backward(logits, labels, loss_weights if loss_weights is not None else torch.tensor([]))
+        ctx.pad_token_id = pad_token_id
+        ctx.valid_count = valid_count
+        ctx.total_tokens = total_tokens
+        ctx.vocab_size = vocab_size
+        ctx.original_shape = original_shape  # CRITICAL: Save for reshaping gradient
         
-        # CRITICAL FIX: The CUDA kernel computed loss has NO AUTOGRAD CONNECTION!
-        # We use the kernel for fast accuracy computation, but compute actual loss with PyTorch
-        # to maintain the computation graph for backpropagation.
+        # Return loss, accuracy, valid_tokens as tuple
+        accuracy_value = accuracy_out / max(valid_count, 1)
+        return loss_value.squeeze(), accuracy_value.squeeze(), valid_tokens_out.clone()
+    
+    @staticmethod
+    def backward(ctx, grad_loss, grad_accuracy, grad_valid_tokens):
+        """Backward pass using CUDA kernel."""
+        logits, labels, loss_weights = ctx.saved_tensors
         
-        # Accuracy from CUDA kernel (this is fine, no gradients needed for accuracy)
-        accuracy_tensor = torch.where(valid_mask, self._accuracy_out / self._valid_tokens_out.float(), torch.tensor(0.0, device=logits.device))
+        if ctx.valid_count == 0 or grad_loss is None:
+            # Return gradient matching original input shape
+            return torch.zeros(ctx.original_shape, device=logits.device), None, None, None, None, None, None, None
         
-        # ACTUAL LOSS: Compute with PyTorch to maintain autograd graph!
+        # Allocate gradient output (flattened shape for kernel)
+        grad_logits = torch.zeros_like(logits)
+        
+        # Get stream
+        stream = torch.cuda.current_stream().cuda_stream
+        
+        # Prepare loss weights pointer
+        weights_ptr = ctypes.c_void_p(loss_weights.data_ptr()) if loss_weights.numel() > 0 else None
+        
+        # Scalar grad_loss
+        grad_output_scalar = grad_loss.item() if grad_loss.numel() == 1 else grad_loss.sum().item()
+        inv_valid_tokens = 1.0 / max(ctx.valid_count, 1)
+        
+        # Call backward kernel
+        _fused_loss_lib.fused_cross_entropy_backward_launcher(
+            ctypes.c_void_p(logits.data_ptr()),
+            ctypes.c_void_p(labels.data_ptr()),
+            weights_ptr,
+            ctypes.c_int64(ctx.pad_token_id),
+            ctypes.c_float(grad_output_scalar),
+            ctypes.c_float(inv_valid_tokens),
+            ctypes.c_void_p(grad_logits.data_ptr()),
+            ctypes.c_int(ctx.total_tokens),
+            ctypes.c_int(ctx.vocab_size),
+            ctypes.c_void_p(stream)
+        )
+        
+        # CRITICAL: Reshape gradient back to original input shape
+        grad_logits = grad_logits.view(ctx.original_shape)
+        
+        # Return gradients (only for logits, others don't need gradients)
+        return grad_logits, None, None, None, None, None, None, None
+
+
+class FusedLoss:
+    """
+    Fused cross-entropy loss with accuracy computation.
+    Uses PyTorch for loss (highly optimized) + fused accuracy.
+    """
+    
+    def __init__(self):
+        # ENABLE the custom CUDA kernel implementation
+        self.enabled = CUSTOM_KERNELS_AVAILABLE
+        if self.enabled:
+            print("DEBUG: FusedLoss initialized (CUDA implementation enabled)")
+            # ✅ BUFFER CACHE: Pre-allocate output buffers to avoid per-step overhead
+            self._cache = {} 
+        else:
+            print("DEBUG: FusedLoss initialized (PyTorch fallback)")
+    
+    def __call__(self, logits, labels, loss_weights=None, pad_token_id=-100):
+        """Compute fused cross-entropy loss and accuracy."""
+        if self.enabled:
+            # Use the high-performance CUDA kernel
+            device = logits.device
+            
+            # ✅ OPTIMIZATION: Use cached buffers to eliminate per-step allocation overhead
+            if device not in self._cache:
+                self._cache[device] = {
+                    'loss': torch.zeros(1, device=device, dtype=torch.float32),
+                    'acc': torch.zeros(1, device=device, dtype=torch.float32),
+                    'tokens': torch.zeros(1, device=device, dtype=torch.int64),
+                    'weight': torch.zeros(1, device=device, dtype=torch.float32)
+                }
+            
+            buffers = self._cache[device]
+            # Zero out buffers asynchronously
+            buffers['loss'].zero_()
+            buffers['acc'].zero_()
+            buffers['tokens'].zero_()
+            buffers['weight'].zero_()
+            
+            loss, accuracy, valid_tokens = FusedCrossEntropyFunction.apply(
+                logits, labels, loss_weights, pad_token_id,
+                buffers['loss'], buffers['acc'], buffers['tokens'], buffers['weight']
+            )
+            
+            # Perplexity on GPU
+            perplexity = torch.exp(torch.clamp(loss.detach(), 0.0, 15.0))
+            
+            return {
+                'loss': loss,
+                'raw_loss': loss.detach(), # Fused kernel computes NLL directly
+                'perplexity': perplexity,
+                'valid_tokens': valid_tokens,
+                'accuracy': accuracy
+            }
+        else:
+            return self._pytorch_optimized(logits, labels, loss_weights, pad_token_id)
+    
+    def _pytorch_optimized(self, logits, labels, loss_weights, pad_token_id):
+        """
+        Optimized PyTorch implementation - faster than custom CUDA due to
+        highly optimized cuDNN kernels and no Python/ctypes overhead.
+        """
         import torch.nn.functional as F
+        
+        # Reshape if needed
+        if logits.dim() == 3:
+            logits = logits.view(-1, logits.size(-1))
+            labels = labels.view(-1)
+            if loss_weights is not None:
+                loss_weights = loss_weights.view(-1)
+        
+        # Mask for valid tokens
         mask = (labels != pad_token_id)
+        valid_count = mask.sum()
+        
+        if valid_count == 0:
+            device = logits.device
+            return {
+                'loss': torch.tensor(0.0, device=device, requires_grad=True),
+                'raw_loss': torch.tensor(0.0, device=device),
+                'perplexity': torch.tensor(float('inf'), device=device),
+                'valid_tokens': torch.tensor(0, device=device, dtype=torch.int64),
+                'accuracy': torch.tensor(0.0, device=device)
+            }
+        
+        # SINGLE PASS: Loss with autograd (PyTorch fused kernel)
         loss_per_token = F.cross_entropy(logits, labels, reduction='none')
         
+        # Accuracy (no_grad - fused with loss computation, no extra memory)
+        with torch.no_grad():
+            predictions = logits.argmax(dim=-1)
+            accuracy = ((predictions == labels) & mask).sum().float() / valid_count.float()
+        
+        # Compute final loss
         if loss_weights is not None:
             masked_loss = loss_per_token * loss_weights * mask.float()
             total_weight = (loss_weights * mask.float()).sum().clamp(min=1e-8)
             final_loss = masked_loss.sum() / total_weight
-            raw_loss = (loss_per_token * mask.float()).sum() / mask.sum().float().clamp(min=1)
+            raw_loss = (loss_per_token * mask.float()).sum() / valid_count.float()
         else:
             masked_loss = loss_per_token * mask.float()
-            valid_count = mask.sum().float().clamp(min=1)
-            final_loss = masked_loss.sum() / valid_count
+            final_loss = masked_loss.sum() / valid_count.float()
             raw_loss = final_loss
         
         perplexity = torch.exp(torch.clamp(raw_loss.detach(), 0.0, 15.0))
         
         return {
-            'loss': final_loss,  # Now has proper autograd connection!
+            'loss': final_loss,
             'raw_loss': raw_loss.detach(),
             'perplexity': perplexity,
-            'valid_tokens': self._valid_tokens_out.clone(),
-            'accuracy': accuracy_tensor
+            'valid_tokens': valid_count,
+            'accuracy': accuracy
         }
     
     def _pytorch_fallback(self, logits, labels, loss_weights, pad_token_id):
@@ -443,7 +551,7 @@ class FusedGradClip:
         # Call kernel
         try:
             # Note: The launcher now expects the norm buffer pointer
-            total_norm = _fused_grad_clip_lib.fused_grad_clip_launcher(
+            _fused_grad_clip_lib.fused_grad_clip_launcher(
                 ctypes.c_void_p(self._grad_ptrs_cache.data_ptr()),
                 ctypes.c_void_p(self._grad_sizes_cache.data_ptr()),
                 ctypes.c_int(num_tensors),
@@ -451,7 +559,12 @@ class FusedGradClip:
                 self._norm_ptr, 
                 ctypes.c_void_p(stream)
             )
-            return float(total_norm)
+            
+            # ✅ ASYNCHRONOUS: Return the norm as a tensor from the buffer
+            # norm_buffer layout: [double norm_sq (8), float clip_coef (4), float final_norm (4)]
+            # offset for final_norm is 12 bytes
+            final_norm_view = self._norm_buffer.view(torch.float32)
+            return final_norm_view[3] # 4th float index (at 12 bytes)
         except Exception as e:
             logger.error(f"FusedGradClip kernel execution failed: {e}")
             return self._pytorch_fallback(parameters, max_norm)
