@@ -1,169 +1,160 @@
 // Copyright (c) 2025 MatN23. All rights reserved.
-// FIXED: Proper grid synchronization using two-kernel approach
 //
-// Compile with:
-// nvcc -O3 -arch=sm_75 --use_fast_math --ptxas-options=-v \
-//      --compiler-options '-fPIC' -shared fused_grad_clip.cu -o
-//      fused_grad_clip.so
+// Optimized Fused Gradient Clipping Kernel (STABLE VERSION)
+// - Uses Cooperative Groups for single-kernel grid synchronization
+// - Double-precision accumulation for gradient norms
+// - Explicit error checking for occupancy and cooperative launches
 
-#include <cfloat>
 #include <cmath>
+#include <cooperative_groups.h>
 #include <cstdio>
 #include <cuda_runtime.h>
+
+namespace cg = cooperative_groups;
 
 #define WARP_SIZE 32
 #define FULL_MASK 0xffffffff
 
-__device__ __forceinline__ float warp_reduce_sum(float val) {
+// Set to 1 to enable debug printf, 0 to disable
+#define GRAD_CLIP_DEBUG 0
+
+__device__ __forceinline__ double block_reduce_sum_double(double val) {
+  __shared__ double shared_smem[32];
+
+  int lane = threadIdx.x & 31;
+  int wid = threadIdx.x >> 5;
+
 #pragma unroll
   for (int offset = 16; offset > 0; offset >>= 1) {
     val += __shfl_xor_sync(FULL_MASK, val, offset);
   }
+
+  if (lane == 0)
+    shared_smem[wid] = val;
+  __syncthreads();
+
+  val = (threadIdx.x < (blockDim.x >> 5)) ? shared_smem[lane] : 0.0;
+  if (wid == 0) {
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      val += __shfl_xor_sync(FULL_MASK, val, offset);
+    }
+  }
+
   return val;
 }
 
-// ============================================================================
-// KERNEL 1: Compute gradient norm
-// ============================================================================
-__global__ void __launch_bounds__(256, 8)
-    compute_grad_norm_kernel(float **__restrict__ grad_ptrs,
-                             const int *__restrict__ grad_sizes,
-                             const int num_tensors,
-                             float *__restrict__ norm_out) {
-  __shared__ float smem[32];
+__global__ void fused_grad_clip_kernel(float **grad_ptrs, const int *grad_sizes,
+                                       const int num_tensors,
+                                       const float max_norm,
+                                       double *norm_out_double,
+                                       float *clip_coef_out,
+                                       float *final_norm_out) {
 
-  float thread_norm_sq = 0.0f;
+  cg::grid_group grid = cg::this_grid();
 
-  // Each thread processes elements from all tensors
-  for (int tensor_idx = 0; tensor_idx < num_tensors; tensor_idx++) {
-    float *grad = grad_ptrs[tensor_idx];
-    const int64_t size = grad_sizes[tensor_idx];
+  // PASS 1: Compute total norm squared
+  double thread_norm_sq = 0.0;
+  for (int t = 0; t < num_tensors; t++) {
+    float *grad = grad_ptrs[t];
+    const int size = grad_sizes[t];
 
-    // Vectorized processing
-    const int64_t vec_size = size / 4;
-    const int64_t vec_start = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
-    const int64_t vec_stride = (int64_t)gridDim.x * blockDim.x;
-
-    // Process float4 chunks
-    for (int64_t i = vec_start; i < vec_size; i += vec_stride) {
-      float4 vals = __ldg(reinterpret_cast<const float4 *>(&grad[i * 4]));
-      thread_norm_sq +=
-          vals.x * vals.x + vals.y * vals.y + vals.z * vals.z + vals.w * vals.w;
-    }
-
-    // Handle remainder
-    const int64_t remainder_start = vec_size * 4;
-    for (int64_t i =
-             remainder_start + threadIdx.x + (int64_t)blockIdx.x * blockDim.x;
-         i < size; i += (int64_t)gridDim.x * blockDim.x) {
-      float val = __ldg(&grad[i]);
-      thread_norm_sq += val * val;
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size;
+         i += gridDim.x * blockDim.x) {
+      float val = grad[i];
+      thread_norm_sq += (double)val * val;
     }
   }
 
-  // Warp reduce
-  thread_norm_sq = warp_reduce_sum(thread_norm_sq);
-
-  // Block reduce
-  const int lane = threadIdx.x & 31;
-  const int wid = threadIdx.x >> 5;
-
-  if (lane == 0)
-    smem[wid] = thread_norm_sq;
-  __syncthreads();
-
-  float block_norm_sq = 0.0f;
-  if (wid == 0) {
-    thread_norm_sq = (lane < (blockDim.x >> 5)) ? smem[lane] : 0.0f;
-    block_norm_sq = warp_reduce_sum(thread_norm_sq);
-  }
-
-  // Grid reduce using atomics (once per block)
+  double block_sum = block_reduce_sum_double(thread_norm_sq);
   if (threadIdx.x == 0) {
-    atomicAdd(norm_out, block_norm_sq);
+    atomicAdd(norm_out_double, block_sum);
   }
-}
 
-// ============================================================================
-// KERNEL 2: Apply gradient clipping
-// ============================================================================
-__global__ void __launch_bounds__(256, 8)
-    apply_grad_clip_kernel(float **__restrict__ grad_ptrs,
-                           const int *__restrict__ grad_sizes,
-                           const int num_tensors, const float clip_coef) {
-  // Early exit if no clipping needed
+  // CRITICAL FIX: Ensure atomicAdd writes are visible to all threads before
+  // sync
+  __threadfence();
+
+  grid.sync();
+
+  // PASS 2: Compute clip coefficient
+  if (grid.thread_rank() == 0) {
+    double accumulated_norm_sq = *norm_out_double;
+    float total_norm = sqrtf((float)accumulated_norm_sq);
+#if GRAD_CLIP_DEBUG
+    printf("DEBUG GRAD_CLIP: norm_sq=%.6f, total_norm=%.6f, max_norm=%.6f\n",
+           accumulated_norm_sq, total_norm, max_norm);
+#endif
+    float coef = fminf(max_norm / (total_norm + 1e-6f), 1.0f);
+    *clip_coef_out = coef;
+    *final_norm_out = total_norm;
+  }
+
+  grid.sync();
+
+  float clip_coef = *clip_coef_out;
   if (clip_coef >= 0.999f)
     return;
 
-  // Apply clipping (vectorized)
-  for (int tensor_idx = 0; tensor_idx < num_tensors; tensor_idx++) {
-    float *grad = grad_ptrs[tensor_idx];
-    const int64_t size = grad_sizes[tensor_idx];
-
-    const int64_t vec_size = size / 4;
-    const int64_t vec_start = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
-    const int64_t vec_stride = (int64_t)gridDim.x * blockDim.x;
-
-    for (int64_t i = vec_start; i < vec_size; i += vec_stride) {
-      float4 *vec_ptr = reinterpret_cast<float4 *>(grad);
-      float4 vals = vec_ptr[i];
-      vals.x *= clip_coef;
-      vals.y *= clip_coef;
-      vals.z *= clip_coef;
-      vals.w *= clip_coef;
-      vec_ptr[i] = vals;
-    }
-
-    const int64_t remainder_start = vec_size * 4;
-    for (int64_t i =
-             remainder_start + threadIdx.x + (int64_t)blockIdx.x * blockDim.x;
-         i < size; i += (int64_t)gridDim.x * blockDim.x) {
+  // PASS 3: Apply Clipping
+  for (int t = 0; t < num_tensors; t++) {
+    float *grad = grad_ptrs[t];
+    const int size = grad_sizes[t];
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size;
+         i += gridDim.x * blockDim.x) {
       grad[i] *= clip_coef;
     }
   }
 }
 
-// ============================================================================
-// HOST LAUNCHER - TWO KERNEL APPROACH
-// ============================================================================
 extern "C" {
 
 float fused_grad_clip_launcher(float **grad_ptrs_device, int *grad_sizes_device,
                                int num_tensors, float max_norm,
-                               cudaStream_t stream) {
-  // Allocate output buffer
-  float *norm_buffer;
-  cudaMallocAsync(&norm_buffer, sizeof(float), stream);
-  cudaMemsetAsync(norm_buffer, 0, sizeof(float), stream);
+                               float *norm_buffer, cudaStream_t stream) {
 
-  const int threads = 256;
-  const int blocks = 256;
+  if (norm_buffer == nullptr)
+    return -1.0f;
 
-  // KERNEL 1: Compute norm (ALL blocks must finish)
-  compute_grad_norm_kernel<<<blocks, threads, 0, stream>>>(
-      grad_ptrs_device, grad_sizes_device, num_tensors, norm_buffer);
+  cudaMemsetAsync(norm_buffer, 0, 16, stream);
 
-  // Read back the norm squared (IMPLICIT SYNC - kernel must finish!)
-  float total_norm_sq;
-  cudaMemcpyAsync(&total_norm_sq, norm_buffer, sizeof(float),
-                  cudaMemcpyDeviceToHost, stream);
-  cudaStreamSynchronize(stream); // ✅ CRITICAL: Wait for norm computation
+  double *norm_out_double = reinterpret_cast<double *>(norm_buffer);
+  float *clip_coef_out = norm_buffer + 2;
+  float *final_norm_out = norm_buffer + 3;
 
-  const float total_norm = sqrtf(total_norm_sq);
-  const float clip_coef = fminf(max_norm / (total_norm + 1e-6f), 1.0f);
+  int num_blocks;
+  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&num_blocks,
+                                                fused_grad_clip_kernel, 256, 0);
 
-  // KERNEL 2: Apply clipping with computed coefficient
-  apply_grad_clip_kernel<<<blocks, threads, 0, stream>>>(
-      grad_ptrs_device, grad_sizes_device, num_tensors, clip_coef);
+  int device;
+  cudaGetDevice(&device);
+  int num_sms;
+  cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, device);
+  num_blocks *= num_sms;
 
-  cudaFreeAsync(norm_buffer, stream);
+  void *kernel_args[] = {&grad_ptrs_device, &grad_sizes_device, &num_tensors,
+                         &max_norm,         &norm_out_double,   &clip_coef_out,
+                         &final_norm_out};
 
-  cudaError_t err = cudaGetLastError();
+  dim3 gridDim(num_blocks);
+  dim3 blockDim(256);
+
+  cudaError_t err =
+      cudaLaunchCooperativeKernel((void *)fused_grad_clip_kernel, gridDim,
+                                  blockDim, kernel_args, 0, stream);
+
   if (err != cudaSuccess) {
-    fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(err));
+    fprintf(stderr, "CUDA Cooperative Launch Failed: %s\n",
+            cudaGetErrorString(err));
+    return -1.0f;
   }
 
-  return total_norm;
+  float host_norm = 0.0f;
+  cudaMemcpyAsync(&host_norm, final_norm_out, sizeof(float),
+                  cudaMemcpyDeviceToHost, stream);
+  cudaStreamSynchronize(stream);
+
+  return host_norm;
 }
 
 } // extern "C"

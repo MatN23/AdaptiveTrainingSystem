@@ -144,6 +144,14 @@ def _load_cuda_libraries():
         logger.info(f"✅  Loaded: {grad_lib_path}")
         
         _fused_grad_clip_lib.fused_grad_clip_launcher.restype = ctypes.c_float
+        _fused_grad_clip_lib.fused_grad_clip_launcher.argtypes = [
+            ctypes.c_void_p,  # grad_ptrs
+            ctypes.c_void_p,  # grad_sizes
+            ctypes.c_int,     # num_tensors
+            ctypes.c_float,   # max_norm
+            ctypes.c_void_p,  # norm_buffer
+            ctypes.c_void_p    # stream
+        ]
         
         _cuda_libs_loaded = True
         CUSTOM_KERNELS_AVAILABLE = True
@@ -251,22 +259,34 @@ class FusedLoss:
         denom = self._total_weight_out if loss_weights is not None else self._valid_tokens_out.float()
         denom = denom.clamp(min=1e-8)
         
-        loss_tensor = torch.where(valid_mask, self._loss_out / denom, torch.tensor(0.0, device=logits.device))
+        # CRITICAL FIX: The CUDA kernel computed loss has NO AUTOGRAD CONNECTION!
+        # We use the kernel for fast accuracy computation, but compute actual loss with PyTorch
+        # to maintain the computation graph for backpropagation.
+        
+        # Accuracy from CUDA kernel (this is fine, no gradients needed for accuracy)
         accuracy_tensor = torch.where(valid_mask, self._accuracy_out / self._valid_tokens_out.float(), torch.tensor(0.0, device=logits.device))
         
-        # Perplexity always uses unweighted (but here we only have weighted if weights are passed)
-        # Note: If loss_weights are present, _loss_out is weighted sum.
-        # For perplexity, we'd ideally want UNWEIGHTED loss.
-        # Let's keep it simple for now as the PyTorch baseline also uses weighted for PPL if weights passed?
-        # Actually PyTorch baseline in _pytorch_fallback uses raw_loss = (masked_sum)/valid_tokens.
-        # To match that exactly, we'd need another output in the kernel.
-        # Let's just use the current loss for PPL, which is standard enough.
+        # ACTUAL LOSS: Compute with PyTorch to maintain autograd graph!
+        import torch.nn.functional as F
+        mask = (labels != pad_token_id)
+        loss_per_token = F.cross_entropy(logits, labels, reduction='none')
         
-        perplexity = torch.clamp(loss_tensor.detach(), 0.0, 15.0).exp()
+        if loss_weights is not None:
+            masked_loss = loss_per_token * loss_weights * mask.float()
+            total_weight = (loss_weights * mask.float()).sum().clamp(min=1e-8)
+            final_loss = masked_loss.sum() / total_weight
+            raw_loss = (loss_per_token * mask.float()).sum() / mask.sum().float().clamp(min=1)
+        else:
+            masked_loss = loss_per_token * mask.float()
+            valid_count = mask.sum().float().clamp(min=1)
+            final_loss = masked_loss.sum() / valid_count
+            raw_loss = final_loss
+        
+        perplexity = torch.exp(torch.clamp(raw_loss.detach(), 0.0, 15.0))
         
         return {
-            'loss': loss_tensor.requires_grad_(True),
-            'raw_loss': loss_tensor.detach(),
+            'loss': final_loss,  # Now has proper autograd connection!
+            'raw_loss': raw_loss.detach(),
             'perplexity': perplexity,
             'valid_tokens': self._valid_tokens_out.clone(),
             'accuracy': accuracy_tensor
@@ -341,6 +361,9 @@ class FusedGradClip:
             self._grad_ptrs_cache = None
             self._grad_sizes_cache = None
             self._cache_capacity = 0
+            # Pre-allocate norm buffer (16 bytes for double norm_sq + float clip_coef + float final_norm)
+            self._norm_buffer = torch.zeros(16, dtype=torch.uint8, device='cuda')
+            self._norm_ptr = ctypes.c_void_p(self._norm_buffer.data_ptr())
         
         if self.cuda_enabled:
             logger.info("✅  FusedGradClip: CUDA kernel available (auto-selection enabled)")
@@ -385,7 +408,15 @@ class FusedGradClip:
     def _cuda_implementation(self, parameters, max_norm):
         """Optimized CUDA kernel call."""
         # Collect gradients (optimized: single pass)
-        grads = [p.grad.data for p in parameters if p.grad is not None]
+        grads = []
+        for p in parameters:
+            if p.grad is not None:
+                # CRITICAL: Ensure float32 for current kernel implementation
+                if p.grad.dtype != torch.float32:
+                    g = p.grad.data.float()
+                else:
+                    g = p.grad.data
+                grads.append(g)
         
         if not grads:
             return 0.0
@@ -410,16 +441,20 @@ class FusedGradClip:
         stream = torch.cuda.current_stream().cuda_stream
         
         # Call kernel
-        total_norm = _fused_grad_clip_lib.fused_grad_clip_launcher(
-            ctypes.c_void_p(self._grad_ptrs_cache.data_ptr()),
-            ctypes.c_void_p(self._grad_sizes_cache.data_ptr()),
-            ctypes.c_int(num_tensors),
-            ctypes.c_float(max_norm),
-            ctypes.c_void_p(stream)
-        )
-        
-        # No explicit sync needed - ctypes return does implicit sync
-        return float(total_norm)
+        try:
+            # Note: The launcher now expects the norm buffer pointer
+            total_norm = _fused_grad_clip_lib.fused_grad_clip_launcher(
+                ctypes.c_void_p(self._grad_ptrs_cache.data_ptr()),
+                ctypes.c_void_p(self._grad_sizes_cache.data_ptr()),
+                ctypes.c_int(num_tensors),
+                ctypes.c_float(max_norm),
+                self._norm_ptr, 
+                ctypes.c_void_p(stream)
+            )
+            return float(total_norm)
+        except Exception as e:
+            logger.error(f"FusedGradClip kernel execution failed: {e}")
+            return self._pytorch_fallback(parameters, max_norm)
     
     def _pytorch_fallback(self, parameters, max_norm):
         """PyTorch fallback."""
