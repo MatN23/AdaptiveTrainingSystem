@@ -169,10 +169,12 @@ class PyTorchRMSNorm(nn.Module):
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
+        input_dtype = x.dtype
+        x = x.to(torch.float32)
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
-        return x * self.weight
+        return self.weight * x.to(input_dtype)
 
 
 class PyTorchRoPE(nn.Module):
@@ -268,41 +270,41 @@ class PyTorchMoEOps:
 # UNIFIED API
 # ============================================================================
 
-def get_rms_norm(hidden_size: int, eps: float = 1e-6):
+def get_rms_norm(hidden_size: int, eps: float = 1e-6, use_fused: bool = True):
     """Get RMSNorm implementation for current backend"""
-    if BACKEND == 'cuda' and HAS_CUDA_OPS:
+    if use_fused and BACKEND == 'cuda' and HAS_CUDA_OPS:
         return CUDARMSNorm(hidden_size, eps)
-    elif BACKEND == 'metal' and HAS_METAL_OPS:
+    elif use_fused and BACKEND == 'metal' and HAS_METAL_OPS:
         return MetalRMSNorm(hidden_size, eps)
     else:
         return PyTorchRMSNorm(hidden_size, eps)
 
 
-def get_rope(dim: int, max_seq_len: int = 8192, theta: float = 10000.0):
+def get_rope(dim: int, max_seq_len: int = 8192, theta: float = 10000.0, use_fused: bool = True):
     """Get RoPE implementation for current backend"""
-    if BACKEND == 'cuda' and HAS_CUDA_OPS:
+    if use_fused and BACKEND == 'cuda' and HAS_CUDA_OPS:
         return CUDARoPE(dim, max_seq_len, theta)
-    elif BACKEND == 'metal' and HAS_METAL_OPS:
+    elif use_fused and BACKEND == 'metal' and HAS_METAL_OPS:
         return MetalRoPE(dim, max_seq_len, theta)
     else:
         return PyTorchRoPE(dim, max_seq_len, theta)
 
 
-def get_swiglu(hidden_size: int, intermediate_size: int):
+def get_swiglu(hidden_size: int, intermediate_size: int, use_fused: bool = True):
     """Get SwiGLU implementation for current backend"""
-    if BACKEND == 'cuda' and HAS_CUDA_OPS:
+    if use_fused and BACKEND == 'cuda' and HAS_CUDA_OPS:
         return CUDASwiGLU(hidden_size, intermediate_size, use_bias=False)
-    elif BACKEND == 'metal' and HAS_METAL_OPS:
+    elif use_fused and BACKEND == 'metal' and HAS_METAL_OPS:
         return MetalSwiGLU(hidden_size, intermediate_size)
     else:
         return PyTorchSwiGLU(hidden_size, intermediate_size)
 
 
-def get_moe_ops():
+def get_moe_ops(use_fused: bool = True):
     """Get MoE operations for current backend"""
-    if BACKEND == 'cuda' and HAS_CUDA_MOE:
+    if use_fused and BACKEND == 'cuda' and HAS_CUDA_MOE:
         return MoECUDAOps
-    elif BACKEND == 'metal' and HAS_METAL_MOE:
+    elif use_fused and BACKEND == 'metal' and HAS_METAL_MOE:
         return MoEMetalOps
     else:
         return PyTorchMoEOps

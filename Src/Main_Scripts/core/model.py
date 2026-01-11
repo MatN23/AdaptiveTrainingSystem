@@ -275,21 +275,22 @@ class RMSNorm(nn.Module):
         elementwise_affine: Whether to use learnable scaling
     """
     
-    def __init__(self, dim: int, eps: float = 1e-6, elementwise_affine: bool = True):
+    def __init__(self, dim: int, eps: float = 1e-6, elementwise_affine: bool = True, use_fused: bool = True):
         super().__init__()
         self.dim = dim
         self.eps = eps
         self.elementwise_affine = elementwise_affine
+        self.use_fused = use_fused
         
         # Use unified backend if available
         if USE_UNIFIED_BACKEND:
-            self._impl = get_rms_norm(dim, eps)
+            self._impl = get_rms_norm(dim, eps, use_fused=use_fused)
             self.weight = self._impl.weight  # Share weight parameter
             self._cuda_impl = None  # Mark as using unified backend
             logging.debug(f"✅ RMSNorm: {BACKEND} backend (dim={dim})")
         else:
             # Fallback to direct CUDA check
-            if HAS_TRANSFORMER_CUDA:
+            if use_fused and HAS_TRANSFORMER_CUDA:
                 self._cuda_impl = FusedRMSNorm(dim, eps)
                 self.weight = self._cuda_impl.weight
                 logging.debug(f"✅ RMSNorm: CUDA acceleration enabled (dim={dim})")
@@ -312,7 +313,6 @@ class RMSNorm(nn.Module):
         x_normed = x_float * torch.rsqrt(variance + self.eps)
         return x_normed
     
-    @profile_function
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with guaranteed gradients."""
         input_dtype = x.dtype
@@ -374,7 +374,6 @@ class LayerNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
         self.bias = nn.Parameter(torch.zeros(dim)) if bias else None
         
-    @profile_function
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with stable computation."""
         # Use native LayerNorm for optimal performance
@@ -404,7 +403,8 @@ class RotaryEmbedding(nn.Module):
         dim: int, 
         max_seq_len: int = 8192, 
         theta: float = 10000.0,
-        scaling_factor: Optional[float] = None
+        scaling_factor: Optional[float] = None,
+        use_fused: bool = True
     ):
         super().__init__()
         self.dim = dim
@@ -412,15 +412,16 @@ class RotaryEmbedding(nn.Module):
         self.backend_max_seq_len = max_seq_len  # ✅ Track backend limit separately
         self.theta = theta
         self.scaling_factor = scaling_factor
+        self.use_fused = use_fused
         
         # Use unified backend if available
         if USE_UNIFIED_BACKEND:
-            self._impl = get_rope(dim, max_seq_len, theta)
+            self._impl = get_rope(dim, max_seq_len, theta, use_fused=use_fused)
             self._cuda_impl = None  # Mark as using unified backend
             logging.debug(f"✅ RoPE: {BACKEND} backend (dim={dim})")
         else:
             # Fallback to direct CUDA check
-            if HAS_TRANSFORMER_CUDA:
+            if use_fused and HAS_TRANSFORMER_CUDA:
                 try:
                     self._cuda_impl = FusedRoPE(dim, max_seq_len, theta)
                     self._impl = None
@@ -474,7 +475,6 @@ class RotaryEmbedding(nn.Module):
         self._build_pytorch_cache(seq_len)
         self.max_seq_len = seq_len
     
-    @profile_function
     def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get cos and sin embeddings for given sequence length."""
         
@@ -676,7 +676,8 @@ class DenseGroupedQueryAttention(nn.Module):
         self.rope = RotaryEmbedding(
             self.head_dim, 
             config.seq_length, 
-            getattr(config, 'rope_theta', 10000.0)
+            getattr(config, 'rope_theta', 10000.0),
+            use_fused=getattr(config, 'use_fused_rope', True)
         )
         
         # Optional dropout
@@ -719,7 +720,6 @@ class DenseGroupedQueryAttention(nn.Module):
         output_std = std * gain / math.sqrt(2 * self.config.num_layers)
         nn.init.normal_(self.o_proj.weight, mean=0.0, std=output_std)
     
-    @profile_function
     def forward(
         self, 
         x: torch.Tensor, 
@@ -1029,7 +1029,6 @@ class SwiGLUExpert(nn.Module):
             down_std *= config.expert_output_scaling
         nn.init.normal_(self.down_proj.weight, mean=0.0, std=down_std)
     
-    @profile_function
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Fused SwiGLU forward pass.
@@ -1081,7 +1080,7 @@ class MoEFFNLayer(nn.Module):
         
         # ✅ FIX: Check if MoECUDAOps is actually available
         self.use_cuda_ops = (
-            getattr(config, 'use_cuda_moe', True) and 
+            getattr(config, 'use_fused_moe', True) and 
             MoECUDAOps is not None and 
             MOE_CUDA_AVAILABLE
         )
@@ -1121,7 +1120,6 @@ class MoEFFNLayer(nn.Module):
         """Initialize gating network with small weights for stability."""
         nn.init.normal_(self.gate.weight, mean=0.0, std=0.01)
     
-    @profile_function
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """MoE forward pass with CUDA acceleration."""
         batch_size, seq_len, hidden_size = x.shape
@@ -1383,7 +1381,7 @@ class DenseSwiGLUWithMoD(nn.Module):
         
         # Optimized backends are OPTIONAL
         self.use_cuda = False
-        if HAS_TRANSFORMER_CUDA:
+        if getattr(config, 'use_fused_swiglu', True) and HAS_TRANSFORMER_CUDA:
             try:
                 self._cuda_swiglu = FusedSwiGLU(
                     config.hidden_size,
@@ -1414,7 +1412,7 @@ class DenseSwiGLUWithMoD(nn.Module):
         
         # 2. Try optimized backends first (for both Training & Inference)
         # We only use this if not in MoD mode (MoD logic is still PyTorch-primary)
-        if not self.use_mod and HAS_TRANSFORMER_CUDA and x.is_cuda:
+        if not self.use_mod and getattr(self.config, 'use_fused_swiglu', True) and HAS_TRANSFORMER_CUDA and x.is_cuda:
             try:
                 gate_up = self.gate_up_proj(x)
                 gate, up = gate_up.chunk(2, dim=-1)
@@ -1488,7 +1486,11 @@ class DenseSwiGLU(nn.Module):
         if USE_UNIFIED_BACKEND:
             try:
                 # Create wrapper but DON'T make it a submodule
-                impl = get_swiglu(self.config.hidden_size, self.config.intermediate_size)
+                impl = get_swiglu(
+                    self.config.hidden_size, 
+                    self.config.intermediate_size,
+                    use_fused=getattr(self.config, 'use_fused_swiglu', True)
+                )
                 # Store in a way that won't register parameters
                 object.__setattr__(self, '_impl_backend', impl)
                 self.has_unified = True
@@ -1499,15 +1501,16 @@ class DenseSwiGLU(nn.Module):
         elif HAS_TRANSFORMER_CUDA:
             try:
                 # Create CUDA wrapper but DON'T make it a submodule
-                cuda_impl = FusedSwiGLU(
-                    self.config.hidden_size,
-                    self.config.intermediate_size,
-                    use_bias=False
-                )
-                # Store in a way that won't register parameters
-                object.__setattr__(self, '_cuda_backend', cuda_impl)
-                self.has_cuda = True
-                logging.debug(f"✅ DenseSwiGLU: CUDA backend available (inference only)")
+                if getattr(self.config, 'use_fused_swiglu', True):
+                    cuda_impl = FusedSwiGLU(
+                        self.config.hidden_size,
+                        self.config.intermediate_size,
+                        use_bias=False
+                    )
+                    # Store in a way that won't register parameters
+                    object.__setattr__(self, '_cuda_backend', cuda_impl)
+                    self.has_cuda = True
+                    logging.debug(f"✅ DenseSwiGLU: CUDA backend available (inference only)")
             except Exception as e:
                 logging.debug(f"CUDA backend unavailable: {e}")
     
@@ -1522,7 +1525,7 @@ class DenseSwiGLU(nn.Module):
         """Forward with CUDA acceleration (training or inference)."""
         
         # TRY CUDA FIRST (Training & Inference)
-        if HAS_TRANSFORMER_CUDA and x.is_cuda:
+        if getattr(self.config, 'use_fused_swiglu', True) and HAS_TRANSFORMER_CUDA and x.is_cuda:
             try:
                 gate_up = self.gate_up_proj(x)
                 gate, up = gate_up.chunk(2, dim=-1)
@@ -1595,13 +1598,21 @@ class TransformerBlock(nn.Module):
         self.layer_idx = layer_idx
         
         # Pre-normalization
-        self.input_norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
+        self.input_norm = RMSNorm(
+            config.hidden_size, 
+            config.rms_norm_eps,
+            use_fused=getattr(config, 'use_fused_rmsnorm', True)
+        )
         
         # Attention (always dense)
         self.self_attn = DenseGroupedQueryAttention(config)
         
         # Post-attention normalization
-        self.post_attn_norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
+        self.post_attn_norm = RMSNorm(
+            config.hidden_size, 
+            config.rms_norm_eps,
+            use_fused=getattr(config, 'use_fused_rmsnorm', True)
+        )
         
         # FFN selection - NOW SUPPORTS HYBRID!
         self.use_moe = self._should_use_moe(layer_idx, config)
@@ -1657,7 +1668,6 @@ class TransformerBlock(nn.Module):
             logging.warning(f"Unknown MoE pattern '{pattern}', defaulting to 'all'")
             return True
     
-    @profile_function
     def forward(
         self, 
         x: torch.Tensor, 
@@ -1757,7 +1767,11 @@ class DeepSeekTransformer(nn.Module):
         ])
         
         # Final normalization
-        self.norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
+        self.norm = RMSNorm(
+            config.hidden_size, 
+            config.rms_norm_eps,
+            use_fused=getattr(config, 'use_fused_rmsnorm', True)
+        )
         
         # Language modeling head
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
@@ -2007,7 +2021,6 @@ class DeepSeekTransformer(nn.Module):
         else:
             return sum(p.numel() for p in self.parameters())
     
-    @profile_function
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -2423,6 +2436,10 @@ class DeepSeekConfig:
     Optimization Parameters:
         use_flash_attention: Whether to use Flash Attention
         expert_output_scaling: Additional scaling for expert outputs
+        use_fused_rmsnorm: Enable/disable FusedRMSNorm
+        use_fused_rope: Enable/disable FusedRoPE
+        use_fused_swiglu: Enable/disable FusedSwiGLU
+        use_fused_moe: Enable/disable MoECUDAOps
     """
     
     # Architecture
@@ -2479,6 +2496,12 @@ class DeepSeekConfig:
     use_flash_attention: bool = True
     expert_output_scaling: float = 1.0
     scale_lm_head_output: bool = False
+    
+    # CUDA Optimization toggles
+    use_fused_rmsnorm: bool = True
+    use_fused_rope: bool = True
+    use_fused_swiglu: bool = True
+    use_fused_moe: bool = True
     
     # MPS-specific constants
     MPS_MAX_SEQ_LENGTH: int = 512  # Reduced seq_length for MPS to prevent OOM

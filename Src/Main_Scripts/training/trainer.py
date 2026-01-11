@@ -1038,9 +1038,9 @@ class EnhancedConversationTrainer:
         self.config = config
         self.logger = logger
         
-        if torch.cuda.is_available():
+        if config.use_cuda is True or (config.use_cuda == "auto" and torch.cuda.is_available()):
             self.device = torch.device('cuda')
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        elif config.use_cuda == "auto" and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
@@ -1053,9 +1053,8 @@ class EnhancedConversationTrainer:
         self.moe_optimizer = MoEOptimizationManager(config) if hasattr(config, 'use_moe') and config.use_moe else None
         
         # Initialize custom CUDA kernels
-        self.fused_loss = FusedLoss() if CUSTOM_KERNELS_AVAILABLE and torch.cuda.is_available() else None
-        # self.fused_grad_clip = None
-        self.fused_grad_clip = FusedGradClip() if CUSTOM_KERNELS_AVAILABLE and torch.cuda.is_available() else None
+        self.fused_loss = FusedLoss() if getattr(config, 'use_fused_loss', True) and CUSTOM_KERNELS_AVAILABLE and torch.cuda.is_available() else None
+        self.fused_grad_clip = FusedGradClip() if getattr(config, 'use_fused_grad_clip', True) and CUSTOM_KERNELS_AVAILABLE and torch.cuda.is_available() else None
 
         # Log precision info
         precision_info = self.precision_manager.get_precision_info()
@@ -2396,6 +2395,9 @@ class EnhancedConversationTrainer:
         compute_start = time.perf_counter()
         
         try:
+            if hasattr(torch.compiler, 'cudagraph_mark_step_begin'):
+                torch.compiler.cudagraph_mark_step_begin()
+                
             output = self.deepspeed_engine(input_ids, attention_mask)
             
             aux_losses = {}
@@ -2474,6 +2476,9 @@ class EnhancedConversationTrainer:
         compute_start = time.perf_counter()
         
         # === FORWARD PASS ===
+        if hasattr(torch.compiler, 'cudagraph_mark_step_begin'):
+            torch.compiler.cudagraph_mark_step_begin()
+            
         with self._get_autocast_context(for_inference=False):
             output = self.model(input_ids, attention_mask)
             

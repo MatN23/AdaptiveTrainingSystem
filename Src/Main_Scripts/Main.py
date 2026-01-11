@@ -2568,12 +2568,12 @@ def main():
 
         # Model compilation (only for PyTorch backend, not for FSDP/DeepSpeed)
         if using_backend == "PyTorch" and torch.__version__ >= "2.0" and not is_mps and config.compile:
-            print("\nCompiling model with torch.compile...")
+            compile_mode = getattr(config, 'compile_mode', 'default')
+            print(f"\nCompiling model with torch.compile (mode={compile_mode})...")
             try:
                 model = torch.compile(
                     model,
-                    mode='reduce-overhead',
-                    fullgraph=True,
+                    mode=compile_mode,
                     dynamic=False
                 )
                 print("✓ Model compiled successfully")

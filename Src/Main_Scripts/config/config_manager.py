@@ -39,6 +39,7 @@ class Config:
     precision: str = "auto"
     inference_precision: str = "auto"
     compile: bool = True
+    compile_mode: str = "default"             # default, reduce-overhead, max-autotune
     
     # Data parameters
     train_data_path: str = "data/train.jsonl"
@@ -64,6 +65,15 @@ class Config:
     tie_word_embeddings: bool = True
     use_flash_attention: bool = True
     use_triton_fp8: bool = False
+    
+    # CUDA Optimization toggles
+    use_cuda: str = "auto"                    # auto, True, False
+    use_fused_rmsnorm: bool = True
+    use_fused_rope: bool = True
+    use_fused_swiglu: bool = True
+    use_fused_moe: bool = True
+    use_fused_loss: bool = True
+    use_fused_grad_clip: bool = True
     
     # MoE parameters
     use_moe: bool = True
