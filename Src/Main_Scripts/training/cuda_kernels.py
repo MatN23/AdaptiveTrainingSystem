@@ -224,32 +224,30 @@ class FusedCrossEntropyFunction(torch.autograd.Function):
             ctypes.c_void_p(stream)
         )
         
-        # Compute final loss value
-        valid_count = valid_tokens_out.item()
-        if valid_count == 0:
-            loss_value = torch.tensor(0.0, device=logits.device, requires_grad=True)
-        else:
-            denom = total_weight_out if loss_weights is not None else valid_tokens_out.float()
-            loss_value = loss_out / denom.clamp(min=1e-8)
+        # ✅ NO SYNC: Remove .item() call to avoid pipeline stall.
+        # Accuracy and valid_tokens stay on GPU.
+        denom = total_weight_out if loss_weights is not None else valid_tokens_out.float()
+        loss_value = loss_out / denom.clamp(min=1e-8)
+        accuracy_value = accuracy_out / valid_tokens_out.float().clamp(min=1.0)
         
-        # Save for backward
-        ctx.save_for_backward(logits, labels, loss_weights if loss_weights is not None else torch.tensor([]))
+        # Save for backward (KEEP ON GPU)
+        ctx.save_for_backward(logits, labels, loss_weights if loss_weights is not None else torch.tensor([]), valid_tokens_out)
         ctx.pad_token_id = pad_token_id
-        ctx.valid_count = valid_count
         ctx.total_tokens = total_tokens
         ctx.vocab_size = vocab_size
-        ctx.original_shape = original_shape  # CRITICAL: Save for reshaping gradient
+        ctx.original_shape = original_shape
         
-        # Return loss, accuracy, valid_tokens as tuple
-        accuracy_value = accuracy_out / max(valid_count, 1)
         return loss_value.squeeze(), accuracy_value.squeeze(), valid_tokens_out.clone()
     
     @staticmethod
     def backward(ctx, grad_loss, grad_accuracy, grad_valid_tokens):
         """Backward pass using CUDA kernel."""
-        logits, labels, loss_weights = ctx.saved_tensors
+        logits, labels, loss_weights, valid_tokens_out = ctx.saved_tensors
         
-        if ctx.valid_count == 0 or grad_loss is None:
+        # ✅ SYNC: This is only done once per batch/micro-batch in backward
+        valid_count = valid_tokens_out.item()
+        
+        if valid_count == 0 or grad_loss is None:
             # Return gradient matching original input shape
             return torch.zeros(ctx.original_shape, device=logits.device), None, None, None, None, None, None, None
         
@@ -264,7 +262,7 @@ class FusedCrossEntropyFunction(torch.autograd.Function):
         
         # Scalar grad_loss
         grad_output_scalar = grad_loss.item() if grad_loss.numel() == 1 else grad_loss.sum().item()
-        inv_valid_tokens = 1.0 / max(ctx.valid_count, 1)
+        inv_valid_tokens = 1.0 / max(valid_count, 1)
         
         # Call backward kernel
         _fused_loss_lib.fused_cross_entropy_backward_launcher(
@@ -571,7 +569,8 @@ class FusedGradClip:
     
     def _pytorch_fallback(self, parameters, max_norm):
         """PyTorch fallback."""
-        return torch.nn.utils.clip_grad_norm_(parameters, max_norm).item()
+        norm = torch.nn.utils.clip_grad_norm_(parameters, max_norm)
+        return norm if torch.is_tensor(norm) else torch.tensor(float(norm), device='cuda' if torch.cuda.is_available() else 'cpu')
     
     def set_implementation(self, mode: str):
         """Set implementation mode: "auto", "cuda", or "pytorch"."""
@@ -607,6 +606,7 @@ if _load_cuda_libraries():
     print("   - FusedGradClip: Auto-selects best implementation")
 else:
     print("⚠️  CUDA kernels not loaded - using PyTorch fallback")
+    _cuda_libs_loaded = False # Ensure this is explicitly False
 
 
 def test_kernels():

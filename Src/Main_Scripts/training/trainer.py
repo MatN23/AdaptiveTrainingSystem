@@ -917,31 +917,41 @@ class MoEOptimizationManager:
         return best_ep_size
     
     def monitor_routing_balance(self, aux_losses: Dict[str, torch.Tensor], 
-                              routing_probs: Optional[torch.Tensor] = None):
-        """Monitor and log routing balance metrics."""
+                               routing_probs: Optional[torch.Tensor] = None):
+        """Monitor and log routing balance metrics (Asynchronous)."""
         
         if 'load_balance_loss' in aux_losses:
-            self.routing_stats['load_balance_losses'].append(aux_losses['load_balance_loss'].item())
+            self.routing_stats['load_balance_losses'].append(aux_losses['load_balance_loss'])
         
         if routing_probs is not None:
-            expert_usage = routing_probs.sum(dim=0).cpu().numpy()
-            total_tokens = routing_probs.sum().item()
+            # ✅ NO SYNC: Keep as tensors
+            expert_usage = routing_probs.sum(dim=0)
+            total_tokens = routing_probs.sum()
+            self.routing_stats.setdefault('expert_usage_tensors', []).append(expert_usage)
+            self.routing_stats.setdefault('total_tokens_tensors', []).append(total_tokens)
             
-            if total_tokens > 0:
-                usage_percentages = expert_usage / total_tokens * 100
-                
-                for expert_id, usage_pct in enumerate(usage_percentages):
-                    if expert_id not in self.routing_stats['expert_usage']:
-                        self.routing_stats['expert_usage'][expert_id] = []
-                    self.routing_stats['expert_usage'][expert_id].append(usage_pct)
-                
-                max_usage = usage_percentages.max()
-                min_usage = usage_percentages.min()
-                imbalance_ratio = max_usage / max(min_usage, 0.1)
-                
-                if imbalance_ratio > 10:
-                    logging.warning(f"Severe routing imbalance detected: "
-                                  f"max usage {max_usage:.1f}%, min usage {min_usage:.1f}%")
+            # 🔥 SYNC GATED: Only run expensive diagnostics during logging steps
+            log_frequency = getattr(self, '_current_log_frequency', 50)
+            if getattr(self, 'global_step', 0) % log_frequency == 0:
+                try:
+                    expert_usage_np = expert_usage.cpu().numpy()
+                    total_tokens_val = total_tokens.item()
+                    
+                    if total_tokens_val > 0:
+                        usage_percentages = expert_usage_np / total_tokens_val * 100
+                        for expert_id, usage_pct in enumerate(usage_percentages):
+                            if expert_id not in self.routing_stats['expert_usage']:
+                                self.routing_stats['expert_usage'][expert_id] = []
+                            self.routing_stats['expert_usage'][expert_id].append(usage_pct)
+                        
+                        max_usage = usage_percentages.max()
+                        min_usage = usage_percentages.min()
+                        imbalance_ratio = max_usage / max(min_usage, 0.1)
+                        
+                        if imbalance_ratio > 10:
+                            logging.warning(f"Severe routing imbalance: {imbalance_ratio:.1f}x")
+                except:
+                    pass # Resilience in background sync
     
     def get_routing_diagnostics(self) -> Dict[str, Any]:
         """Get comprehensive routing diagnostics."""
@@ -2006,8 +2016,9 @@ class EnhancedConversationTrainer:
             # ✅ OPTIMIZATION: Model compilation (huge for small models like 14M)
             if getattr(self.config, 'compile', True) and hasattr(torch, 'compile'):
                 try:
-                    logging.info("🚀 Compiling model with torch.compile...")
-                    self.model = torch.compile(self.model)
+                    logging.info("🚀 Compiling model with torch.compile(mode='reduce-overhead')...")
+                    # ✅ FIXED: Use reduce-overhead for small models to maximize performance
+                    self.model = torch.compile(self.model, mode="reduce-overhead")
                     logging.info("✅ Model compilation successful")
                 except Exception as e:
                     logging.warning(f"⚠️ torch.compile failed: {e}")
@@ -2300,14 +2311,9 @@ class EnhancedConversationTrainer:
             masked_correct = correct_predictions * mask
             accuracy = masked_correct.sum() / valid_token_count
 
-            # ✅ DEBUG: Add sanity checks
-            if accuracy > 1.0:
-                logging.warning(f"INVALID ACCURACY: {accuracy.item():.1%} - debugging:")
-                logging.warning(f"  Correct predictions: {correct_predictions.sum().item()}")
-                logging.warning(f"  Valid tokens: {valid_token_count.item()}")
-                logging.warning(f"  Mask sum: {mask.sum().item()}")
-                # Clamp accuracy to prevent impossible values
-                accuracy = torch.clamp(accuracy, 0.0, 1.0)
+            # ✅ NO SYNC: Remove sanity checks that use .item()
+            # Accuracy is clamped on GPU if needed
+            accuracy = torch.clamp(accuracy, 0.0, 1.0)
 
         # ✅ COMPUTE RAW CROSS-ENTROPY LOSS (per token, no reduction)
         loss_per_token = F.cross_entropy(
@@ -2350,11 +2356,7 @@ class EnhancedConversationTrainer:
             perplexity = torch.tensor(float('inf'), device=logits.device)
 
         # ✅ WARNING: Check if loss was clamped
-        if raw_loss_for_ppl.item() > 15.0:
-            logging.warning(
-                f"Loss {raw_loss_for_ppl.item():.2f} exceeds safe range for perplexity. "
-                f"Clamped to 15.0 (perplexity = {math.exp(15.0):.0f})"
-            )
+        # ✅ NO SYNC: Redundant warning removed
 
         return {
             'loss': final_loss,              # For backprop (potentially weighted)
@@ -2488,15 +2490,7 @@ class EnhancedConversationTrainer:
         
         loss = loss_dict['loss']
         
-        if torch.isnan(loss).any() or torch.isinf(loss).any():
-            print("Invalid loss detected, skipping batch")
-            return {
-                'loss': 0.0,
-                'raw_loss': 0.0,
-                'perplexity': float('inf'),
-                'valid_tokens': 0,
-                'accuracy': 0.0
-            }
+        # ✅ NO SYNC: Remove per-batch NaN/Inf check (handled at optimizer step)
         
         # === BACKWARD PASS ===
         if self.use_amp and self.scaler is not None:
@@ -2881,21 +2875,9 @@ class EnhancedConversationTrainer:
             if 'accuracy' in step_metrics:
                 self.metrics.setdefault('accuracies', []).append(step_metrics['accuracy'])
 
-            # Send metrics to orchestrator if monitoring is enabled
-            if hasattr(self, '_monitoring_queue'):
-                try:
-                    current_metrics = self.get_current_metrics()
-                    self._monitoring_queue.put(current_metrics, block=False)
-                except queue.Full:
-                    pass
-                except Exception as e:
-                    if self.global_step % 100 == 0:
-                        logging.debug(f"Could not send metrics to orchestrator: {e}")
+            # ✅ NO SYNC: Orchestrator updates moved to optimizer step or gated by frequency
 
-            # Skip invalid batches
-            if step_metrics['loss'] == 0.0 or math.isnan(step_metrics['loss']) or math.isinf(step_metrics['loss']):
-                print(f"Skipping batch {batch_idx} due to invalid loss: {step_metrics['loss']}")
-                continue
+            # ✅ NO SYNC: Skip redundant per-micro-batch valid loss check
             
             # 🔥 ASYNCHRONOUS ACCUMULATION (No .item() here!)
             accumulation_metrics['loss'] = accumulation_metrics['loss'] + step_metrics['loss']
@@ -2919,6 +2901,27 @@ class EnhancedConversationTrainer:
                 opt_metrics = self.optimizer_step()
                 self.global_step += 1
 
+                # Determine if we should log - adjusted by verbosity level
+                log_frequency = getattr(self.config, 'log_every_n_steps', 50)
+                
+                # 🔥 NEW: Dynamically adjust logging frequency based on verbosity
+                if hasattr(self, 'logger') and hasattr(self.logger, 'verbosity'):
+                    try:
+                        # 3 = DETAILED, 4 = DEBUG, 5 = TRACE
+                        verbosity = int(self.logger.verbosity)
+                        if verbosity >= 4: # DEBUG or higher
+                            log_frequency = 1
+                        elif verbosity >= 3: # DETAILED
+                            log_frequency = min(log_frequency, 5)
+                    except (ValueError, TypeError):
+                        pass
+
+                time_since_last_log = time.time() - last_log_time
+                should_log = (
+                    self.global_step % log_frequency == 0 or
+                    time_since_last_log > 600
+                )
+
                 # ✅ NEW: Populate optimizer-related metrics history
                 if 'lr' in opt_metrics:
                     self.metrics['learning_rates'].append(opt_metrics['lr'])
@@ -2937,6 +2940,9 @@ class EnhancedConversationTrainer:
                     if len(self.throughput_window) > self.throughput_window_size:
                         self.throughput_window.pop(0)
 
+                # Get current throughput (average of recent cycles)
+                tokens_per_sec = self._calculate_throughput()
+
                 # 🔥 FIX: Update epoch metrics with AVERAGED loss
                 if avg_loss > 0:
                     epoch_metrics['total_loss'] += avg_loss
@@ -2947,14 +2953,14 @@ class EnhancedConversationTrainer:
                     if 'grad_norm' in opt_metrics and opt_metrics['grad_norm'] is not None:
                         epoch_metrics['grad_norm_sum'] += opt_metrics['grad_norm']
 
-                    # Track best step metrics (Sync required here for comparison)
-                    # We only do this once per optimizer step, not every micro-batch
-                    current_loss_val = avg_loss.item() if isinstance(avg_loss, torch.Tensor) else avg_loss
-                    if current_loss_val < epoch_metrics['best_loss']:
-                        epoch_metrics['best_loss'] = current_loss_val
-                        epoch_metrics['best_raw_loss'] = avg_raw_loss.item() if isinstance(avg_raw_loss, torch.Tensor) else avg_raw_loss
-                        epoch_metrics['best_accuracy'] = avg_accuracy.item() if isinstance(avg_accuracy, torch.Tensor) else avg_accuracy
-                        epoch_metrics['best_step'] = self.global_step
+                    # Track best step metrics (Sync only when logging or every N steps)
+                    if should_log:
+                        current_loss_val = avg_loss.item() if isinstance(avg_loss, torch.Tensor) else avg_loss
+                        if current_loss_val < epoch_metrics['best_loss']:
+                            epoch_metrics['best_loss'] = current_loss_val
+                            epoch_metrics['best_raw_loss'] = avg_raw_loss.item() if isinstance(avg_raw_loss, torch.Tensor) else avg_raw_loss
+                            epoch_metrics['best_accuracy'] = avg_accuracy.item() if isinstance(avg_accuracy, torch.Tensor) else avg_accuracy
+                            epoch_metrics['best_step'] = self.global_step
 
                     # CHINCHILLA SCALER UPDATE
                     if hasattr(self, 'chinchilla_scaler'):
@@ -2986,31 +2992,6 @@ class EnhancedConversationTrainer:
                                 print(f"\n🛑 CHINCHILLA EARLY STOPPING: {reason}")
                                 self.should_stop = True
                                 break
-
-                    # Get current throughput (average of recent cycles)
-                    tokens_per_sec = self._calculate_throughput()
-
-                    # Determine if we should log - adjusted by verbosity level
-                    log_frequency = getattr(self.config, 'log_every_n_steps', 50)
-                    
-                    # 🔥 NEW: Dynamically adjust logging frequency based on verbosity
-                    if hasattr(self, 'logger') and hasattr(self.logger, 'verbosity'):
-                        try:
-                            # 3 = DETAILED, 4 = DEBUG, 5 = TRACE
-                            verbosity = int(self.logger.verbosity)
-                            if verbosity >= 4: # DEBUG or higher
-                                log_frequency = 1
-                            elif verbosity >= 3: # DETAILED
-                                log_frequency = min(log_frequency, 5)
-                        except (ValueError, TypeError):
-                            pass
-
-                    time_since_last_log = time.time() - last_log_time
-
-                    should_log = (
-                        self.global_step % log_frequency == 0 or
-                        time_since_last_log > 600
-                    )
 
                     if should_log:
                         # 🔥 FIX: Pass AVERAGED metrics to logging
@@ -3055,7 +3036,17 @@ class EnhancedConversationTrainer:
             avg_raw_loss = epoch_metrics['total_raw_loss'] / epoch_metrics['num_batches']
             avg_accuracy = epoch_metrics['total_accuracy'] / epoch_metrics['num_batches']
             avg_grad_norm = epoch_metrics['grad_norm_sum'] / epoch_metrics['num_batches']
-            avg_tokens_per_sec = epoch_metrics['total_tokens'] / epoch_time
+            
+            # ✅ FIX: Ensure metrics are scalars before formatting to avoid TypeError
+            if torch.is_tensor(avg_loss): avg_loss = avg_loss.item()
+            if torch.is_tensor(avg_raw_loss): avg_raw_loss = avg_raw_loss.item()
+            if torch.is_tensor(avg_accuracy): avg_accuracy = avg_accuracy.item()
+            if torch.is_tensor(avg_grad_norm): avg_grad_norm = avg_grad_norm.item()
+            
+            # Compute throughput safely
+            total_tokens = epoch_metrics['total_tokens']
+            if torch.is_tensor(total_tokens): total_tokens = total_tokens.item()
+            avg_tokens_per_sec = total_tokens / epoch_time
 
             best_loss = epoch_metrics['best_loss']
             best_raw_loss = epoch_metrics['best_raw_loss']
@@ -3112,7 +3103,8 @@ class EnhancedConversationTrainer:
             num_params = 0
             for param in self.model.parameters():
                 if param.grad is not None:
-                    total_grad_norm += param.grad.norm().item() ** 2
+                    # ✅ NO SYNC: Keep on GPU
+                    total_grad_norm += param.grad.norm() ** 2
                     num_params += 1
             
             if num_params > 0:
