@@ -1985,7 +1985,27 @@ def main():
     }
 
     # ========================================================================
-    # 16. BACKEND PARAMS
+    # 16. CUDA OPTIMIZATION PARAMETERS
+    # ========================================================================
+    cuda_optimization_params = {
+        # Compilation mode: 'default', 'reduce-overhead', 'max-autotune'
+        # NOTE: 'reduce-overhead' uses CUDA Graphs which can cause errors with complex models
+        'compile_mode': 'default',
+        
+        # Master CUDA toggle: 'auto', True, False
+        'use_cuda': 'auto',
+        
+        # Individual CUDA-optimized operation toggles
+        'use_fused_rmsnorm': True,      # FusedRMSNorm kernel
+        'use_fused_rope': True,         # FusedRoPE kernel
+        'use_fused_swiglu': True,       # FusedSwiGLU kernel
+        'use_fused_moe': True,          # MoE CUDA operations
+        'use_fused_loss': True,         # Custom fused loss kernel
+        'use_fused_grad_clip': True,    # Custom fused gradient clipping kernel
+    }
+
+    # ========================================================================
+    # 17. BACKEND PARAMS
     # ========================================================================
     backend_params = {
         'backend': 'fsdp',  # Options: 'fsdp', 'deepspeed', 'colossalai', 'pytorch' colossalai not recommended
@@ -2002,7 +2022,7 @@ def main():
     }
 
     # ========================================================================
-    # 17. ROUTER MODEL TRAINING PARAMETERS
+    # 18. ROUTER MODEL TRAINING PARAMETERS
     # ========================================================================
     router_training_params = {
         'enable_router_training': False,  # Set to True when ready
@@ -2134,6 +2154,7 @@ def main():
             **monitoring_params,
             **advanced_features,
             **chinchilla_params,
+            **cuda_optimization_params,
             **backend_params,
         }
         
@@ -2150,6 +2171,7 @@ def main():
             'Data Intelligence': data_intelligence_params,
             'Safety & Robustness': safety_robustness_params,
             'Multi-Objective': multi_objective_optimization_params,
+            'CUDA Optimization': cuda_optimization_params,
         }
         
         for category, params in param_categories.items():
