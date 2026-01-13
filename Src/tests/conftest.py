@@ -63,6 +63,11 @@ class MockConfig:
     quantization_method = None
     quantization_bits = None
     
+    # CUDA & Compilation
+    use_cuda = False  # Default to False for tests unless specifically needed
+    compile_mode = 'default'
+    compile_backend = 'inductor'
+    
     # DeepSpeed
     use_deepspeed = False
     cpu_offload = False
@@ -88,6 +93,16 @@ class MockConfig:
     
     # Experiment directory (will be set by tests if needed)
     experiment_dir = None
+    
+    # Custom Kernel Config
+    cuda_optimization_params = {
+        'use_fused_rmsnorm': False,
+        'use_fused_rope': False,
+        'use_fused_swiglu': False,
+        'use_fused_moe': False,
+        'use_fused_loss': False,
+        'use_fused_grad_clip': False
+    }
     
     def validate(self):
         pass
