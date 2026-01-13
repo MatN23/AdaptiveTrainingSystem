@@ -295,6 +295,161 @@ def benchmark_moe_topk(num_tokens=1024, num_experts=8, k=2, dtype=torch.float32)
 
 
 # ============================================================================
+# FULL TRAINING STEP BENCHMARK
+# ============================================================================
+
+def benchmark_full_training_step(batch_size=8, seq_len=512, hidden_size=512, 
+                                  num_layers=4, vocab_size=32000, 
+                                  iterations=50, warmup=10):
+    """
+    Benchmark FULL training step with transformer ops: forward → loss → backward → optimizer.
+    
+    This tests the realistic impact of CUDA kernels vs PyTorch in actual training.
+    """
+    print(f"\n{'='*80}")
+    print("FULL TRAINING STEP BENCHMARK (Realistic)")
+    print(f"{'='*80}")
+    print(f"  Batch: {batch_size} | Seq: {seq_len} | Hidden: {hidden_size} | Layers: {num_layers}")
+    print(f"  Tokens per step: {batch_size * seq_len:,}")
+    print(f"  Iterations: {iterations} | Warmup: {warmup}")
+    
+    device = torch.device('cuda')
+    
+    # Build model with/without CUDA ops
+    class TransformerBlock(torch.nn.Module):
+        def __init__(self, hidden_size, use_cuda_ops=False):
+            super().__init__()
+            self.use_cuda_ops = use_cuda_ops
+            
+            if use_cuda_ops and HAS_TRANSFORMER_OPS:
+                self.norm1 = FusedRMSNorm(hidden_size).to(device)
+                self.norm2 = FusedRMSNorm(hidden_size).to(device)
+            else:
+                self.norm1 = torch.nn.LayerNorm(hidden_size)
+                self.norm2 = torch.nn.LayerNorm(hidden_size)
+            
+            self.attn = torch.nn.MultiheadAttention(hidden_size, 8, batch_first=True)
+            self.ffn_gate = torch.nn.Linear(hidden_size, hidden_size * 4, bias=False)
+            self.ffn_up = torch.nn.Linear(hidden_size, hidden_size * 4, bias=False)
+            self.ffn_down = torch.nn.Linear(hidden_size * 4, hidden_size, bias=False)
+        
+        def forward(self, x):
+            # Attention
+            h = self.norm1(x)
+            h, _ = self.attn(h, h, h, need_weights=False)
+            x = x + h
+            
+            # FFN with SwiGLU
+            h = self.norm2(x)
+            gate = self.ffn_gate(h)
+            up = self.ffn_up(h)
+            
+            if self.use_cuda_ops and HAS_TRANSFORMER_OPS and fused_swiglu is not None:
+                h = fused_swiglu(gate, up)
+            else:
+                h = F.silu(gate) * up
+            
+            h = self.ffn_down(h)
+            return x + h
+    
+    class SimpleTransformer(torch.nn.Module):
+        def __init__(self, use_cuda_ops=False):
+            super().__init__()
+            self.embed = torch.nn.Embedding(vocab_size, hidden_size)
+            self.layers = torch.nn.ModuleList([
+                TransformerBlock(hidden_size, use_cuda_ops) for _ in range(num_layers)
+            ])
+            self.lm_head = torch.nn.Linear(hidden_size, vocab_size, bias=False)
+        
+        def forward(self, x):
+            h = self.embed(x)
+            for layer in self.layers:
+                h = layer(h)
+            return self.lm_head(h)
+    
+    # Test data
+    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
+    labels = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
+    
+    results = []
+    
+    for mode, use_cuda in [("PyTorch", False), ("CUDA Ops", True)]:
+        if use_cuda and not HAS_TRANSFORMER_OPS:
+            print(f"\n  {mode}: Skipped (ops not available)")
+            continue
+        
+        print(f"\n  {mode}: Running...")
+        
+        model = SimpleTransformer(use_cuda_ops=use_cuda).to(device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+        
+        # Warmup
+        for _ in range(warmup):
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(input_ids)
+            loss = F.cross_entropy(logits.view(-1, vocab_size), labels.view(-1))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+        torch.cuda.synchronize()
+        
+        # Measure
+        times = []
+        for i in range(iterations):
+            torch.cuda.synchronize()
+            start = time.perf_counter()
+            
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(input_ids)
+            loss = F.cross_entropy(logits.view(-1, vocab_size), labels.view(-1))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            
+            torch.cuda.synchronize()
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            times.append(elapsed_ms)
+            
+            if (i + 1) % 10 == 0:
+                throughput = (batch_size * seq_len) / (elapsed_ms / 1000)
+                print(f"    Iter {i+1}/{iterations}: {elapsed_ms:.2f}ms, {throughput:.0f} tok/s")
+        
+        import numpy as np
+        mean_time = np.mean(times)
+        throughput = (batch_size * seq_len) / (mean_time / 1000)
+        
+        results.append({
+            'mode': mode,
+            'mean_ms': mean_time,
+            'throughput': throughput
+        })
+        
+        del model, optimizer
+        torch.cuda.empty_cache()
+    
+    # Compare
+    if len(results) == 2:
+        pytorch, cuda = results
+        speedup = pytorch['mean_ms'] / cuda['mean_ms']
+        diff = cuda['throughput'] - pytorch['throughput']
+        
+        print(f"\n{'='*80}")
+        print(f"RESULTS: Full Training Step")
+        print(f"{'='*80}")
+        print(f"  PyTorch:   {pytorch['mean_ms']:.2f}ms, {pytorch['throughput']:.0f} tok/s")
+        print(f"  CUDA Ops:  {cuda['mean_ms']:.2f}ms, {cuda['throughput']:.0f} tok/s")
+        print(f"\n  Speedup: {speedup:.2f}x ({'+' if diff > 0 else ''}{diff:.0f} tok/s)")
+        
+        if speedup > 1.0:
+            print(f"  🏆 CUDA WINS by {speedup:.2f}x")
+        else:
+            print(f"  🏆 PyTorch WINS by {1/speedup:.2f}x")
+        print(f"{'='*80}")
+    
+    return results
+
+
+# ============================================================================
 # MAIN
 # ============================================================================
 
@@ -362,6 +517,17 @@ def print_results_table(results):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description='Core CUDA Kernel Benchmark')
+    parser.add_argument('--training-only', action='store_true', help='Only run full training benchmark')
+    parser.add_argument('--skip-training', action='store_true', help='Skip full training benchmark')
+    parser.add_argument('--batch-size', type=int, default=8, help='Batch size for training benchmark')
+    parser.add_argument('--seq-len', type=int, default=512, help='Sequence length')
+    parser.add_argument('--hidden-size', type=int, default=512, help='Hidden size')
+    parser.add_argument('--num-layers', type=int, default=4, help='Number of layers')
+    parser.add_argument('--iterations', type=int, default=50, help='Number of iterations')
+    args = parser.parse_args()
+    
     print("\n" + "="*100)
     print(" "*30 + "CUDA KERNEL BENCHMARK (Using Wrappers)")
     print("="*100)
@@ -376,9 +542,22 @@ def main():
     print(f"Transformer Ops: {'✅ Loaded' if HAS_TRANSFORMER_OPS else '❌ Not available'}")
     print(f"MoE Ops: {'✅ Loaded' if HAS_MOE_OPS else '❌ Not available'}")
     
+    # Full training benchmark FIRST (most important)
+    if not args.skip_training or args.training_only:
+        benchmark_full_training_step(
+            batch_size=args.batch_size,
+            seq_len=args.seq_len,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            iterations=args.iterations
+        )
+    
+    if args.training_only:
+        return
+    
     results = []
     
-    print("\n🔨 Running benchmarks...")
+    print("\n🔨 Running isolated kernel benchmarks...")
     
     # Transformer ops benchmarks
     print("  • RMSNorm...")

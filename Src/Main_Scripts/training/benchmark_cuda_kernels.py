@@ -473,6 +473,197 @@ def print_speedup_table(pytorch_results: BenchmarkResults,
             print(f"\n🤝 TIE - Both within measurement error")
 
 
+def benchmark_full_training_step(
+    batch_size: int,
+    seq_len: int,
+    vocab_size: int,
+    hidden_size: int,
+    num_layers: int,
+    num_iterations: int,
+    warmup: int = 10
+) -> Tuple[BenchmarkResults, BenchmarkResults]:
+    """
+    Benchmark FULL training step: forward → loss → backward → grad_clip → optimizer.
+    
+    This simulates actual training workload, not isolated kernel calls.
+    """
+    print(f"\n{'='*80}")
+    print(f"BENCHMARKING: Full Training Step (Realistic)")
+    print(f"{'='*80}")
+    print(f"Configuration:")
+    print(f"  Batch size: {batch_size}")
+    print(f"  Sequence length: {seq_len}")
+    print(f"  Vocabulary size: {vocab_size:,}")
+    print(f"  Hidden size: {hidden_size}")
+    print(f"  Num layers: {num_layers}")
+    print(f"  Total tokens per step: {batch_size * seq_len:,}")
+    print(f"  Iterations: {num_iterations}")
+    print(f"  Warmup: {warmup}")
+    
+    device = torch.device('cuda')
+    
+    pytorch_results = BenchmarkResults("PyTorch Full Training Step")
+    cuda_results = BenchmarkResults("CUDA Kernels Full Training Step")
+    
+    # Create a simple transformer-like model
+    class SimpleTransformer(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.embed = torch.nn.Embedding(vocab_size, hidden_size)
+            self.layers = torch.nn.ModuleList([
+                torch.nn.TransformerEncoderLayer(
+                    d_model=hidden_size, 
+                    nhead=8, 
+                    dim_feedforward=hidden_size * 4,
+                    batch_first=True
+                ) for _ in range(num_layers)
+            ])
+            self.lm_head = torch.nn.Linear(hidden_size, vocab_size, bias=False)
+        
+        def forward(self, x):
+            h = self.embed(x)
+            for layer in self.layers:
+                h = layer(h)
+            return self.lm_head(h)
+    
+    model = SimpleTransformer().to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+    
+    # Count parameters
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"  Model parameters: {num_params:,}")
+    
+    # Initialize kernels
+    if KERNELS_AVAILABLE:
+        fused_loss = FusedLoss()
+        fused_clip = FusedGradClip()
+        cuda_enabled = fused_loss.enabled and fused_clip.cuda_enabled
+        print(f"  CUDA kernels enabled: {cuda_enabled}")
+    else:
+        cuda_enabled = False
+        print(f"  CUDA kernels: Not available")
+    
+    # Create test data
+    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
+    labels = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
+    labels[labels < vocab_size // 20] = -100  # 5% padding
+    
+    max_grad_norm = 1.0
+    
+    # ========== BENCHMARK PYTORCH ==========
+    print(f"\n[1/2] Running PyTorch training step benchmark...")
+    
+    # Warmup
+    for _ in range(warmup):
+        optimizer.zero_grad(set_to_none=True)
+        logits = model(input_ids)
+        result = pytorch_cross_entropy_accuracy(logits, labels)
+        loss = result['loss']
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        optimizer.step()
+    torch.cuda.synchronize()
+    
+    # Measure
+    for i in range(num_iterations):
+        torch.cuda.synchronize()
+        start = time.perf_counter()
+        
+        optimizer.zero_grad(set_to_none=True)
+        logits = model(input_ids)
+        result = pytorch_cross_entropy_accuracy(logits, labels)
+        loss = result['loss']
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        optimizer.step()
+        
+        torch.cuda.synchronize()
+        elapsed = (time.perf_counter() - start) * 1000
+        pytorch_results.add_time(elapsed)
+        
+        if (i + 1) % 20 == 0:
+            tokens_per_sec = (batch_size * seq_len) / (elapsed / 1000)
+            print(f"  Iter {i+1}/{num_iterations}: {elapsed:.2f}ms, {tokens_per_sec:.0f} tok/s")
+    
+    # ========== BENCHMARK CUDA KERNELS ==========
+    if cuda_enabled:
+        print(f"\n[2/2] Running CUDA kernels training step benchmark...")
+        
+        # Warmup
+        for _ in range(warmup):
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(input_ids)
+            result = fused_loss(logits, labels)
+            loss = result['loss']
+            loss.backward()
+            fused_clip(model.parameters(), max_grad_norm)
+            optimizer.step()
+        torch.cuda.synchronize()
+        
+        # Measure
+        for i in range(num_iterations):
+            torch.cuda.synchronize()
+            start = time.perf_counter()
+            
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(input_ids)
+            result = fused_loss(logits, labels)
+            loss = result['loss']
+            loss.backward()
+            fused_clip(model.parameters(), max_grad_norm)
+            optimizer.step()
+            
+            torch.cuda.synchronize()
+            elapsed = (time.perf_counter() - start) * 1000
+            cuda_results.add_time(elapsed)
+            
+            if (i + 1) % 20 == 0:
+                tokens_per_sec = (batch_size * seq_len) / (elapsed / 1000)
+                print(f"  Iter {i+1}/{num_iterations}: {elapsed:.2f}ms, {tokens_per_sec:.0f} tok/s")
+    else:
+        cuda_results = None
+    
+    return pytorch_results, cuda_results
+
+
+def print_training_comparison(pytorch_results: BenchmarkResults,
+                              cuda_results: BenchmarkResults,
+                              batch_size: int,
+                              seq_len: int):
+    """Print training-focused comparison with throughput metrics."""
+    print(f"\n{'='*80}")
+    print(f"FULL TRAINING STEP RESULTS")
+    print(f"{'='*80}")
+    
+    pytorch_stats = pytorch_results.get_stats()
+    tokens_per_step = batch_size * seq_len
+    
+    pytorch_throughput = tokens_per_step / (pytorch_stats['mean'] / 1000)
+    
+    print(f"\nPyTorch:")
+    print(f"  Mean time: {pytorch_stats['mean']:.2f} ms/step")
+    print(f"  Throughput: {pytorch_throughput:.0f} tokens/sec")
+    
+    if cuda_results is not None:
+        cuda_stats = cuda_results.get_stats()
+        cuda_throughput = tokens_per_step / (cuda_stats['mean'] / 1000)
+        
+        print(f"\nCUDA Kernels:")
+        print(f"  Mean time: {cuda_stats['mean']:.2f} ms/step")
+        print(f"  Throughput: {cuda_throughput:.0f} tokens/sec")
+        
+        # Compare
+        speedup = pytorch_stats['mean'] / cuda_stats['mean']
+        throughput_diff = cuda_throughput - pytorch_throughput
+        
+        print(f"\n{'='*80}")
+        if speedup > 1.0:
+            print(f"🏆 CUDA WINS by {speedup:.2f}x ({throughput_diff:.0f} tok/s faster)")
+        else:
+            print(f"🏆 PyTorch WINS by {1/speedup:.2f}x ({-throughput_diff:.0f} tok/s faster)")
+        print(f"{'='*80}")
+
+
 def main():
     parser = argparse.ArgumentParser(description='Benchmark CUDA kernels vs PyTorch vs torch.compile')
     parser.add_argument('--iterations', type=int, default=100,
@@ -485,6 +676,10 @@ def main():
                        help='Sequence length for loss benchmark (default: 512)')
     parser.add_argument('--vocab-size', type=int, default=32000,
                        help='Vocabulary size for loss benchmark (default: 32000)')
+    parser.add_argument('--hidden-size', type=int, default=512,
+                       help='Hidden size for training benchmark (default: 512)')
+    parser.add_argument('--num-layers', type=int, default=4,
+                       help='Number of layers for training benchmark (default: 4)')
     parser.add_argument('--num-params', type=int, default=100,
                        help='Number of parameters for grad clip benchmark (default: 100)')
     parser.add_argument('--param-size', type=int, default=10000,
@@ -493,6 +688,10 @@ def main():
                        help='Skip loss computation benchmark')
     parser.add_argument('--skip-grad', action='store_true',
                        help='Skip gradient clipping benchmark')
+    parser.add_argument('--skip-training', action='store_true',
+                       help='Skip full training step benchmark')
+    parser.add_argument('--training-only', action='store_true',
+                       help='Only run full training step benchmark')
     
     args = parser.parse_args()
     
@@ -506,6 +705,25 @@ def main():
     
     if not torch.cuda.is_available():
         print("\n⚠️  CUDA not available - benchmarks will run on CPU")
+        return
+    
+    # Full training step benchmark (most realistic)
+    if not args.skip_training or args.training_only:
+        pytorch_train, cuda_train = benchmark_full_training_step(
+            batch_size=args.batch_size,
+            seq_len=args.seq_len,
+            vocab_size=args.vocab_size,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            num_iterations=args.iterations,
+            warmup=args.warmup
+        )
+        print_training_comparison(pytorch_train, cuda_train, args.batch_size, args.seq_len)
+    
+    if args.training_only:
+        print(f"\n{'='*80}")
+        print("BENCHMARK COMPLETE")
+        print("="*80)
         return
     
     # Benchmark 1: Loss Computation
