@@ -472,11 +472,34 @@ class FusedGradClip:
             # Pre-allocate norm buffer (16 bytes for double norm_sq + float clip_coef + float final_norm)
             self._norm_buffer = torch.zeros(16, dtype=torch.uint8, device='cuda')
             self._norm_ptr = ctypes.c_void_p(self._norm_buffer.data_ptr())
+            # Cached parameter list for pointer registration
+            self._registered_params = None
         
         if self.cuda_enabled:
             logger.info("✅  FusedGradClip: CUDA kernel available (auto-selection enabled)")
         else:
             logger.info("⚠️  FusedGradClip: Using PyTorch fallback")
+    
+    def register_parameters(self, parameters):
+        """
+        Pre-register parameters to cache their metadata.
+        Call this once during trainer init to avoid per-call overhead.
+        """
+        self._registered_params = [p for p in parameters if p.requires_grad]
+        self.total_params = sum(p.numel() for p in self._registered_params)
+        
+        if self.cuda_enabled:
+            device = 'cuda'
+            num_params = len(self._registered_params)
+            self._cache_capacity = num_params
+            self._grad_ptrs_cache = torch.empty(num_params, dtype=torch.int64, device=device)
+            self._grad_sizes_cache = torch.zeros(num_params, dtype=torch.int32, device=device)
+            
+            # Pre-cache sizes (they don't change)
+            for i, p in enumerate(self._registered_params):
+                self._grad_sizes_cache[i] = p.numel()
+        
+        logger.info(f"FusedGradClip: Registered {len(self._registered_params)} parameters ({self.total_params:,} elements)")
     
     def _count_parameters(self, parameters):
         """Count total parameters (cached)."""
@@ -493,7 +516,7 @@ class FusedGradClip:
             max_norm: Maximum gradient norm
         
         Returns:
-            total_norm: Gradient norm (as Python float)
+            total_norm: Gradient norm (as tensor)
         """
         if not self.cuda_enabled:
             return self._pytorch_fallback(parameters, max_norm)
@@ -515,42 +538,36 @@ class FusedGradClip:
     
     def _cuda_implementation(self, parameters, max_norm):
         """Optimized CUDA kernel call."""
-        # Collect gradients (optimized: single pass)
-        grads = []
-        for p in parameters:
+        # Use registered params if available, else collect from parameters
+        if self._registered_params is not None:
+            params_list = self._registered_params
+        else:
+            params_list = [p for p in parameters if p.grad is not None]
+        
+        if not params_list:
+            return torch.tensor(0.0, device='cuda')
+        
+        num_tensors = len(params_list)
+        
+        # Update pointer cache (pointers can change between steps due to gradient accumulation)
+        if self._grad_ptrs_cache is None or self._cache_capacity < num_tensors:
+            device = 'cuda'
+            self._cache_capacity = num_tensors
+            self._grad_ptrs_cache = torch.empty(num_tensors, dtype=torch.int64, device=device)
+            self._grad_sizes_cache = torch.empty(num_tensors, dtype=torch.int32, device=device)
+        
+        # ✅ OPTIMIZATION: Only update pointers (sizes are cached from registration)
+        for i, p in enumerate(params_list):
             if p.grad is not None:
-                # CRITICAL: Ensure float32 for current kernel implementation
-                if p.grad.dtype != torch.float32:
-                    g = p.grad.data.float()
-                else:
-                    g = p.grad.data
-                grads.append(g)
-        
-        if not grads:
-            return 0.0
-        
-        num_tensors = len(grads)
-        
-        # OPTIMIZATION: Reuse cached arrays if capacity is sufficient
-        if self._cache_capacity < num_tensors:
-            device = grads[0].device
-            # Allocate with some headroom
-            self._cache_capacity = num_tensors * 2
-            self._grad_ptrs_cache = torch.empty(self._cache_capacity, dtype=torch.int64, device=device)
-            self._grad_sizes_cache = torch.empty(self._cache_capacity, dtype=torch.int32, device=device)
-        
-        # Fill arrays (vectorized where possible)
-        device = grads[0].device
-        for i, g in enumerate(grads):
-            self._grad_ptrs_cache[i] = g.data_ptr()
-            self._grad_sizes_cache[i] = g.numel()
+                self._grad_ptrs_cache[i] = p.grad.data_ptr()
+                if self._registered_params is None:
+                    self._grad_sizes_cache[i] = p.grad.numel()
         
         # Get stream
         stream = torch.cuda.current_stream().cuda_stream
         
         # Call kernel
         try:
-            # Note: The launcher now expects the norm buffer pointer
             _fused_grad_clip_lib.fused_grad_clip_launcher(
                 ctypes.c_void_p(self._grad_ptrs_cache.data_ptr()),
                 ctypes.c_void_p(self._grad_sizes_cache.data_ptr()),
@@ -562,9 +579,8 @@ class FusedGradClip:
             
             # ✅ ASYNCHRONOUS: Return the norm as a tensor from the buffer
             # norm_buffer layout: [double norm_sq (8), float clip_coef (4), float final_norm (4)]
-            # offset for final_norm is 12 bytes
             final_norm_view = self._norm_buffer.view(torch.float32)
-            return final_norm_view[3] # 4th float index (at 12 bytes)
+            return final_norm_view[3]  # 4th float at offset 12 bytes
         except Exception as e:
             logger.error(f"FusedGradClip kernel execution failed: {e}")
             return self._pytorch_fallback(parameters, max_norm)

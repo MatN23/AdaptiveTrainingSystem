@@ -2589,7 +2589,8 @@ class EnhancedConversationTrainer:
             self.scaler.update()
         else:
             self.optimizer.step()
-            if hasattr(self, '_monitoring_queue'):
+            # 🔥 OPTIMIZATION: Throttle orchestrator updates (every 10 steps)
+            if hasattr(self, '_monitoring_queue') and self.global_step % 10 == 0:
                 try:
                     metrics = self.get_current_metrics()
                     self._monitoring_queue.put(metrics, block=False)
@@ -2675,9 +2676,11 @@ class EnhancedConversationTrainer:
         total_accuracy = 0.0
         num_batches = 0
 
-        # 🆕 NEW: Track best metrics during eval
-        best_loss = float('inf')
-        best_raw_loss = float('inf')
+        # 🆕 NEW: Track metrics using lists of tensors (avoids per-step sync)
+        all_losses = []
+        all_raw_losses = []
+        all_accuracies = []
+        best_batch = 0 # Placeholder, we might lose exact batch index tracking or compute it via argmin
         best_accuracy = 0.0
         best_batch = 0
 
@@ -2714,22 +2717,14 @@ class EnhancedConversationTrainer:
             loss_dict = self.compute_loss(logits, labels, loss_weights)
 
             if not (torch.isnan(loss_dict['loss']).any() or torch.isinf(loss_dict['loss']).any()):
-                batch_loss = loss_dict['loss'].item()
-                batch_raw_loss = loss_dict['raw_loss'].item()
-                batch_accuracy = loss_dict['accuracy'].item()
-
-                total_loss += batch_loss
-                total_raw_loss += batch_raw_loss
-                total_tokens += loss_dict['valid_tokens'].item()
-                total_accuracy += batch_accuracy
+                # ✅ FIX: Accumulate as tensors in lists to avoid per-batch sync
+                # We will compute sum and min (best) at the very end
+                # This uses detailed memory but is much faster
+                all_losses.append(loss_dict['loss'])
+                all_raw_losses.append(loss_dict['raw_loss'])
+                all_accuracies.append(loss_dict['accuracy'])
+                total_tokens += loss_dict['valid_tokens'] # Add tensor directly
                 num_batches += 1
-
-                # 🆕 NEW: Track best batch
-                if batch_loss < best_loss:
-                    best_loss = batch_loss
-                    best_raw_loss = batch_raw_loss
-                    best_accuracy = batch_accuracy
-                    best_batch = batch_idx
 
         eval_time = time.time() - eval_start_time
         peak_memory = torch.cuda.max_memory_allocated() / 1e6 if torch.cuda.is_available() else 0
@@ -2750,7 +2745,41 @@ class EnhancedConversationTrainer:
         # Calculate averages
         avg_loss = total_loss / num_batches
         avg_raw_loss = total_raw_loss / num_batches
-        avg_accuracy = total_accuracy / num_batches
+        # Calculate averages from tensors
+        if num_batches > 0:
+            # Stack for efficient computation
+            losses_tensor = torch.stack(all_losses)
+            raw_losses_tensor = torch.stack(all_raw_losses)
+            accuracies_tensor = torch.stack(all_accuracies)
+            
+            # Compute totals
+            total_loss_t = losses_tensor.sum()
+            total_raw_loss_t = raw_losses_tensor.sum()
+            total_accuracy_t = accuracies_tensor.sum()
+            
+            # Compute best (min loss)
+            best_loss_idx = torch.argmin(losses_tensor)
+            
+            # Extract values (SYNC HERE - only once per eval)
+            # Use item() to get python scalars
+            avg_loss = total_loss_t.item() / num_batches
+            avg_raw_loss = total_raw_loss_t.item() / num_batches
+            avg_accuracy = total_accuracy_t.item() / num_batches
+            
+            best_loss = losses_tensor[best_loss_idx].item()
+            best_raw_loss = raw_losses_tensor[best_loss_idx].item()
+            best_accuracy = accuracies_tensor[best_loss_idx].item()
+            best_batch = best_loss_idx.item() # This is relative to this eval batch
+            
+            if torch.is_tensor(total_tokens):
+                total_tokens = total_tokens.item()
+        else:
+            avg_loss = float('inf')
+            avg_raw_loss = float('inf')
+            avg_accuracy = 0.0
+            best_loss = float('inf')
+            best_raw_loss = float('inf')
+            best_accuracy = 0.0
 
         # Calculate perplexity from averages
         clamped_avg_loss = min(avg_raw_loss, 15.0)
@@ -2773,13 +2802,13 @@ class EnhancedConversationTrainer:
 
         # 🆕 CHANGED: Return best metrics as primary, averages as reference
         return {
-            'eval_loss': best_loss,  # 🆕 CHANGED: Use best instead of average
-            'eval_perplexity': best_perplexity,  # 🆕 CHANGED: Use best instead of average
-            'eval_accuracy': best_accuracy,  # 🆕 CHANGED: Use best instead of average
+            'eval_loss': best_loss,
+            'eval_perplexity': best_perplexity,
+            'eval_accuracy': best_accuracy,
             'eval_time': eval_time,
             'eval_throughput': throughput,
             'eval_peak_memory_mb': peak_memory,
-            'best_batch': best_batch,
+            'best_batch': int(best_batch),
             # 🆕 NEW: Also return averages for reference
             'avg_eval_loss': avg_loss,
             'avg_eval_perplexity': avg_perplexity,
