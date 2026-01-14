@@ -1256,6 +1256,8 @@ class EnhancedConversationTrainer:
             return 0.0
         
         # Return average of recent measurements
+        # Note: If elements are Tensors, sum() returns a Tensor.
+        # This preserves async execution until .item() is called in logging.
         return sum(self.throughput_window) / len(self.throughput_window)
     
     def _get_memory_usage(self) -> Dict[str, float]:
@@ -2012,8 +2014,22 @@ class EnhancedConversationTrainer:
             # Setup standard PyTorch training
             self.model = self.model.to(self.device)
 
-            # ✅ OPTIMIZATION: Model compilation (huge for small models like 14M)
-            if getattr(self.config, 'compile', True) and hasattr(torch, 'compile'):
+            # ✅ OPTIMIZATION: Model compilation
+            # ⚠️ CRITICAL PERFORMANCE FIX: 
+            # If custom CUDA kernels are used (ctypes based), torch.compile causes graph breaks at every call.
+            # We must DISABLE compilation if custom kernels are active to maintain performance.
+            kernels_active = False
+            try:
+                import training.cuda_kernels as custom_kernels
+                if custom_kernels.CUSTOM_KERNELS_AVAILABLE:
+                    kernels_active = True
+            except ImportError:
+                pass
+
+            if kernels_active:
+                logging.warning("🚀 Custom CUDA Kernels detected: Disabling torch.compile to avoid graph breaks.")
+                logging.info("   (Inductor cannot fuse ctypes calls, leading to interpreter overhead per layer)")
+            elif getattr(self.config, 'compile', True) and hasattr(torch, 'compile'):
                 try:
                     logging.info("🚀 Compiling model with torch.compile(mode='reduce-overhead')...")
                     # ✅ FIXED: Use reduce-overhead for small models to maximize performance
@@ -2969,8 +2985,10 @@ class EnhancedConversationTrainer:
                     cycle_throughput = 0.0
                 
                 # Update throughput window
-                if cycle_throughput > 0:
-                    self.throughput_window.append(cycle_throughput)
+                # ✅ FIX: Avoid sync "if cycle_throughput > 0"
+                # Check CPU-side time instead. tokens/time will be valid if time > 0.
+                if accumulation_compute_time > 0:
+                    self.throughput_window.append(cycle_throughput) # Appending TENSOR (async)
                     if len(self.throughput_window) > self.throughput_window_size:
                         self.throughput_window.pop(0)
 
