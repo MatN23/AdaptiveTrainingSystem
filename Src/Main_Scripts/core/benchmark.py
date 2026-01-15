@@ -189,8 +189,8 @@ def benchmark_rope(batch_size=4, num_heads=32, seq_len=512, head_dim=128, dtype=
             def cuda_rope_func():
                 q_c = q.clone()
                 k_c = k.clone()
-                # Apply rotation manually using the cached cos/sin
-                return pytorch_rope(q_c, k_c, cos_cuda, sin_cuda)
+                # FIXED: Call the fused kernel wrapper
+                return rope.apply_rotary_pos_emb(q_c, k_c, position_offset=0)
             
             cuda_result = cuda_rope_func()
             cuda_time = benchmark_function(cuda_rope_func)

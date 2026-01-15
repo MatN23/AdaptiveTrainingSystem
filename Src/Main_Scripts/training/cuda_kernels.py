@@ -209,15 +209,7 @@ class FusedCrossEntropyFunction(torch.autograd.Function):
         # Get pointers
         weights_ptr = ctypes.c_void_p(loss_weights.data_ptr()) if loss_weights is not None else None
         
-        # DEBUG: Print inputs before kernel launch
-        print(f"DEBUG: FusedLoss Launch")
-        print(f"  Logits: {logits.shape} {logits.dtype} ptr={logits.data_ptr()}")
-        print(f"  Labels: {labels.shape} {labels.dtype} ptr={labels.data_ptr()}")
-        print(f"  Pad: {pad_token_id}, Tokens: {total_tokens}, Vocab: {vocab_size}")
-        if total_tokens == 0:
-            print("  ERROR: total_tokens is 0!")
-        if vocab_size == 0:
-            print("  ERROR: vocab_size is 0!")
+
         
         # Call forward kernel
         if total_tokens > 0:
