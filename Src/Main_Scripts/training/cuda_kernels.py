@@ -209,20 +209,33 @@ class FusedCrossEntropyFunction(torch.autograd.Function):
         # Get pointers
         weights_ptr = ctypes.c_void_p(loss_weights.data_ptr()) if loss_weights is not None else None
         
+        # DEBUG: Print inputs before kernel launch
+        print(f"DEBUG: FusedLoss Launch")
+        print(f"  Logits: {logits.shape} {logits.dtype} ptr={logits.data_ptr()}")
+        print(f"  Labels: {labels.shape} {labels.dtype} ptr={labels.data_ptr()}")
+        print(f"  Pad: {pad_token_id}, Tokens: {total_tokens}, Vocab: {vocab_size}")
+        if total_tokens == 0:
+            print("  ERROR: total_tokens is 0!")
+        if vocab_size == 0:
+            print("  ERROR: vocab_size is 0!")
+        
         # Call forward kernel
-        _fused_loss_lib.fused_cross_entropy_accuracy_launcher(
-            ctypes.c_void_p(logits.data_ptr()),
-            ctypes.c_void_p(labels.data_ptr()),
-            weights_ptr,
-            ctypes.c_int64(pad_token_id),
-            ctypes.c_void_p(loss_out.data_ptr()),
-            ctypes.c_void_p(accuracy_out.data_ptr()),
-            ctypes.c_void_p(valid_tokens_out.data_ptr()),
-            ctypes.c_void_p(total_weight_out.data_ptr()),
-            ctypes.c_int(total_tokens),
-            ctypes.c_int(vocab_size),
-            ctypes.c_void_p(stream)
-        )
+        if total_tokens > 0:
+            _fused_loss_lib.fused_cross_entropy_accuracy_launcher(
+                ctypes.c_void_p(logits.data_ptr()),
+                ctypes.c_void_p(labels.data_ptr()),
+                weights_ptr,
+                ctypes.c_int64(pad_token_id),
+                ctypes.c_void_p(loss_out.data_ptr()),
+                ctypes.c_void_p(accuracy_out.data_ptr()),
+                ctypes.c_void_p(valid_tokens_out.data_ptr()),
+                ctypes.c_void_p(total_weight_out.data_ptr()),
+                ctypes.c_int(total_tokens),
+                ctypes.c_int(vocab_size),
+                ctypes.c_void_p(stream)
+            )
+        else:
+            print("  DEBUG: Skipping FusedLoss kernel launch (total_tokens=0)")
         
         # ✅ NO SYNC: Remove .item() call to avoid pipeline stall.
         # Accuracy and valid_tokens stay on GPU.
@@ -268,18 +281,21 @@ class FusedCrossEntropyFunction(torch.autograd.Function):
         inv_valid_tokens = 1.0 / max(ctx.total_tokens, 1)
         
         # Call backward kernel
-        _fused_loss_lib.fused_cross_entropy_backward_launcher(
-            ctypes.c_void_p(logits.data_ptr()),
-            ctypes.c_void_p(labels.data_ptr()),
-            weights_ptr,
-            ctypes.c_int64(ctx.pad_token_id),
-            ctypes.c_float(grad_output_scalar),
-            ctypes.c_float(inv_valid_tokens),
-            ctypes.c_void_p(grad_logits.data_ptr()),
-            ctypes.c_int(ctx.total_tokens),
-            ctypes.c_int(ctx.vocab_size),
-            ctypes.c_void_p(stream)
-        )
+        if ctx.total_tokens > 0:
+            _fused_loss_lib.fused_cross_entropy_backward_launcher(
+                ctypes.c_void_p(logits.data_ptr()),
+                ctypes.c_void_p(labels.data_ptr()),
+                weights_ptr,
+                ctypes.c_int64(ctx.pad_token_id),
+                ctypes.c_float(grad_output_scalar),
+                ctypes.c_float(inv_valid_tokens),
+                ctypes.c_void_p(grad_logits.data_ptr()),
+                ctypes.c_int(ctx.total_tokens),
+                ctypes.c_int(ctx.vocab_size),
+                ctypes.c_void_p(stream)
+            )
+        else:
+            print("  DEBUG: Skipping FusedLoss backward kernel (total_tokens=0)")
         
         # Reshape gradient back to original input shape
         grad_logits = grad_logits.view(ctx.original_shape)

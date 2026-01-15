@@ -35,6 +35,8 @@ builtins.quit = sys.exit  # just in case some code calls quit()
 # Suppress warnings
 warnings.filterwarnings('ignore')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'  # DEBUG: Force synchronous execution
+os.environ['TORCH_USE_CUDA_DSA'] = '1'   # DEBUG: Enable device-side assertions
 
 # Add the current directory to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent))
