@@ -24,4 +24,5 @@ def test_diagnose_script_runs():
     # It should not crash (exit code 0)
     # Note: It might print errors if CUDA is missing, but the script itself should handle them gracefully.
     assert result.returncode == 0
-    assert "CUDA SETUP DIAGNOSTICS" in result.stdout
+    # Check for the actual header printed by the new diagnose.py
+    assert "PyTorch CUDA Profiler" in result.stdout
