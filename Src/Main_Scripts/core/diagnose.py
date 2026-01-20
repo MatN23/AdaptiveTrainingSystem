@@ -265,6 +265,12 @@ def check_correctness():
 
 if __name__ == "__main__":
     print("PyTorch CUDA Profiler")
+    
+    if not torch.cuda.is_available():
+        print("⚠️  CUDA is not available - skipping profiling")
+        print("This script requires a CUDA-enabled GPU to run.")
+        exit(0)
+    
     print(f"Device: {torch.cuda.get_device_name()}")
     print(f"CUDA ops available: {HAS_MOE}")
     
