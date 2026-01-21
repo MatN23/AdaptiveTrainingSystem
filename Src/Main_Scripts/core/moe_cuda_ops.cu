@@ -65,33 +65,59 @@ __device__ __forceinline__ float warp_reduce_sum(float val) {
 // Bitonic compare-exchange for descending order
 template <int K>
 __device__ __forceinline__ void bitonic_sort_step(float *vals, int *idxs, int i,
-                                                  int j, bool dir) {
-  if (j < K && i < K) {
-    bool swap = dir ? (vals[i] < vals[j]) : (vals[i] > vals[j]);
-    if (swap) {
-      float tmp_v = vals[i];
-      vals[i] = vals[j];
-      vals[j] = tmp_v;
-      int tmp_i = idxs[i];
-      idxs[i] = idxs[j];
-      idxs[j] = tmp_i;
-    }
+                                                  int j) {
+  if (vals[i] < vals[j]) {
+    float tmp_v = vals[i];
+    vals[i] = vals[j];
+    vals[j] = tmp_v;
+    int tmp_i = idxs[i];
+    idxs[i] = idxs[j];
+    idxs[j] = tmp_i;
   }
 }
 
-// Full bitonic sort for K elements (descending order - largest first)
+// Full bitonic sort for K elements (descending order)
+// Assumption: K is power of 2 for strict bitonic network
 template <int K>
 __device__ __forceinline__ void bitonic_sort(float *vals, int *idxs) {
-  // Bitonic sort: O(K log^2 K) comparisons
   for (int k = 2; k <= K; k <<= 1) {
     for (int j = k >> 1; j > 0; j >>= 1) {
       for (int i = 0; i < K; i++) {
         int ij = i ^ j;
         if (ij > i) {
-          bool dir =
-              ((i & k) == 0); // ascending in first half, descending in second
-          // We want descending overall, so invert for top half
-          bitonic_sort_step<K>(vals, idxs, i, ij, !dir);
+          bool ascending = ((i & k) == 0);
+          // We want overall descending sort.
+          // Standard bitonic sorts ascending if dir=1.
+          // Here we manually control check:
+          // If 'ascending' block, we want vals[i] < vals[ij]
+          // If 'descending' block, we want vals[i] > vals[ij]
+          // BUT we want final result descending.
+          // To get descending sort: sort first half descending, second half
+          // ascending, then merge. Easier pattern: Just start with monotonic
+          // merge network? Let's stick to standard recursive bitonic logic but
+          // inverting comparison.
+
+          if (ascending) {
+            // sort ascending: i < ij, so if vals[i] > vals[ij], swap
+            if (vals[i] > vals[ij]) {
+              float tmp = vals[i];
+              vals[i] = vals[ij];
+              vals[ij] = tmp;
+              int tmpi = idxs[i];
+              idxs[i] = idxs[ij];
+              idxs[ij] = tmpi;
+            }
+          } else {
+            // sort descending: i < ij, so if vals[i] < vals[ij], swap
+            if (vals[i] < vals[ij]) {
+              float tmp = vals[i];
+              vals[i] = vals[ij];
+              vals[ij] = tmp;
+              int tmpi = idxs[i];
+              idxs[i] = idxs[ij];
+              idxs[ij] = tmpi;
+            }
+          }
         }
       }
     }
@@ -112,13 +138,14 @@ __device__ __forceinline__ void sort_topk(float *vals, int *idxs) {
           vals[j] = vals[j + 1];
           vals[j + 1] = tmp_v;
           int tmp_i = idxs[j];
-          idxs[i] = idxs[j + 1];
+          idxs[j] = idxs[j + 1]; // Fixed buggy index swap
           idxs[j + 1] = tmp_i;
         }
       }
     }
   } else {
-    // Bitonic sort - efficient for larger K
+    // Bitonic sort - requires K to be power of 2 for full correctness
+    // For non-power-of-2, should pad with -inf.
     bitonic_sort<K>(vals, idxs);
   }
 }
@@ -131,7 +158,8 @@ __device__ __forceinline__ void sort_topk(float *vals, int *idxs) {
 template <int K>
 __device__ __forceinline__ void
 warp_topk_tournament(const float *__restrict__ logits, int num_experts,
-                     float *topk_vals, int *topk_idxs, const float inv_temp) {
+                     float *topk_vals, int *topk_idxs, const float inv_temp,
+                     int actual_k) {
   // Compile-time safety check
   static_assert(K <= MAX_K, "K must be <= MAX_K");
 
@@ -239,7 +267,7 @@ __global__ void __launch_bounds__(256, 8) // High occupancy
                             int64_t *__restrict__ top_k_indices,
                             float *__restrict__ top_k_weights,
                             const int num_tokens, const int num_experts,
-                            const float inv_temperature) {
+                            const float inv_temperature, int actual_k) {
 
   // One warp per token
   const int token_idx =
@@ -251,18 +279,27 @@ __global__ void __launch_bounds__(256, 8) // High occupancy
   const float *token_logits = gate_logits + (int64_t)token_idx * num_experts;
 
   // Top-K selection (warp-level, no shared memory!)
-  float topk_vals[MAX_K];
-  int topk_idxs[MAX_K];
-
-  warp_topk_tournament<K>(token_logits, num_experts, topk_vals, topk_idxs,
-                          inv_temperature);
+  // Perform top-K selection
+  warp_topk_tournament<K>(
+      token_logits, num_experts, top_k_weights + (int64_t)token_idx * actual_k,
+      top_k_indices + (int64_t)token_idx * actual_k, inv_temperature, actual_k);
 
   // Parallel softmax across warp (all lanes participate!)
+  // Read back the top-K values for softmax calculation
+  float topk_vals[MAX_K];
+  int topk_idxs[MAX_K];
+#pragma unroll
+  for (int i = 0; i < actual_k; ++i) {
+    topk_vals[i] = top_k_weights[(int64_t)token_idx * actual_k + i];
+    topk_idxs[i] = top_k_indices[(int64_t)token_idx * actual_k + i];
+  }
+
   float max_val = topk_vals[0];
 
   // Each lane processes some of the K values
   float my_sum = 0.0f;
-  for (int i = lane; i < K; i += WARP_SIZE) {
+  for (int i = lane; i < actual_k;
+       i += WARP_SIZE) { // Use actual_k for loop bounds
     topk_vals[i] = expf(topk_vals[i] - max_val);
     my_sum += topk_vals[i];
   }
@@ -272,20 +309,21 @@ __global__ void __launch_bounds__(256, 8) // High occupancy
   float inv_sum = 1.0f / (sum_exp + 1e-9f);
 
   // Normalize (parallel across lanes)
-  for (int i = lane; i < K; i += WARP_SIZE) {
+  for (int i = lane; i < actual_k;
+       i += WARP_SIZE) { // Use actual_k for loop bounds
     topk_vals[i] *= inv_sum;
   }
 
   // Broadcast to ensure all lanes have same values
 #pragma unroll
-  for (int i = 0; i < K; i++) {
+  for (int i = 0; i < actual_k; i++) { // Use actual_k for loop bounds
     topk_vals[i] = __shfl_sync(FULL_MASK, topk_vals[i], i % WARP_SIZE);
     topk_idxs[i] = __shfl_sync(FULL_MASK, topk_idxs[i], i % WARP_SIZE);
   }
   // Write outputs (coalesced - all lanes participate)
-  if (lane < K) {
-    int64_t *out_indices = top_k_indices + (int64_t)token_idx * K;
-    float *out_weights = top_k_weights + (int64_t)token_idx * K;
+  if (lane < actual_k) { // Use actual_k for write bounds
+    int64_t *out_indices = top_k_indices + (int64_t)token_idx * actual_k;
+    float *out_weights = top_k_weights + (int64_t)token_idx * actual_k;
 
     out_weights[lane] = topk_vals[lane];
     out_indices[lane] = (int64_t)topk_idxs[lane];
@@ -302,7 +340,7 @@ __global__ void __launch_bounds__(256, 4)
                                   int64_t *__restrict__ top_k_indices,
                                   float *__restrict__ top_k_weights,
                                   const int num_tokens, const int num_experts,
-                                  const float inv_temperature) {
+                                  const float inv_temperature, int actual_k) {
 
   const int token_idx = blockIdx.x;
   if (token_idx >= num_tokens)
@@ -369,14 +407,14 @@ __global__ void __launch_bounds__(256, 4)
         warp_idxs[K - 1] = idx;
 
 #pragma unroll
-        for (int k = K - 2; k >= 0; k--) {
-          if (warp_vals[k + 1] > warp_vals[k]) {
-            float tmp_v = warp_vals[k];
-            int tmp_i = warp_idxs[k];
-            warp_vals[k] = warp_vals[k + 1];
-            warp_idxs[k] = warp_idxs[k + 1];
-            warp_vals[k + 1] = tmp_v;
-            warp_idxs[k + 1] = tmp_i;
+        for (int k_idx = K - 2; k_idx >= 0; k_idx--) {
+          if (warp_vals[k_idx + 1] > warp_vals[k_idx]) {
+            float tmp_v = warp_vals[k_idx];
+            int tmp_i = warp_idxs[k_idx];
+            warp_vals[k_idx] = warp_vals[k_idx + 1];
+            warp_idxs[k_idx] = warp_idxs[k_idx + 1];
+            warp_vals[k_idx + 1] = tmp_v;
+            warp_idxs[k_idx + 1] = tmp_i;
           }
         }
       }
@@ -393,14 +431,14 @@ __global__ void __launch_bounds__(256, 4)
       warp_idxs[K - 1] = i;
 
 #pragma unroll
-      for (int k = K - 2; k >= 0; k--) {
-        if (warp_vals[k + 1] > warp_vals[k]) {
-          float tmp_v = warp_vals[k];
-          int tmp_i = warp_idxs[k];
-          warp_vals[k] = warp_vals[k + 1];
-          warp_idxs[k] = warp_idxs[k + 1];
-          warp_vals[k + 1] = tmp_v;
-          warp_idxs[k + 1] = tmp_i;
+      for (int k_idx = K - 2; k_idx >= 0; k_idx--) {
+        if (warp_vals[k_idx + 1] > warp_vals[k_idx]) {
+          float tmp_v = warp_vals[k_idx];
+          int tmp_i = warp_idxs[k_idx];
+          warp_vals[k_idx] = warp_vals[k_idx + 1];
+          warp_idxs[k_idx] = warp_idxs[k_idx + 1];
+          warp_vals[k_idx + 1] = tmp_v;
+          warp_idxs[k_idx + 1] = tmp_i;
         }
       }
     }
@@ -448,7 +486,7 @@ __global__ void __launch_bounds__(256, 4)
 
   if (lane == 0) {
 #pragma unroll
-    for (int i = 0; i < K; i++) {
+    for (int i = 0; i < actual_k; i++) { // Use actual_k for write bounds
       shared_vals[warp_id * K + i] = warp_vals[i];
       shared_idxs[warp_id * K + i] = warp_idxs[i];
     }
@@ -459,7 +497,7 @@ __global__ void __launch_bounds__(256, 4)
   if (warp_id == 0 && lane < num_warps) {
     // Each lane loads one warp's results
 #pragma unroll
-    for (int i = 0; i < K; i++) {
+    for (int i = 0; i < actual_k; i++) { // Use actual_k for read bounds
       warp_vals[i] = shared_vals[lane * K + i];
       warp_idxs[i] = shared_idxs[lane * K + i];
     }
@@ -471,7 +509,7 @@ __global__ void __launch_bounds__(256, 4)
         int partner_idxs[MAX_K];
 
 #pragma unroll
-        for (int i = 0; i < K; i++) {
+        for (int i = 0; i < actual_k; i++) { // Use actual_k for read bounds
           partner_vals[i] = __shfl_sync(FULL_MASK, warp_vals[i], lane + step);
           partner_idxs[i] = __shfl_sync(FULL_MASK, warp_idxs[i], lane + step);
         }
@@ -482,8 +520,9 @@ __global__ void __launch_bounds__(256, 4)
         int a = 0, b = 0;
 
 #pragma unroll
-        for (int m = 0; m < K; m++) {
-          if (a >= K || (b < K && partner_vals[b] > warp_vals[a])) {
+        for (int m = 0; m < actual_k; m++) { // Use actual_k for merge bounds
+          if (a >= actual_k ||
+              (b < actual_k && partner_vals[b] > warp_vals[a])) {
             merged[m] = partner_vals[b];
             merged_idx[m] = partner_idxs[b];
             b++;
@@ -495,7 +534,7 @@ __global__ void __launch_bounds__(256, 4)
         }
 
 #pragma unroll
-        for (int i = 0; i < K; i++) {
+        for (int i = 0; i < actual_k; i++) { // Use actual_k for write bounds
           warp_vals[i] = merged[i];
           warp_idxs[i] = merged_idx[i];
         }
@@ -510,7 +549,7 @@ __global__ void __launch_bounds__(256, 4)
 
     // Sync warp_vals to all lanes for parallel softmax
 #pragma unroll
-    for (int i = 0; i < K; i++) {
+    for (int i = 0; i < actual_k; i++) { // Use actual_k for loop bounds
       warp_vals[i] = __shfl_sync(FULL_MASK, warp_vals[i], 0);
       warp_idxs[i] = __shfl_sync(FULL_MASK, warp_idxs[i], 0);
     }
@@ -518,7 +557,8 @@ __global__ void __launch_bounds__(256, 4)
     // Parallel exp() and sum - each lane handles K/WARP_SIZE values (or 1 for
     // small K)
     float my_exp_sum = 0.0f;
-    for (int i = lane; i < K; i += WARP_SIZE) {
+    for (int i = lane; i < actual_k;
+         i += WARP_SIZE) { // Use actual_k for loop bounds
       warp_vals[i] = expf(warp_vals[i] - max_val);
       my_exp_sum += warp_vals[i];
     }
@@ -527,20 +567,22 @@ __global__ void __launch_bounds__(256, 4)
     float inv_sum = 1.0f / (sum_exp + 1e-9f);
 
     // Parallel normalize
-    for (int i = lane; i < K; i += WARP_SIZE) {
+    for (int i = lane; i < actual_k;
+         i += WARP_SIZE) { // Use actual_k for loop bounds
       warp_vals[i] *= inv_sum;
     }
 
     // Sync normalized values back to all lanes
 #pragma unroll
-    for (int i = 0; i < K; i++) {
+    for (int i = 0; i < actual_k; i++) { // Use actual_k for loop bounds
       warp_vals[i] = __shfl_sync(FULL_MASK, warp_vals[i], i % WARP_SIZE);
     }
 
     // Parallel writes - lanes < K write their value
-    if (lane < K) {
-      int64_t *out_indices = top_k_indices + (int64_t)token_idx * K;
-      float *out_weights = top_k_weights + (int64_t)token_idx * K;
+    // Write to global memory (guarded by actual_k)
+    if (lane < actual_k) {
+      int64_t *out_indices = top_k_indices + (int64_t)token_idx * actual_k;
+      float *out_weights = top_k_weights + (int64_t)token_idx * actual_k;
 
       out_weights[lane] = warp_vals[lane];
       out_indices[lane] = (int64_t)warp_idxs[lane];
@@ -811,37 +853,37 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
       topk_gating_kernel_warp<1><<<blocks, threads, 0, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     case 2:
       topk_gating_kernel_warp<2><<<blocks, threads, 0, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     case 4:
       topk_gating_kernel_warp<4><<<blocks, threads, 0, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     case 8:
       topk_gating_kernel_warp<8><<<blocks, threads, 0, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     case 16:
       topk_gating_kernel_warp<16><<<blocks, threads, 0, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     case 32:
       topk_gating_kernel_warp<32><<<blocks, threads, 0, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     default:
       // Fallback to MAX_K for unsupported K values
@@ -849,7 +891,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
       topk_gating_kernel_warp<MAX_K><<<blocks, threads, 0, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
     }
   } else {
     // Vectorized: one block per token
@@ -866,7 +908,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
       topk_gating_kernel_vectorized<1><<<blocks, threads, shared_mem, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     }
     case 2: {
@@ -874,7 +916,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
       topk_gating_kernel_vectorized<2><<<blocks, threads, shared_mem, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     }
     case 4: {
@@ -882,7 +924,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
       topk_gating_kernel_vectorized<4><<<blocks, threads, shared_mem, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     }
     case 8: {
@@ -890,7 +932,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
       topk_gating_kernel_vectorized<8><<<blocks, threads, shared_mem, stream>>>(
           gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
           top_k_weights.data_ptr<float>(), (int)num_tokens, (int)num_experts,
-          inv_temp);
+          inv_temp, (int)k);
       break;
     }
     case 16: {
@@ -899,7 +941,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
           <<<blocks, threads, shared_mem, stream>>>(
               gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
               top_k_weights.data_ptr<float>(), (int)num_tokens,
-              (int)num_experts, inv_temp);
+              (int)num_experts, inv_temp, (int)k);
       break;
     }
     case 32: {
@@ -908,7 +950,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
           <<<blocks, threads, shared_mem, stream>>>(
               gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
               top_k_weights.data_ptr<float>(), (int)num_tokens,
-              (int)num_experts, inv_temp);
+              (int)num_experts, inv_temp, (int)k);
       break;
     }
     default: {
@@ -918,7 +960,7 @@ topk_gating_cuda(torch::Tensor gate_logits, int64_t k, double temperature) {
           <<<blocks, threads, shared_mem, stream>>>(
               gate_logits.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
               top_k_weights.data_ptr<float>(), (int)num_tokens,
-              (int)num_experts, inv_temp);
+              (int)num_experts, inv_temp, (int)k);
     }
     }
   }
