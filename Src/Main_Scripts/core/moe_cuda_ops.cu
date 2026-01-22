@@ -158,7 +158,7 @@ __device__ __forceinline__ void sort_topk(float *vals, int *idxs) {
 template <int K>
 __device__ __forceinline__ void
 warp_topk_tournament(const float *__restrict__ logits, int num_experts,
-                     float *topk_vals, int *topk_idxs, const float inv_temp,
+                     float *topk_vals, int64_t *topk_idxs, const float inv_temp,
                      int actual_k) {
   // Compile-time safety check
   static_assert(K <= MAX_K, "K must be <= MAX_K");
