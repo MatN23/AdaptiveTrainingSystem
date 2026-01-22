@@ -107,20 +107,23 @@ if TRITON_AVAILABLE:
             b_int8 = tl.load(b_ptrs, mask=mask_k[:, None], other=0)
             
             # Dequantize E4M3 -> FP16
+            # Dequantize E4M3 -> FP16
             # A
-            a_sign = (a_int8 & 0x80) << 8
-            a_exp = ((a_int8 >> 3) & 0xF) + 8
-            a_mant = (a_int8 & 0x7) << 7
+            a_uint8 = a_int8.to(tl.uint8)
+            a_sign = (a_uint8 & 0x80) << 8
+            a_exp = ((a_uint8 >> 3) & 0xF) + 8
+            a_mant = (a_uint8 & 0x7) << 7
             a_bits = a_sign | (a_exp << 10) | a_mant
-            a_bits = tl.where((a_int8 & 0x7F) == 0, 0, a_bits)
+            a_bits = tl.where((a_uint8 & 0x7F) == 0, 0, a_bits)
             a_fp16 = a_bits.to(tl.float16, bitcast=True)
             
             # B
-            b_sign = (b_int8 & 0x80) << 8
-            b_exp = ((b_int8 >> 3) & 0xF) + 8
-            b_mant = (b_int8 & 0x7) << 7
+            b_uint8 = b_int8.to(tl.uint8)
+            b_sign = (b_uint8 & 0x80) << 8
+            b_exp = ((b_uint8 >> 3) & 0xF) + 8
+            b_mant = (b_uint8 & 0x7) << 7
             b_bits = b_sign | (b_exp << 10) | b_mant
-            b_bits = tl.where((b_int8 & 0x7F) == 0, 0, b_bits)
+            b_bits = tl.where((b_uint8 & 0x7F) == 0, 0, b_bits)
             b_fp16 = b_bits.to(tl.float16, bitcast=True)
             
             accumulator += tl.dot(a_fp16, b_fp16)

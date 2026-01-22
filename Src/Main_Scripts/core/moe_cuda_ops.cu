@@ -262,7 +262,7 @@ warp_topk_tournament(const float *__restrict__ logits, int num_experts,
 // ============================================================================
 
 template <int K>
-__global__ void __launch_bounds__(256, 8) // High occupancy
+__global__ void __launch_bounds__(256, 4) // Optimized for T4 (1024 threads/SM)
     topk_gating_kernel_warp(const float *__restrict__ gate_logits,
                             int64_t *__restrict__ top_k_indices,
                             float *__restrict__ top_k_weights,
@@ -766,48 +766,34 @@ __global__ void combine_sorted_contributions_optimized(
   const float weight = __ldg(&top_k_weights[token_weight_idx]);
 
   const float *expert_out = expert_outputs + (int64_t)slot_idx * hidden_dim;
-  float *output = combined_output + (int64_t)token_idx * hidden_dim;
+  // Always use atomicAdd to avoid race conditions between blocks handling the
+  // same token. Since we have multiple blocks potentially processing
+  // contributions for the same token concurrently, we cannot safely use direct
+  // writes even for the "first" contribution without a global barrier or
+  // locking, which is expensive. The output tensor is initialized to zero, so
+  // adding is always correct.
 
-  // Check contribution pattern
-  bool is_first =
-      (contrib_idx == 0) || (sorted_tokens[contrib_idx - 1] != token_idx);
-  bool is_last = (contrib_idx == num_contributions - 1) ||
-                 (sorted_tokens[contrib_idx + 1] != token_idx);
-
-  // OPTIMIZATION: Vectorized float4 for non-atomic paths
+  // Vectorized float4 load for bandwidth efficiency
   const int num_vec = hidden_dim / 4;
   const float4 *src_vec = reinterpret_cast<const float4 *>(expert_out);
-  float4 *dst_vec = reinterpret_cast<float4 *>(output);
+  float *dst = combined_output + (int64_t)token_idx * hidden_dim;
 
-  if (is_first && is_last) {
-    // Single contribution - direct write (FASTEST PATH)
-    // OPTIMIZATION: Vectorized float4 write for 4x memory throughput
-    for (int d = tid; d < num_vec; d += blockDim.x) {
-      float4 src = __ldg(&src_vec[d]);
-      dst_vec[d] = make_float4(weight * src.x, weight * src.y, weight * src.z,
-                               weight * src.w);
-    }
-    for (int d = num_vec * 4 + tid; d < hidden_dim; d += blockDim.x) {
-      output[d] = weight * __ldg(&expert_out[d]);
-    }
-  } else if (is_first) {
-    // First of multiple - initialize (no atomic needed)
-    for (int d = tid; d < num_vec; d += blockDim.x) {
-      float4 src = __ldg(&src_vec[d]);
-      dst_vec[d] = make_float4(weight * src.x, weight * src.y, weight * src.z,
-                               weight * src.w);
-    }
-    for (int d = num_vec * 4 + tid; d < hidden_dim; d += blockDim.x) {
-      output[d] = weight * __ldg(&expert_out[d]);
-    }
-  } else {
-    // Subsequent contribution - atomic add required
-    // NOTE: atomicAdd doesn't support float4, so we use scalar atomics
-    // For hidden_dim > 4096, consider shared memory accumulation
-    for (int d = tid; d < hidden_dim; d += blockDim.x) {
-      float val = weight * __ldg(&expert_out[d]);
-      atomicAdd(&output[d], val);
-    }
+  // Process vectorized part
+  for (int d = tid; d < num_vec; d += blockDim.x) {
+    float4 src = __ldg(&src_vec[d]);
+
+    // Atomic add components (float4 atomic add not supported on all archs, use
+    // scalar)
+    atomicAdd(&dst[d * 4], weight * src.x);
+    atomicAdd(&dst[d * 4 + 1], weight * src.y);
+    atomicAdd(&dst[d * 4 + 2], weight * src.z);
+    atomicAdd(&dst[d * 4 + 3], weight * src.w);
+  }
+
+  // Handle remainder
+  for (int d = num_vec * 4 + tid; d < hidden_dim; d += blockDim.x) {
+    float val = weight * __ldg(&expert_out[d]);
+    atomicAdd(&dst[d], val);
   }
 }
 

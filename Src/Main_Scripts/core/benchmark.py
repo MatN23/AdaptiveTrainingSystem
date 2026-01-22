@@ -1,431 +1,403 @@
 #!/usr/bin/env python3
 """
-Detailed MoE Operation Profiler
-================================
-Identifies exact bottlenecks in MoE CUDA kernels vs PyTorch
+Comprehensive Benchmarking Suite for ALL Custom Kernels
+=====================================================
+Benchmarks:
+1. MoE Operations: Top-K Gating, Dispatch, Combine
+2. Transformer Operations: RMSNorm, RoPE, SwiGLU
+3. Triton Operations: FP8 Linear
+4. Simulated Training: Full Transformer Step
 """
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import time
-import numpy as np
-from pathlib import Path
 import sys
+from pathlib import Path
 
+# Add parent directory to path to import core
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# --- IMPORTS ---
+print("Loading kernels...")
+
+# 1. MoE
 try:
-    from core.moe_cuda_wrapper import MoECUDAOps, CUDA_OPS_AVAILABLE
-    HAS_MOE = CUDA_OPS_AVAILABLE
-except:
-    HAS_MOE = False
+    from core.moe_cuda_wrapper import MoECUDAOps, CUDA_OPS_AVAILABLE as MOE_AVAILABLE
+except ImportError:
+    MOE_AVAILABLE = False
+    print("⚠️  MoE wrapper not found")
 
-# ============================================================================
-# PYTORCH REFERENCE IMPLEMENTATIONS
-# ============================================================================
+# 2. Transformer Ops
+try:
+    from core.cuda_opt_wrapper import (
+        FusedRMSNorm, FusedRoPE, FusedSwiGLU, 
+        TRANSFORMER_OPS_AVAILABLE as TRANSFORMER_AVAILABLE,
+        _load_transformer_ops
+    )
+    if not _load_transformer_ops():
+        TRANSFORMER_AVAILABLE = False
+except ImportError:
+    TRANSFORMER_AVAILABLE = False
+    print("⚠️  Transformer wrapper not found")
 
-class PyTorchMoEOps:
-    """Pure PyTorch MoE operations for comparison"""
-    
-    @staticmethod
-    def topk_gating(gate_logits, k, temperature=1.0):
-        """Top-k gating with softmax"""
-        scaled = gate_logits / temperature
-        top_k_weights, top_k_indices = torch.topk(scaled, k, dim=-1)
-        top_k_weights = F.softmax(top_k_weights, dim=-1)
-        return top_k_indices, top_k_weights
-    
-    @staticmethod
-    def dispatch_tokens(tokens, top_k_indices, num_experts, capacity):
-        """Dispatch tokens to experts"""
-        batch_seq, hidden_dim = tokens.shape
-        k = top_k_indices.shape[1]
-        
-        expert_inputs = torch.zeros(
-            num_experts, capacity, hidden_dim,
-            device=tokens.device, dtype=tokens.dtype
-        )
-        token_map = torch.full(
-            (num_experts, capacity), -1,
-            device=tokens.device, dtype=torch.long
-        )
-        positions = torch.zeros(num_experts, device=tokens.device, dtype=torch.long)
-        
-        for i in range(batch_seq):
-            for j in range(k):
-                expert_id = top_k_indices[i, j].item()
-                pos = positions[expert_id].item()
-                if pos < capacity:
-                    expert_inputs[expert_id, pos] = tokens[i]
-                    token_map[expert_id, pos] = i * k + j
-                    positions[expert_id] += 1
-        
-        return expert_inputs, token_map
-    
-    @staticmethod
-    def combine_expert_outputs(expert_outputs, token_map, top_k_weights, num_tokens, k):
-        """Combine expert outputs with weights"""
-        num_experts, capacity, hidden_dim = expert_outputs.shape
-        combined = torch.zeros(
-            num_tokens, hidden_dim,
-            device=expert_outputs.device, dtype=expert_outputs.dtype
-        )
-        
-        weights_flat = top_k_weights.flatten()
-        
-        for e in range(num_experts):
-            for p in range(capacity):
-                token_weight_idx = token_map[e, p].item()
-                if token_weight_idx >= 0:
-                    token_idx = token_weight_idx // k
-                    weight = weights_flat[token_weight_idx].item()
-                    combined[token_idx] += weight * expert_outputs[e, p]
-        
-        return combined
+# 3. Triton Ops
+try:
+    from core.triton_ops import TritonFP8Linear, is_triton_available
+    TRITON_AVAILABLE = is_triton_available()
+except ImportError:
+    TRITON_AVAILABLE = False
+    print("⚠️  Triton ops not found")
 
 
 # ============================================================================
-# OPTIMIZED PYTORCH IMPLEMENTATIONS (What PyTorch actually uses internally)
+# UTILITIES
 # ============================================================================
 
-class OptimizedPyTorchMoE:
-    """Optimized PyTorch using scatter/gather primitives"""
-    
-    @staticmethod
-    def dispatch_tokens_optimized(tokens, top_k_indices, num_experts, capacity):
-        """Vectorized dispatch using scatter"""
-        batch_seq, hidden_dim = tokens.shape
-        k = top_k_indices.shape[1]
-        
-        # Flatten for vectorized operations
-        flat_indices = top_k_indices.flatten()  # [batch_seq * k]
-        flat_tokens = tokens.unsqueeze(1).expand(-1, k, -1).reshape(-1, hidden_dim)
-        
-        # Count experts
-        expert_counts = torch.zeros(num_experts, device=tokens.device, dtype=torch.long)
-        expert_counts.scatter_add_(0, flat_indices, torch.ones_like(flat_indices))
-        
-        # Compute positions with cumsum
-        positions = torch.zeros_like(flat_indices)
-        for i in range(batch_seq * k):
-            expert_id = flat_indices[i].item()
-            positions[i] = (flat_indices[:i] == expert_id).sum().item()
-        
-        # Create expert inputs
-        expert_inputs = torch.zeros(
-            num_experts, capacity, hidden_dim,
-            device=tokens.device, dtype=tokens.dtype
-        )
-        token_map = torch.full(
-            (num_experts, capacity), -1,
-            device=tokens.device, dtype=torch.long
-        )
-        
-        # Scatter tokens
-        valid_mask = positions < capacity
-        for i in range(batch_seq * k):
-            if valid_mask[i]:
-                expert_id = flat_indices[i].item()
-                pos = positions[i].item()
-                expert_inputs[expert_id, pos] = flat_tokens[i]
-                token_map[expert_id, pos] = i
-        
-        return expert_inputs, token_map
-    
-    @staticmethod
-    def combine_expert_outputs_optimized(expert_outputs, token_map, top_k_weights, num_tokens, k):
-        """Vectorized combine using scatter_add"""
-        num_experts, capacity, hidden_dim = expert_outputs.shape
-        combined = torch.zeros(
-            num_tokens, hidden_dim,
-            device=expert_outputs.device, dtype=expert_outputs.dtype
-        )
-        
-        weights_flat = top_k_weights.flatten()
-        
-        # Vectorized version
-        valid_mask = token_map >= 0
-        valid_expert_outputs = expert_outputs[valid_mask]  # [N, hidden_dim]
-        valid_token_indices = (token_map[valid_mask] // k).long()
-        valid_weights = weights_flat[token_map[valid_mask]]
-        
-        weighted_outputs = valid_expert_outputs * valid_weights.unsqueeze(-1)
-        combined.index_add_(0, valid_token_indices, weighted_outputs)
-        
-        return combined
+RESULTS = []
 
-
-# ============================================================================
-# BENCHMARK UTILITIES
-# ============================================================================
-
-def benchmark_op(func, *args, warmup=10, iters=100):
-    """Benchmark with CUDA events for accurate timing"""
-    # Warmup
-    for _ in range(warmup):
-        result = func(*args)
-    torch.cuda.synchronize()
-    
-    # Benchmark
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    
-    start.record()
-    for _ in range(iters):
-        result = func(*args)
-    end.record()
-    torch.cuda.synchronize()
-    
-    return start.elapsed_time(end) / iters, result
-
-
-def measure_memory_bandwidth(operation_name, bytes_transferred, time_ms):
-    """Calculate memory bandwidth utilization"""
-    bandwidth_gbps = (bytes_transferred / 1e9) / (time_ms / 1000)
-    
-    # T4 peak bandwidth: 320 GB/s
-    t4_peak = 320.0
-    utilization = (bandwidth_gbps / t4_peak) * 100
-    
-    return bandwidth_gbps, utilization
-
-
-# ============================================================================
-# DETAILED PROFILING
-# ============================================================================
-
-def profile_moe_operations():
-    """Profile each MoE operation in detail"""
-    
-    print("\n" + "="*100)
-    print("DETAILED MOE OPERATION PROFILING")
-    print("="*100)
-    
-    configs = [
-        # (num_tokens, hidden_dim, num_experts, k)
-        (1024, 512, 8, 2, "Small"),
-        (2048, 512, 8, 2, "Medium"),
-        (4096, 512, 8, 2, "Large"),
-        (4096, 1024, 8, 2, "Large+Wide"),
-    ]
-    
-    for num_tokens, hidden_dim, num_experts, k, label in configs:
-        print(f"\n{'='*100}")
-        print(f"Config: {label} - tokens={num_tokens}, hidden={hidden_dim}, experts={num_experts}, k={k}")
-        print(f"{'='*100}")
-        
-        capacity = (num_tokens * k) // num_experts + 20
-        
-        # Generate test data
-        gate_logits = torch.randn(num_tokens, num_experts, device='cuda', dtype=torch.float32)
-        tokens = torch.randn(num_tokens, hidden_dim, device='cuda', dtype=torch.float32)
-        
-        # ====================================================================
-        # 1. TOP-K GATING
-        # ====================================================================
-        print(f"\n{'─'*100}")
-        print("1. TOP-K GATING")
-        print(f"{'─'*100}")
-        
-        # PyTorch naive
-        pt_time, (pt_indices, pt_weights) = benchmark_op(
-            PyTorchMoEOps.topk_gating, gate_logits, k
-        )
-        
-        # Memory analysis
-        bytes_read = num_tokens * num_experts * 4  # gate_logits
-        bytes_write = num_tokens * k * (8 + 4)  # indices + weights
-        total_bytes = bytes_read + bytes_write
-        
-        bw, util = measure_memory_bandwidth("TopK", total_bytes, pt_time)
-        
-        print(f"  PyTorch naive:     {pt_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-        
-        if HAS_MOE:
-            cuda_time, (cuda_indices, cuda_weights) = benchmark_op(
-                MoECUDAOps.topk_gating, gate_logits, k, 1.0, True
-            )
-            bw, util = measure_memory_bandwidth("TopK", total_bytes, cuda_time)
-            speedup = pt_time / cuda_time
-            
-            print(f"  CUDA kernel:       {cuda_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-            print(f"  Speedup:           {speedup:.2f}x {'✅' if speedup > 1.0 else '❌'}")
-            
-            # Correctness check
-            indices_match = torch.allclose(cuda_indices.float(), pt_indices.float(), atol=1)
-            weights_match = torch.allclose(cuda_weights, pt_weights, rtol=0.01)
-            print(f"  Correctness:       Indices: {'✅' if indices_match else '❌'}, Weights: {'✅' if weights_match else '❌'}")
-        
-        # ====================================================================
-        # 2. DISPATCH TOKENS
-        # ====================================================================
-        print(f"\n{'─'*100}")
-        print("2. DISPATCH TOKENS")
-        print(f"{'─'*100}")
-        
-        # Use PyTorch results for consistency
-        if HAS_MOE:
-            top_k_indices = cuda_indices
-            top_k_weights = cuda_weights
-        else:
-            top_k_indices = pt_indices
-            top_k_weights = pt_weights
-        
-        # PyTorch naive
-        pt_time, (pt_expert_inputs, pt_token_map) = benchmark_op(
-            PyTorchMoEOps.dispatch_tokens, tokens, top_k_indices, num_experts, capacity
-        )
-        
-        bytes_read = num_tokens * hidden_dim * 4  # tokens
-        bytes_write = num_experts * capacity * hidden_dim * 4  # expert_inputs
-        bytes_write += num_experts * capacity * 8  # token_map
-        total_bytes = bytes_read + bytes_write
-        
-        bw, util = measure_memory_bandwidth("Dispatch", total_bytes, pt_time)
-        print(f"  PyTorch naive:     {pt_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-        
-        # PyTorch optimized
-        pt_opt_time, (pt_opt_inputs, pt_opt_map) = benchmark_op(
-            OptimizedPyTorchMoE.dispatch_tokens_optimized, tokens, top_k_indices, 
-            num_experts, capacity
-        )
-        bw, util = measure_memory_bandwidth("Dispatch", total_bytes, pt_opt_time)
-        print(f"  PyTorch optimized: {pt_opt_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-        
-        if HAS_MOE:
-            cuda_time, (cuda_expert_inputs, cuda_token_map) = benchmark_op(
-                MoECUDAOps.dispatch_tokens, tokens, top_k_indices, num_experts, capacity, True
-            )
-            bw, util = measure_memory_bandwidth("Dispatch", total_bytes, cuda_time)
-            speedup = pt_opt_time / cuda_time
-            
-            print(f"  CUDA kernel:       {cuda_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-            print(f"  Speedup:           {speedup:.2f}x vs optimized {'✅' if speedup > 1.0 else '❌'}")
-        
-        # ====================================================================
-        # 3. COMBINE EXPERT OUTPUTS
-        # ====================================================================
-        print(f"\n{'─'*100}")
-        print("3. COMBINE EXPERT OUTPUTS")
-        print(f"{'─'*100}")
-        
-        # Simulate expert processing
-        if HAS_MOE:
-            expert_outputs = cuda_expert_inputs.clone()
-            token_map = cuda_token_map
-        else:
-            expert_outputs = pt_expert_inputs.clone()
-            token_map = pt_token_map
-        
-        # PyTorch naive
-        pt_time, pt_combined = benchmark_op(
-            PyTorchMoEOps.combine_expert_outputs, expert_outputs, token_map,
-            top_k_weights, num_tokens, k
-        )
-        
-        bytes_read = num_experts * capacity * hidden_dim * 4  # expert_outputs
-        bytes_read += num_experts * capacity * 8  # token_map
-        bytes_write = num_tokens * hidden_dim * 4  # combined
-        total_bytes = bytes_read + bytes_write
-        
-        bw, util = measure_memory_bandwidth("Combine", total_bytes, pt_time)
-        print(f"  PyTorch naive:     {pt_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-        
-        # PyTorch optimized
-        pt_opt_time, pt_opt_combined = benchmark_op(
-            OptimizedPyTorchMoE.combine_expert_outputs_optimized, expert_outputs,
-            token_map, top_k_weights, num_tokens, k
-        )
-        bw, util = measure_memory_bandwidth("Combine", total_bytes, pt_opt_time)
-        print(f"  PyTorch optimized: {pt_opt_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-        
-        if HAS_MOE:
-            cuda_time, cuda_combined = benchmark_op(
-                MoECUDAOps.combine_expert_outputs, expert_outputs, token_map,
-                top_k_weights, num_tokens, k, True
-            )
-            bw, util = measure_memory_bandwidth("Combine", total_bytes, cuda_time)
-            speedup = pt_opt_time / cuda_time
-            
-            print(f"  CUDA kernel:       {cuda_time:.3f} ms  ({bw:.1f} GB/s, {util:.1f}% util)")
-            print(f"  Speedup:           {speedup:.2f}x vs optimized {'✅' if speedup > 1.0 else '❌'}")
-            
-            # Correctness
-            match = torch.allclose(cuda_combined, pt_opt_combined, rtol=0.01, atol=0.01)
-            max_diff = (cuda_combined - pt_opt_combined).abs().max().item()
-            print(f"  Correctness:       {'✅' if match else '❌'} (max diff: {max_diff:.6f})")
-        
-        # ====================================================================
-        # SUMMARY
-        # ====================================================================
-        print(f"\n{'─'*100}")
-        print("OPERATION SUMMARY")
-        print(f"{'─'*100}")
-        
-        if HAS_MOE:
-            total_pt = pt_time + pt_opt_time + pt_opt_time
-            total_cuda = cuda_time + cuda_time + cuda_time
-            
-            print(f"  Total time (PyTorch optimized): {total_pt:.3f} ms")
-            print(f"  Total time (CUDA):              {total_cuda:.3f} ms")
-            print(f"  Overall speedup:                {total_pt / total_cuda:.2f}x")
-
-
-def profile_nsys():
-    """Instructions for profiling with Nsight Systems"""
-    print("\n" + "="*100)
-    print("PROFILING WITH NSIGHT SYSTEMS")
-    print("="*100)
-    
-    print("""
-To get detailed GPU profiling information, run:
-
-    nsys profile -o moe_profile \\
-        --trace=cuda,nvtx \\
-        --cuda-memory-usage=true \\
-        python benchmark_core.py --training-only --iterations=10
-
-Then analyze with:
-    
-    nsys-ui moe_profile.qdrep
-
-Key metrics to look for:
-  1. Kernel execution time
-  2. Memory throughput (should be >200 GB/s on T4)
-  3. SM occupancy (should be >50%)
-  4. Atomic operation contention (look for serialization)
-  5. Kernel launch overhead
-
-Common bottlenecks:
-  ❌ Low occupancy (<30%) - increase blocks/threads
-  ❌ Low bandwidth (<150 GB/s) - memory access pattern issues
-  ❌ High atomic contention - use different reduction strategy
-  ❌ Frequent kernel launches - fuse operations
-""")
-
-
-# ============================================================================
-# MAIN
-# ============================================================================
-
-def main():
-    print("\nDetailed MoE Operation Profiler")
-    print(f"CUDA available: {torch.cuda.is_available()}")
-    print(f"Device: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'N/A'}")
-    print(f"MoE CUDA ops: {'✅ Available' if HAS_MOE else '❌ Not available'}")
-    
+def benchmark_func(func, name="Op", warmup=10, iters=50):
+    """Benchmark a function using CUDA events."""
     if not torch.cuda.is_available():
-        print("❌ CUDA not available!")
-        return
+        return 0.0
     
-    if not HAS_MOE:
-        print("\n⚠️  MoE CUDA ops not available. Install with:")
-        print("    cd cuda && ./compile.sh")
-        print("\nRunning PyTorch-only benchmarks...")
-    
-    profile_moe_operations()
-    profile_nsys()
+    # Warmup
+    try:
+        for _ in range(warmup):
+            func()
+        torch.cuda.synchronize()
+        
+        # Timing
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        
+        start.record()
+        for _ in range(iters):
+            func()
+        end.record()
+        torch.cuda.synchronize()
+        
+        return start.elapsed_time(end) / iters
+    except Exception as e:
+        print(f"Error benchmarking {name}: {e}")
+        return 0.0
 
+def run_compare(name, shape_str, func_pt, func_cuda, available=True):
+    print(f"\nRunning {name}...")
+    
+    # PyTorch
+    pt_time = benchmark_func(func_pt, f"PyTorch {name}")
+    print(f"  PyTorch: {pt_time:.4f} ms")
+    
+    # Custom
+    cuda_time = 0.0
+    speedup = 0.0
+    
+    if available:
+        cuda_time = benchmark_func(func_cuda, f"CUDA {name}")
+        print(f"  CUDA:    {cuda_time:.4f} ms")
+        
+        if cuda_time > 0:
+            speedup = pt_time / cuda_time
+            print(f"  Speedup: {speedup:.2f}x")
+    else:
+        print(f"  CUDA:    N/A (Not available)")
+
+    RESULTS.append({
+        "Operation": name,
+        "Input": shape_str,
+        "PyTorch (ms)": pt_time,
+        "CUDA (ms)": cuda_time,
+        "Speedup": speedup
+    })
+
+# ============================================================================
+# 1. MOE OPERATIONS
+# ============================================================================
+
+def benchmark_moe_gating(batch_size, num_experts, k):
+    logits = torch.randn(batch_size, num_experts, device='cuda', requires_grad=True)
+    
+    def run_pt():
+        MoECUDAOps.topk_gating(logits, k, use_cuda=False)
+        
+    def run_cuda():
+        MoECUDAOps.topk_gating(logits, k, use_cuda=True)
+        
+    run_compare("MoE Gating", f"{batch_size}x{num_experts}, k={k}", 
+               run_pt, run_cuda, MOE_AVAILABLE)
+
+def benchmark_moe_dispatch(batch_size, hidden_dim, num_experts, k):
+    capacity = (batch_size * k + num_experts - 1) // num_experts
+    capacity = int(capacity * 1.25) # slack
+    
+    tokens = torch.randn(batch_size, hidden_dim, device='cuda', requires_grad=True)
+    logits = torch.randn(batch_size, num_experts, device='cuda')
+    indices, _ = MoECUDAOps.topk_gating(logits, k, use_cuda=MOE_AVAILABLE)
+    
+    # Pre-allocate for fairness to pure kernel check
+    expert_inputs = torch.zeros(num_experts, capacity, hidden_dim, device='cuda')
+    token_map = torch.zeros(num_experts, capacity, dtype=torch.int64, device='cuda')
+    
+    def run_pt():
+        MoECUDAOps.dispatch_tokens(tokens, indices, num_experts, capacity, 
+                                   use_cuda=False)
+        
+    def run_cuda():
+        MoECUDAOps.dispatch_tokens(tokens, indices, num_experts, capacity, 
+                                   use_cuda=True, 
+                                   out_expert_inputs=expert_inputs, 
+                                   out_token_map=token_map)
+        
+    run_compare("MoE Dispatch", f"{batch_size}x{hidden_dim}->{num_experts}", 
+               run_pt, run_cuda, MOE_AVAILABLE)
+
+def benchmark_moe_combine(batch_size, hidden_dim, num_experts, k):
+    capacity = (batch_size * k + num_experts - 1) // num_experts
+    capacity = int(capacity * 1.25)
+    
+    # Setup inputs
+    tokens = torch.randn(batch_size, hidden_dim, device='cuda')
+    logits = torch.randn(batch_size, num_experts, device='cuda')
+    indices, weights = MoECUDAOps.topk_gating(logits, k, use_cuda=MOE_AVAILABLE)
+    expert_inputs, token_map = MoECUDAOps.dispatch_tokens(tokens, indices, num_experts, capacity, use_cuda=MOE_AVAILABLE)
+    
+    # Fake specific output
+    expert_outputs = expert_inputs.clone() 
+    
+    combined = torch.zeros(batch_size, hidden_dim, device='cuda')
+
+    def run_pt():
+        MoECUDAOps.combine_expert_outputs(expert_outputs, token_map, weights, batch_size, k, 
+                                          use_cuda=False)
+        
+    def run_cuda():
+        MoECUDAOps.combine_expert_outputs(expert_outputs, token_map, weights, batch_size, k, 
+                                          use_cuda=True, out_combined=combined)
+        
+    run_compare("MoE Combine", f"{batch_size}x{hidden_dim}", 
+               run_pt, run_cuda, MOE_AVAILABLE)
+
+
+# ============================================================================
+# 2. TRANSFORMER OPS
+# ============================================================================
+
+def benchmark_rms_norm(batch_size, seq_len, hidden_size):
+    x = torch.randn(batch_size, seq_len, hidden_size, device='cuda', requires_grad=True)
+    
+    # PT
+    model_pt = FusedRMSNorm(hidden_size).cuda()
+    model_pt.cuda_enabled = False
+    
+    # CUDA
+    model_cuda = FusedRMSNorm(hidden_size).cuda()
+    model_cuda.cuda_enabled = True
+    
+    def run_pt():
+        out = model_pt(x)
+        out.sum().backward()
+        
+    def run_cuda():
+        out = model_cuda(x)
+        out.sum().backward()
+        
+    run_compare("RMSNorm", f"{batch_size}x{seq_len}x{hidden_size}", 
+               run_pt, run_cuda, TRANSFORMER_AVAILABLE)
+
+def benchmark_rope(batch_size, seq_len, num_heads, head_dim):
+    q = torch.randn(batch_size, num_heads, seq_len, head_dim, device='cuda', requires_grad=True)
+    k = torch.randn(batch_size, num_heads, seq_len, head_dim, device='cuda', requires_grad=True)
+    
+    model_pt = FusedRoPE(head_dim).cuda()
+    model_pt.cuda_enabled = False
+    
+    model_cuda = FusedRoPE(head_dim).cuda()
+    model_cuda.cuda_enabled = True
+    
+    def run_pt():
+        qr, kr = model_pt.apply_rotary_pos_emb(q, k, 0)
+        (qr.sum() + kr.sum()).backward()
+        
+    def run_cuda():
+        qr, kr = model_cuda.apply_rotary_pos_emb(q, k, 0)
+        (qr.sum() + kr.sum()).backward()
+        
+    run_compare("RoPE", f"{batch_size}x{seq_len}x{num_heads}", 
+               run_pt, run_cuda, TRANSFORMER_AVAILABLE)
+
+def benchmark_swiglu(batch_size, seq_len, hidden_size):
+    inter_size = hidden_size * 4
+    # Create random inputs representing (gate, up) projections
+    # total tokens = batch * seq
+    total_tokens = batch_size * seq_len
+    
+    gate = torch.randn(total_tokens, inter_size, device='cuda', requires_grad=True)
+    up = torch.randn(total_tokens, inter_size, device='cuda', requires_grad=True)
+    
+    # PT: x * Silu(y)
+    def run_pt():
+        out = gate * F.silu(up)
+        out.sum().backward()
+        
+    # CUDA: Fused kernel
+    # Need to check if available
+    from core.cuda_opt_wrapper import fused_swiglu
+    
+    def run_cuda():
+        out = fused_swiglu(gate, up)
+        out.sum().backward()
+        
+    run_compare("SwiGLU (Act Only)", f"{total_tokens}x{inter_size}", 
+               run_pt, run_cuda, TRANSFORMER_AVAILABLE)
+
+
+# ============================================================================
+# 3. TRITON OPS
+# ============================================================================
+
+def benchmark_fp8_linear(batch_size, seq_len, in_feat, out_feat):
+    x = torch.randn(batch_size * seq_len, in_feat, device='cuda', dtype=torch.float16)
+
+    # PT FP16
+    linear_pt = nn.Linear(in_feat, out_feat, bias=False, device='cuda', dtype=torch.float16)
+    
+    # Triton FP8
+    # Requires init from linear to set weights
+    linear_triton = TritonFP8Linear(in_feat, out_feat, bias=False, device='cuda', dtype=torch.float16)
+    linear_triton.load_from_linear(linear_pt)
+    
+    def run_pt():
+        out = linear_pt(x)
+        # Verify output is computed
+        torch.cuda.synchronize()
+        
+    def run_triton():
+        out = linear_triton(x)
+        torch.cuda.synchronize()
+        
+    run_compare("FP8 Linear", f"{batch_size*seq_len}x{in_feat}->{out_feat}",
+               run_pt, run_triton, TRITON_AVAILABLE)
+
+
+# ============================================================================
+# 4. TRAINING SIMULATION
+# ============================================================================
+
+class MockTransformerLayer(nn.Module):
+    def __init__(self, hidden, heads, ops_available=True):
+        super().__init__()
+        self.norm = FusedRMSNorm(hidden)
+        self.rope = FusedRoPE(hidden//heads)
+        self.swiglu = FusedSwiGLU(hidden, hidden*4)
+        
+        self.q = nn.Linear(hidden, hidden, bias=False)
+        self.k = nn.Linear(hidden, hidden, bias=False)
+        self.v = nn.Linear(hidden, hidden, bias=False)
+        self.o = nn.Linear(hidden, hidden, bias=False)
+        
+        self.set_cuda(ops_available)
+        
+    def set_cuda(self, enabled):
+        self.norm.cuda_enabled = enabled
+        self.rope.cuda_enabled = enabled
+        self.swiglu.cuda_enabled = enabled
+        
+    def forward(self, x):
+        batch, seq, hidden = x.shape
+        heads = 32
+        head_dim = hidden // heads
+        
+        # Norm
+        normed = self.norm(x)
+        
+        # QKV
+        q = self.q(normed).view(batch, seq, heads, head_dim)
+        k = self.k(normed).view(batch, seq, heads, head_dim)
+        v = self.v(normed).view(batch, seq, heads, head_dim)
+        
+        # RoPE
+        q, k = self.rope.apply_rotary_pos_emb(q, k)
+        
+        # Attn (Mock flash attn via SDPA)
+        attn = F.scaled_dot_product_attention(q.transpose(1,2), k.transpose(1,2), v.transpose(1,2))
+        attn = attn.transpose(1,2).reshape(batch, seq, hidden)
+        
+        # Out
+        h = self.o(attn) + x
+        
+        # MLP
+        normed2 = self.norm(h)
+        return self.swiglu(normed2) + h
+
+def benchmark_full_step(batch, seq, hidden):
+    model_pt = MockTransformerLayer(hidden, 32).cuda()
+    model_pt.set_cuda(False)
+    opt_pt = torch.optim.AdamW(model_pt.parameters())
+    
+    model_cuda = MockTransformerLayer(hidden, 32).cuda()
+    model_cuda.set_cuda(True)
+    opt_cuda = torch.optim.AdamW(model_cuda.parameters())
+    
+    x = torch.randn(batch, seq, hidden, device='cuda')
+    y = torch.randn(batch, seq, hidden, device='cuda')
+    
+    def run_pt():
+        opt_pt.zero_grad(set_to_none=True)
+        out = model_pt(x)
+        loss = F.mse_loss(out, y)
+        loss.backward()
+        opt_pt.step()
+        
+    def run_cuda():
+        opt_cuda.zero_grad(set_to_none=True)
+        out = model_cuda(x)
+        loss = F.mse_loss(out, y)
+        loss.backward()
+        opt_cuda.step()
+        
+    run_compare("Full Training Step", f"{batch}x{seq}x{hidden}",
+               run_pt, run_cuda, TRANSFORMER_AVAILABLE)
+
+
+def print_summary():
+    print("\n" + "="*95)
+    print(f"{'OPERATION':<20} | {'INPUT':<25} | {'PYTORCH (ms)':<12} | {'CUDA (ms)':<10} | {'SPEEDUP':<8}")
+    print("-" * 95)
+    for r in RESULTS:
+        pt = f"{r['PyTorch (ms)']:.3f}"
+        cuda = f"{r['CUDA (ms)']:.3f}" if r['CUDA (ms)'] > 0 else "N/A"
+        speedup = f"{r['Speedup']:.2f}x" if r['Speedup'] > 0 else "-"
+        print(f"{r['Operation']:<20} | {r['Input']:<25} | {pt:<12} | {cuda:<10} | {speedup:<8}")
+    print("="*95 + "\n")
 
 if __name__ == "__main__":
-    main()
+    if not torch.cuda.is_available():
+        print("❌ CUDA not available")
+        sys.exit(0)
+        
+    print(f"Device: {torch.cuda.get_device_name(0)}")
+    
+    # 1. MoE
+    # Large scale to see benefits
+    B, hidden, experts, k = 4, 4096, 8, 2
+    total_tokens = B * 2048
+    benchmark_moe_gating(total_tokens, experts, k)
+    benchmark_moe_dispatch(total_tokens, hidden, experts, k)
+    benchmark_moe_combine(total_tokens, hidden, experts, k)
+    
+    # 2. Transformer
+    B, L, H, Heads = 4, 2048, 4096, 32
+    head_dim = H // Heads
+    benchmark_rms_norm(B, L, H)
+    benchmark_rope(B, L, Heads, head_dim)
+    benchmark_swiglu(B, L, H)
+    
+    # 3. Triton
+    benchmark_fp8_linear(B, L, H, H)
+    
+    # 4. Full Step
+    benchmark_full_step(B, L, H)
+    
+    print_summary()

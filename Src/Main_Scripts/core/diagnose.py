@@ -12,9 +12,16 @@ import numpy as np
 try:
     import moe_cuda_ops
     HAS_MOE = True
-except:
-    HAS_MOE = False
-    print("❌ MoE ops not available")
+except ImportError:
+    try:
+        print("⚠️  Direct import failed, trying wrapper...")
+        from moe_cuda_wrapper import moe_cuda_ops
+        HAS_MOE = True if moe_cuda_ops is not None else False
+        if HAS_MOE:
+            print("✅ Loaded via wrapper")
+    except Exception as e:
+        HAS_MOE = False
+        print(f"❌ MoE ops not available: {e}")
 
 def benchmark_op(func, *args, name="Operation", warmup=10, iters=100):
     """Benchmark a single operation"""
@@ -220,7 +227,7 @@ def check_correctness():
         print("❌ CUDA ops not available")
         return
     
-    num_tokens = 128
+    num_tokens = 4096
     hidden_dim = 512
     num_experts = 8
     k = 2
@@ -261,7 +268,16 @@ def check_correctness():
     expert_outputs = cuda_inputs.clone()
     combined = moe_cuda_ops.combine_expert_outputs(expert_outputs, cuda_map, 
                                                    cuda_weights, num_tokens, k)
-    print("    ✅ Combine completed")
+    
+    # Calculate PyTorch reference using SAME inputs to isolate Combine correctness
+    # Note: cuda_map needs to be passed, and we need disjoint calculation
+    pt_combined_ref = pytorch_combine(expert_outputs, cuda_map, cuda_weights, num_tokens, k)
+    
+    diff = (combined - pt_combined_ref).abs().max().item()
+    if torch.allclose(combined, pt_combined_ref, atol=1e-4):
+         print(f"    ✅ Combine matched PyTorch (diff: {diff:.6f})")
+    else:
+         print(f"    ❌ Combine mismatch! Max diff: {diff:.6f}")
 
 if __name__ == "__main__":
     print("PyTorch CUDA Profiler")
