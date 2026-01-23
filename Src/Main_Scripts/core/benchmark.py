@@ -42,13 +42,7 @@ except ImportError:
     TRANSFORMER_AVAILABLE = False
     print("⚠️  Transformer wrapper not found")
 
-# 3. Triton Ops
-try:
-    from core.triton_ops import TritonFP8Linear, is_triton_available
-    TRITON_AVAILABLE = is_triton_available()
-except ImportError:
-    TRITON_AVAILABLE = False
-    print("⚠️  Triton ops not found")
+
 
 
 # ============================================================================
@@ -64,7 +58,8 @@ def benchmark_func(func, name="Op", warmup=10, iters=50):
     
     # Warmup
     try:
-        for _ in range(warmup):
+        # Warmup loop (Crucial for JIT-compiled kernels like Triton)
+        for _ in range(max(2, warmup)):
             func()
         torch.cuda.synchronize()
         
@@ -253,32 +248,7 @@ def benchmark_swiglu(batch_size, seq_len, hidden_size):
                run_pt, run_cuda, TRANSFORMER_AVAILABLE)
 
 
-# ============================================================================
-# 3. TRITON OPS
-# ============================================================================
 
-def benchmark_fp8_linear(batch_size, seq_len, in_feat, out_feat):
-    x = torch.randn(batch_size * seq_len, in_feat, device='cuda', dtype=torch.float16)
-
-    # PT FP16
-    linear_pt = nn.Linear(in_feat, out_feat, bias=False, device='cuda', dtype=torch.float16)
-    
-    # Triton FP8
-    # Requires init from linear to set weights
-    linear_triton = TritonFP8Linear(in_feat, out_feat, bias=False, device='cuda', dtype=torch.float16)
-    linear_triton.load_from_linear(linear_pt)
-    
-    def run_pt():
-        out = linear_pt(x)
-        # Verify output is computed
-        torch.cuda.synchronize()
-        
-    def run_triton():
-        out = linear_triton(x)
-        torch.cuda.synchronize()
-        
-    run_compare("FP8 Linear", f"{batch_size*seq_len}x{in_feat}->{out_feat}",
-               run_pt, run_triton, TRITON_AVAILABLE)
 
 
 # ============================================================================
@@ -394,8 +364,7 @@ if __name__ == "__main__":
     benchmark_rope(B, L, Heads, head_dim)
     benchmark_swiglu(B, L, H)
     
-    # 3. Triton
-    benchmark_fp8_linear(B, L, H, H)
+
     
     # 4. Full Step
     benchmark_full_step(B, L, H)

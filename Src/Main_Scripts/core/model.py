@@ -67,13 +67,7 @@ except ImportError:
     HAS_TRANSFORMER_CUDA = False
     logging.info("⚠️  CUDA Transformer ops not available - using PyTorch fallback")
 
-try:
-    import triton
-    import triton.language as tl
-    HAS_TRITON = True
-except ImportError:
-    HAS_TRITON = False
-    logging.debug("Triton not available - some optimizations disabled")
+
 
 try:
     from core.unified_ops import (
