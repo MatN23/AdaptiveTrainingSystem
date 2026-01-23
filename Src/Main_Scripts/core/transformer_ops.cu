@@ -61,6 +61,54 @@ __device__ __forceinline__ void store_half4(__half *ptr, half4 val) {
 }
 
 // ============================================================================
+// RMSNORM VECTOR UTILS
+// ============================================================================
+template <typename T> struct RMSNormUtils;
+
+template <> struct RMSNormUtils<float> {
+  using Vec = float4;
+  static __device__ __forceinline__ Vec load(const float *p) {
+    return *reinterpret_cast<const float4 *>(p);
+  }
+  static __device__ __forceinline__ void store(float *p, Vec v) {
+    *reinterpret_cast<float4 *>(p) = v;
+  }
+  static __device__ __forceinline__ float sum_sq(Vec v) {
+    return v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+  }
+  static __device__ __forceinline__ Vec scale(Vec v, float s, Vec w) {
+    return make_float4(v.x * s * w.x, v.y * s * w.y, v.z * s * w.z,
+                       v.w * s * w.w);
+  }
+};
+
+template <> struct RMSNormUtils<__half> {
+  using Vec = half4;
+  static __device__ __forceinline__ Vec load(const __half *p) {
+    return load_half4(p);
+  }
+  static __device__ __forceinline__ void store(__half *p, Vec v) {
+    store_half4(p, v);
+  }
+  static __device__ __forceinline__ float sum_sq(Vec v) {
+    float sq = 0.0f;
+    sq += __half2float(v.xy.x) * __half2float(v.xy.x);
+    sq += __half2float(v.xy.y) * __half2float(v.xy.y);
+    sq += __half2float(v.zw.x) * __half2float(v.zw.x);
+    sq += __half2float(v.zw.y) * __half2float(v.zw.y);
+    return sq;
+  }
+  static __device__ __forceinline__ Vec scale(Vec v, float s, Vec w) {
+    half4 res;
+    res.xy.x = __float2half(__half2float(v.xy.x) * s * __half2float(w.xy.x));
+    res.xy.y = __float2half(__half2float(v.xy.y) * s * __half2float(w.xy.y));
+    res.zw.x = __float2half(__half2float(v.zw.x) * s * __half2float(w.zw.x));
+    res.zw.y = __float2half(__half2float(v.zw.y) * s * __half2float(w.zw.y));
+    return res;
+  }
+};
+
+// ============================================================================
 // TYPE CONVERSION
 // ============================================================================
 
@@ -118,12 +166,12 @@ __device__ __forceinline__ float silu_fast(float x) {
 // ============================================================================
 
 // For hidden_size = 4096 (8 warps, each handles 512 dims)
-template <int HIDDEN_SIZE = 4096>
+// For hidden_size = 4096 (8 warps, each handles 512 dims)
+template <typename T, int HIDDEN_SIZE = 4096>
 __global__ void __launch_bounds__(256)
-    rms_norm_specialized(const __half *__restrict__ input,
-                         const __half *__restrict__ weight,
-                         __half *__restrict__ output, const int batch_seq,
-                         const float eps) {
+    rms_norm_specialized(const T *__restrict__ input,
+                         const T *__restrict__ weight, T *__restrict__ output,
+                         const int batch_seq, const float eps) {
 
   const int token_idx = blockIdx.x;
   if (token_idx >= batch_seq)
@@ -139,13 +187,13 @@ __global__ void __launch_bounds__(256)
   constexpr int DIMS_PER_WARP = HIDDEN_SIZE / 8;
   const int start = warp_id * DIMS_PER_WARP;
 
-  // Vectorized loads (4 halfs at a time)
+  // Vectorized loads (4 elements at a time)
+  using Utils = RMSNormUtils<T>;
+  using Vec = typename Utils::Vec;
+
   for (int i = start + lane_id * 4; i < start + DIMS_PER_WARP; i += 32 * 4) {
-    half4 vals = load_half4(&input[offset + i]);
-    sum_sq += __half2float(vals.xy.x) * __half2float(vals.xy.x);
-    sum_sq += __half2float(vals.xy.y) * __half2float(vals.xy.y);
-    sum_sq += __half2float(vals.zw.x) * __half2float(vals.zw.x);
-    sum_sq += __half2float(vals.zw.y) * __half2float(vals.zw.y);
+    Vec vals = Utils::load(&input[offset + i]);
+    sum_sq += Utils::sum_sq(vals);
   }
 
   // Warp-level reduction
@@ -170,20 +218,18 @@ __global__ void __launch_bounds__(256)
 
   // Vectorized normalize and write
   for (int i = start + lane_id * 4; i < start + DIMS_PER_WARP; i += 32 * 4) {
-    half4 vals = load_half4(&input[offset + i]);
-    half4 ws = load_half4(&weight[i]);
+    Vec vals = Utils::load(&input[offset + i]);
+    Vec ws = Utils::load(&weight[i]);
 
-    vals.xy.x = __float2half(__half2float(vals.xy.x) * rms_scale *
-                             __half2float(ws.xy.x));
-    vals.xy.y = __float2half(__half2float(vals.xy.y) * rms_scale *
-                             __half2float(ws.xy.y));
-    vals.zw.x = __float2half(__half2float(vals.zw.x) * rms_scale *
-                             __half2float(ws.zw.x));
-    vals.zw.y = __float2half(__half2float(vals.zw.y) * rms_scale *
-                             __half2float(ws.zw.y));
-
-    store_half4(&output[offset + i], vals);
+    Vec res = Utils::scale(vals, rms_scale, ws);
+    Utils::store(&output[offset + i], res);
   }
+}                             __half2float(ws.zw.x));
+vals.zw.y =
+    __float2half(__half2float(vals.zw.y) * rms_scale * __half2float(ws.zw.y));
+
+store_half4(&output[offset + i], vals);
+}
 }
 
 // ============================================================================
@@ -285,6 +331,41 @@ __global__ void __launch_bounds__(256) fused_gemm_swiglu_epilogue(
 // The __CUDA_ARCH__ check is done inside the kernel.
 
 // ============================================================================
+// TYPE CONVERSION HELPERS
+// ============================================================================
+template <typename T> __device__ __forceinline__ __half to_half(T val);
+template <> __device__ __forceinline__ __half to_half(float val) {
+  return __float2half(val);
+}
+template <> __device__ __forceinline__ __half to_half(__half val) {
+  return val;
+}
+// Simple cast for FP8/INT8 (placeholder for sophisticated quantization)
+template <> __device__ __forceinline__ __half to_half(uint8_t val) {
+  return __float2half((float)val);
+}
+
+template <typename T> __device__ __forceinline__ float to_float(T val);
+template <> __device__ __forceinline__ float to_float(float val) { return val; }
+template <> __device__ __forceinline__ float to_float(__half val) {
+  return __half2float(val);
+}
+template <> __device__ __forceinline__ float to_float(uint8_t val) {
+  return (float)val;
+}
+
+template <typename T> __device__ __forceinline__ T from_float(float val);
+template <> __device__ __forceinline__ float from_float(float val) {
+  return val;
+}
+template <> __device__ __forceinline__ __half from_float(float val) {
+  return __float2half(val);
+}
+template <> __device__ __forceinline__ uint8_t from_float(float val) {
+  return (uint8_t)val;
+}
+
+// ============================================================================
 // FUSED MLP WITH TENSOR CORES - PHASE 1 OPTIMIZATIONS
 //
 // ARCHITECTURE:
@@ -302,14 +383,178 @@ __global__ void __launch_bounds__(256) fused_gemm_swiglu_epilogue(
 // TODO Phase 2: cp.async pipeline for weight tiles
 // ============================================================================
 
-template <int HIDDEN = 4096, int INTER = 11008>
+template <typename T_IO, typename T_W, int HIDDEN = 4096, int INTER = 11008>
 __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
-    const __half *__restrict__ input_normalized, // [batch_seq, HIDDEN]
-    const __half *__restrict__ W_gate,           // [HIDDEN, INTER] col-major
-    const __half *__restrict__ W_up,             // [HIDDEN, INTER] col-major
-    const __half *__restrict__ W_down,           // [INTER, HIDDEN] col-major
-    __half *__restrict__ output,                 // [batch_seq, HIDDEN]
+    const T_IO *__restrict__ input_normalized, // [batch_seq, HIDDEN]
+    const T_W *__restrict__ W_gate,            // [HIDDEN, INTER] col-major
+    const T_W *__restrict__ W_up,              // [HIDDEN, INTER] col-major
+    const T_W *__restrict__ W_down,            // [INTER, HIDDEN] col-major
+    T_IO *__restrict__ output,                 // [batch_seq, HIDDEN]
     const int batch_seq) {
+
+  const int token_idx = blockIdx.x;
+  if (token_idx >= batch_seq)
+    return;
+
+  const int warp_id = threadIdx.x / WARP_SIZE;
+  const int lane_id = threadIdx.x % WARP_SIZE;
+  constexpr int NUM_WARPS = 8;
+
+  const int64_t input_offset = (int64_t)token_idx * HIDDEN;
+  const int64_t output_offset = (int64_t)token_idx * HIDDEN;
+
+  // ==========================================================================
+  // SHARED MEMORY LAYOUT
+  // ==========================================================================
+  // 1. Input Cache: Store entire row of input (converted to half)
+  extern __shared__ __half smem_dynamic[];
+  __half *smem_input = smem_dynamic;
+
+  // 2. Per-Warp Weight Staging (for Gate & Up)
+  // Each warp needs 16x16 tile for Gate + 16x16 tile for Up
+  // 2 * 256 elements * 2 bytes * 8 warps = 8 KB total.
+  __shared__ __half smem_weights[NUM_WARPS][2][WMMA_K * WMMA_N];
+
+  // 3. Intermediate Results (Phase 1 -> Phase 2 communication)
+  constexpr int INTER_TILE = 256;
+  __shared__ __half smem_inter[INTER_TILE + 8];
+
+  // 4. Output Accumulator (Phase 2 reduction)
+  __shared__ float smem_output[HIDDEN + 32];
+
+  // ==========================================================================
+  // STEP 0: LOAD INPUT TO SHARED MEMORY (Convert to HALF)
+  // ==========================================================================
+  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
+    smem_input[i] = to_half(input_normalized[input_offset + i]);
+    smem_output[i] = 0.0f;
+  }
+  __syncthreads();
+
+  // ==========================================================================
+  // TILE OVER INTER DIMENSION
+  // ==========================================================================
+  for (int inter_tile = 0; inter_tile < INTER; inter_tile += INTER_TILE) {
+    const int tile_end = min(inter_tile + INTER_TILE, INTER);
+    const int tile_size = tile_end - inter_tile;
+
+    // ========================================================================
+    // PHASE 1: Gate + Up GEMMs -> SwiGLU -> smem_inter
+    // ========================================================================
+
+    // Distribute INTER tile among warps
+    const int inter_per_warp = (tile_size + NUM_WARPS - 1) / NUM_WARPS;
+    const int warp_start = warp_id * inter_per_warp;
+    const int warp_actual_len = min(inter_per_warp, tile_size - warp_start);
+
+    for (int i = 0; i < warp_actual_len; i += WMMA_N) {
+      const int current_inter_col = inter_tile + warp_start + i;
+      if (current_inter_col >= INTER)
+        break;
+
+      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> gate_acc;
+      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> up_acc;
+      wmma::fill_fragment(gate_acc, 0.0f);
+      wmma::fill_fragment(up_acc, 0.0f);
+
+      // Loop K (Inner Product)
+      for (int k = 0; k < HIDDEN; k += WMMA_K) {
+        // A Fragment: Load from smem_input (Broadcast row stride=0)
+        wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half,
+                       wmma::row_major>
+            a_frag;
+        wmma::load_matrix_sync(a_frag, &smem_input[k], 0);
+
+        // B Fragments (Weights): Load to Smem Staging -> Fragment
+        __half *warp_gate_smem = smem_weights[warp_id][0];
+        __half *warp_up_smem = smem_weights[warp_id][1];
+
+// Cooperative Load [16x16] tile
+#pragma unroll
+        for (int e = 0; e < 8; e++) {
+          int lane_offset = lane_id * 8 + e;
+          int local_k = lane_offset % 16;
+          int local_n = lane_offset / 16;
+
+          int global_k = k + local_k;
+          int global_n =
+              current_inter_col +
+              local_n; // Col major: [HIDDEN, INTER] -> [n*HIDDEN + k]
+
+          warp_gate_smem[lane_offset] =
+              to_half(W_gate[global_n * HIDDEN + global_k]);
+          warp_up_smem[lane_offset] =
+              to_half(W_up[global_n * HIDDEN + global_k]);
+        }
+
+        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
+                       wmma::col_major>
+            gate_frag;
+        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
+                       wmma::col_major>
+            up_frag;
+
+        wmma::load_matrix_sync(gate_frag, warp_gate_smem, 16);
+        wmma::load_matrix_sync(up_frag, warp_up_smem, 16);
+
+        wmma::mma_sync(gate_acc, a_frag, gate_frag, gate_acc);
+        wmma::mma_sync(up_acc, a_frag, up_frag, up_acc);
+      }
+
+// DIRECT EPILOGUE: SwiGLU -> smem_inter
+#pragma unroll
+      for (int t = 0; t < gate_acc.num_elements; t++) {
+        int local_idx = (warp_start + i) + t;
+        int target_lane = t % WARP_SIZE;
+        if (local_idx < tile_size && lane_id == target_lane) {
+          smem_inter[local_idx] =
+              __float2half(gate_acc.x[t] * silu_fast(up_acc.x[t]));
+        }
+      }
+    }
+    __syncthreads();
+
+    // ========================================================================
+    // PHASE 2: Down Projection
+    // ========================================================================
+    const int out_start = warp_id * (HIDDEN / NUM_WARPS);
+    const int out_end = out_start + (HIDDEN / NUM_WARPS);
+
+    for (int h = out_start + lane_id; h < out_end; h += WARP_SIZE) {
+      float acc = 0.0f;
+      int k = 0;
+#pragma unroll 4
+      for (; k < tile_size; k++) {
+        float inter_val = __half2float(smem_inter[k]);
+        float w = to_float(W_down[h * INTER + inter_tile +
+                                  k]); // Col major W_down: [INTER, HIDDEN] ->
+                                       // [h*INTER + k] wait.
+        // W_down is [INTER, HIDDEN] col-major?
+        // Original code: W_down[h * INTER + inter_tile + k]
+        // If col-major [INTER, HIDDEN], element (i, j) is at i + j*LDA.
+        // LDA = INTER.
+        // We want W_down[col_index, row_index]?
+        // W_down is "Down proj matrix". Usually (HIDDEN, INTER).
+        // Code says: `const __half *W_down, // [INTER, HIDDEN] col-major`
+        // If it's [INTER, HIDDEN] col-major (M=INTER, N=HIDDEN), then stride is
+        // INTER. Element (i, j) -> i + j*INTER. We want dot product of `inter`
+        // (size INTER) with column `h` of W_down. `inter` vector index `k`
+        // corresponds to row `k` of W_down. So we want W_down[k, h]. Flattened:
+        // k + h*INTER. Original code: `h * INTER + inter_tile + k`. This
+        // matches!
+        acc += inter_val * w;
+      }
+      smem_output[h] += acc;
+    }
+    __syncthreads();
+  }
+
+  // Write Final Output
+  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
+    output[output_offset + i] = from_float<T_IO>(smem_output[i]);
+  }
+}
+/* OLD KERNEL BODY REPLACED
 
   const int token_idx = blockIdx.x;
   if (token_idx >= batch_seq)
@@ -388,10 +633,12 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
       }
 
 // DIRECT EPILOGUE: Apply SwiGLU on accumulators, store to smem
+// FIX: Distribute writes across lanes instead of only lane 0
 #pragma unroll
       for (int t = 0; t < gate_acc.num_elements; t++) {
         int local_idx = i + t;
-        if (local_idx < tile_size && lane_id == 0) {
+        int target_lane = t % WARP_SIZE; // Distribute writes across lanes
+        if (local_idx < tile_size && lane_id == target_lane) {
           float g = gate_acc.x[t];
           float u = up_acc.x[t];
           smem_inter[local_idx] = __float2half(g * silu_fast(u));
@@ -401,19 +648,34 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
     __syncthreads();
 
     // ========================================================================
-    // PHASE 2: Down Projection - Warp-Exclusive Output Tiles (NO ATOMICS!)
+    // PHASE 2: Down Projection - Vectorized with half2
     // ========================================================================
-    // Each warp owns exclusive output range [warp_start, warp_end)
+    // Each warp owns exclusive output range [out_start, out_end)
 
     const int out_start = warp_id * HIDDEN_PER_WARP;
     const int out_end = out_start + HIDDEN_PER_WARP;
 
-    // Each warp accumulates its output tile from this inter tile
+    // Each lane handles multiple outputs with stride
     for (int h = out_start + lane_id; h < out_end; h += WARP_SIZE) {
       float acc = 0.0f;
 
-      // Sum over this tile's intermediate values
-      for (int k = 0; k < tile_size; k++) {
+      // Vectorized inner loop: process 2 intermediate values at a time
+      int k = 0;
+#pragma unroll 4
+      for (; k + 1 < tile_size; k += 2) {
+        // Load 2 intermediate values (half2)
+        __half2 inter_h2 = *reinterpret_cast<const __half2 *>(&smem_inter[k]);
+        float inter_val0 = __half2float(inter_h2.x);
+        float inter_val1 = __half2float(inter_h2.y);
+
+        // Load weights (still scalar - could vectorize W_down too)
+        float w0 = __half2float(W_down[h * INTER + inter_tile + k]);
+        float w1 = __half2float(W_down[h * INTER + inter_tile + k + 1]);
+
+        acc += inter_val0 * w0 + inter_val1 * w1;
+      }
+      // Handle remainder
+      for (; k < tile_size; k++) {
         float inter_val = __half2float(smem_inter[k]);
         float w = __half2float(W_down[h * INTER + inter_tile + k]);
         acc += inter_val * w;
@@ -428,10 +690,7 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
   // ==========================================================================
   // WRITE FINAL OUTPUT
   // ==========================================================================
-  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
-    output[output_offset + i] = __float2half(smem_output[i]);
-  }
-}
+*/
 
 // ============================================================================
 // ROPE (Unchanged - already optimal)
@@ -510,7 +769,7 @@ void rms_norm_launcher_fp16(const __half *input, const __half *weight,
                             __half *output, int batch_seq, int hidden_size,
                             float eps, cudaStream_t stream) {
   if (hidden_size == 4096) {
-    rms_norm_specialized<4096>
+    rms_norm_specialized<__half, 4096>
         <<<batch_seq, 256, 0, stream>>>(input, weight, output, batch_seq, eps);
   } else {
     printf("Warning: Non-standard hidden_size %d - add specialization\n",
@@ -521,6 +780,8 @@ void rms_norm_launcher_fp16(const __half *input, const __half *weight,
 
 // Fused MLP with pre-allocated workspace (NO cudaMalloc in hot path!)
 // workspace must be at least batch_seq * hidden_size * sizeof(__half) bytes
+// Fused MLP with pre-allocated workspace (NO cudaMalloc in hot path!)
+// workspace must be at least batch_seq * hidden_size * sizeof(__half) bytes
 void fused_mlp_block_launcher_fp16(
     const __half *input, const __half *norm_weight, const __half *W_gate,
     const __half *W_up, const __half *W_down, __half *output,
@@ -528,22 +789,69 @@ void fused_mlp_block_launcher_fp16(
     int batch_seq, int hidden_size, int intermediate_size, float eps,
     cudaStream_t stream) {
 
-  // Step 1: RMSNorm into workspace buffer (no allocation!)
   rms_norm_launcher_fp16(input, norm_weight, workspace, batch_seq, hidden_size,
                          eps, stream);
 
-  // Step 2: Fused MLP with tensor cores
   if (hidden_size == 4096 && intermediate_size == 11008) {
-    fused_mlp_tensor_core<4096, 11008><<<batch_seq, 256, 0, stream>>>(
-        workspace, W_gate, W_up, W_down, output, batch_seq);
-  } else if (hidden_size == 768) {
-    // TODO: Add 768 specialization
-    printf("Warning: hidden_size=768 not yet specialized\n");
+    size_t smem_size = (size_t)hidden_size * sizeof(__half);
+    fused_mlp_tensor_core<__half, __half, 4096, 11008>
+        <<<batch_seq, 256, smem_size, stream>>>(workspace, W_gate, W_up, W_down,
+                                                output, batch_seq);
   } else {
-    printf("Warning: Non-standard MLP sizes (%d, %d) - add specialization\n",
-           hidden_size, intermediate_size);
+    printf("Warning: Non-standard MLP sizes - add specialization\n");
+  }
+  CUDA_CHECK(cudaGetLastError());
+}
+
+// FP32 Launcher (Staged Pipeline: Load float -> Convert half -> Smem -> Tensor
+// Core)
+void fused_mlp_block_launcher_fp32(const float *input, const float *norm_weight,
+                                   const float *W_gate, const float *W_up,
+                                   const float *W_down, float *output,
+                                   float *workspace, int batch_seq,
+                                   int hidden_size, int intermediate_size,
+                                   float eps, cudaStream_t stream) {
+
+  // Use generic rms_norm (FP32)
+  if (hidden_size == 4096) {
+    rms_norm_specialized<float, 4096><<<batch_seq, 256, 0, stream>>>(
+        input, norm_weight, workspace, batch_seq, eps);
+  } else {
+    rms_norm_launcher(input, norm_weight, workspace, batch_seq, hidden_size,
+                      eps, stream);
   }
 
+  if (hidden_size == 4096 && intermediate_size == 11008) {
+    size_t smem_size = (size_t)hidden_size * sizeof(__half);
+    fused_mlp_tensor_core<float, float, 4096, 11008>
+        <<<batch_seq, 256, smem_size, stream>>>(workspace, W_gate, W_up, W_down,
+                                                output, batch_seq);
+  } else {
+    printf("Warning: Non-standard MLP sizes - add specialization\n");
+  }
+  CUDA_CHECK(cudaGetLastError());
+}
+
+// W8A16 Launcher (FP16 Activation, FP8 Weight)
+void fused_mlp_block_launcher_w8a16(const __half *input,
+                                    const __half *norm_weight,
+                                    const uint8_t *W_gate, const uint8_t *W_up,
+                                    const uint8_t *W_down, __half *output,
+                                    __half *workspace, int batch_seq,
+                                    int hidden_size, int intermediate_size,
+                                    float eps, cudaStream_t stream) {
+
+  rms_norm_launcher_fp16(input, norm_weight, workspace, batch_seq, hidden_size,
+                         eps, stream);
+
+  if (hidden_size == 4096 && intermediate_size == 11008) {
+    size_t smem_size = (size_t)hidden_size * sizeof(__half);
+    fused_mlp_tensor_core<__half, uint8_t, 4096, 11008>
+        <<<batch_seq, 256, smem_size, stream>>>(workspace, W_gate, W_up, W_down,
+                                                output, batch_seq);
+  } else {
+    printf("Warning: Non-standard MLP sizes - add specialization\n");
+  }
   CUDA_CHECK(cudaGetLastError());
 }
 

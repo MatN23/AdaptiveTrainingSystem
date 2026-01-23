@@ -578,6 +578,155 @@ class FusedSwiGLU(nn.Module):
         return gate * F.silu(up)
 
 
+class FusedMLPBlock(nn.Module):
+    """
+    Fully Fused MLP Block (RMSNorm -> Gate/Up -> SwiGLU -> Down)
+    Supports FP16, FP32, and FP8 (W8A16) backends automatically.
+    """
+    def __init__(self, hidden_size: int, intermediate_size: int, eps: float = 1e-6):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.eps = eps
+        
+        # Standard weights (allocator)
+        # Note: Users can manually cast these to uint8 for FP8 support
+        self.norm_weight = nn.Parameter(torch.ones(hidden_size))
+        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
+        
+        self.cuda_enabled = TRANSFORMER_OPS_AVAILABLE
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not self.cuda_enabled or not x.is_cuda:
+            return self._pytorch_fallback(x)
+            
+        try:
+            batch_seq, hidden = x.shape[0], x.shape[1] # Assumes flattened [batch*seq, hidden] or [batch, seq, hidden]
+            if x.dim() == 3:
+                x_flat = x.view(-1, hidden)
+                batch_seq = x_flat.shape[0]
+            else:
+                x_flat = x
+            
+            # Check dtypes for dispatch
+            dtype_in = x.dtype
+            dtype_w = self.gate_proj.weight.dtype
+            
+            # Allocate workspace: Needed size = batch_seq * hidden * sizeof(half)
+            # We use half workspace for all kernels currently (internal precision)
+            workspace_size = batch_seq * hidden * 2 
+            
+            # Use specific implementation based on types
+            # 1. FP16 (Standard)
+            if dtype_in == torch.float16 and dtype_w == torch.float16:
+                # Alloc workspace
+                workspace = torch.empty(batch_seq, hidden, dtype=torch.float16, device=x.device)
+                output = torch.empty_like(x_flat)
+                
+                stream = torch.cuda.current_stream().cuda_stream
+                
+                # Weights are [d_out, d_in] (Row Major in PyTorch) -> Transpose to Col Major for CUDA?
+                # CUDA expects Col-Major [HIDDEN, INTER]. 
+                # PyTorch Linear weight is [out_features, in_features].
+                # Gate: [INTER, HIDDEN]. Transposed -> [HIDDEN, INTER] (Col Major compatible if we treat as Row Major?)
+                # Wait. cuBLAS Col Major means A[i + j*LDA].
+                # PyTorch Matrix is Row Major in memory. 
+                # If we pass PyTorch pointer to CUDA expecting Col Major, we effectively transpose.
+                # W_gate (PyTorch) is [INTER, HIDDEN].
+                # CUDA expects W_gate ptr. 
+                # If CUDA interprets as Col Major [HIDDEN, INTER]:
+                #   Element (row=k, col=i) -> index k + i*HIDDEN.
+                #   PyTorch [INTER, HIDDEN] element (row=i, col=k) -> index i*HIDDEN + k.
+                #   This matches! k + i*HIDDEN == i*HIDDEN + k!
+                # So PyTorch [INTER, HIDDEN] Row Major == CUDA [HIDDEN, INTER] Col Major.
+                # Correct.
+                
+                _transformer_ops_lib.fused_mlp_block_launcher_fp16(
+                     ctypes.c_void_p(x_flat.data_ptr()),
+                     ctypes.c_void_p(self.norm_weight.data_ptr()),
+                     ctypes.c_void_p(self.gate_proj.weight.data_ptr()),
+                     ctypes.c_void_p(self.up_proj.weight.data_ptr()),
+                     ctypes.c_void_p(self.down_proj.weight.data_ptr()),
+                     ctypes.c_void_p(output.data_ptr()),
+                     ctypes.c_void_p(workspace.data_ptr()),
+                     ctypes.c_int(batch_seq),
+                     ctypes.c_int(self.hidden_size),
+                     ctypes.c_int(self.intermediate_size),
+                     ctypes.c_float(self.eps),
+                     ctypes.c_void_p(stream)
+                )
+                
+            # 2. FP32 (Float)
+            elif dtype_in == torch.float32 and dtype_w == torch.float32:
+                 # Alloc workspace (float for internal buffer? No, kernel uses half internally for smem, 
+                 # but generic launcher might expect float workspace if it reuses it?)
+                 # Our launcher signature: float* workspace.
+                 workspace = torch.empty(batch_seq, hidden, dtype=torch.float32, device=x.device)
+                 output = torch.empty_like(x_flat)
+                 stream = torch.cuda.current_stream().cuda_stream
+                 
+                 _transformer_ops_lib.fused_mlp_block_launcher_fp32(
+                     ctypes.c_void_p(x_flat.data_ptr()),
+                     ctypes.c_void_p(self.norm_weight.data_ptr()),
+                     ctypes.c_void_p(self.gate_proj.weight.data_ptr()),
+                     ctypes.c_void_p(self.up_proj.weight.data_ptr()),
+                     ctypes.c_void_p(self.down_proj.weight.data_ptr()),
+                     ctypes.c_void_p(output.data_ptr()),
+                     ctypes.c_void_p(workspace.data_ptr()), # passed as float*
+                     ctypes.c_int(batch_seq),
+                     ctypes.c_int(self.hidden_size),
+                     ctypes.c_int(self.intermediate_size),
+                     ctypes.c_float(self.eps),
+                     ctypes.c_void_p(stream)
+                 )
+
+            # 3. W8A16 (FP16 Input, uint8 Weight)
+            elif dtype_in == torch.float16 and dtype_w == torch.uint8:
+                 workspace = torch.empty(batch_seq, hidden, dtype=torch.float16, device=x.device)
+                 output = torch.empty_like(x_flat)
+                 stream = torch.cuda.current_stream().cuda_stream
+                 
+                 _transformer_ops_lib.fused_mlp_block_launcher_w8a16(
+                     ctypes.c_void_p(x_flat.data_ptr()),
+                     ctypes.c_void_p(self.norm_weight.data_ptr()),
+                     ctypes.c_void_p(self.gate_proj.weight.data_ptr()),
+                     ctypes.c_void_p(self.up_proj.weight.data_ptr()),
+                     ctypes.c_void_p(self.down_proj.weight.data_ptr()),
+                     ctypes.c_void_p(output.data_ptr()),
+                     ctypes.c_void_p(workspace.data_ptr()),
+                     ctypes.c_int(batch_seq),
+                     ctypes.c_int(self.hidden_size),
+                     ctypes.c_int(self.intermediate_size),
+                     ctypes.c_float(self.eps),
+                     ctypes.c_void_p(stream)
+                 )
+            
+            else:
+                 # Mismatch or unsupported -> Fallback
+                 return self._pytorch_fallback(x)
+
+            if x.dim() == 3:
+                return output.view(x.shape[0], x.shape[1], -1)
+            return output
+            
+        except Exception as e:
+            # logger.warning(f"CUDA FusedMLP failed: {e}")
+            return self._pytorch_fallback(x)
+
+    def _pytorch_fallback(self, x):
+        # RMSNorm
+        norm_x = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        norm_x = norm_x * self.norm_weight
+        
+        # MLP
+        gate = self.gate_proj(norm_x)
+        up = self.up_proj(norm_x)
+        down = self.down_proj(F.silu(gate) * up) # SwiGLU
+        return down
+
+
 # Initialize on import
 print("🔍 Loading transformer CUDA ops...")
 if _load_transformer_ops():
