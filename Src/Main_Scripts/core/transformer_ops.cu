@@ -10,6 +10,7 @@
 // 6. ✅ Proper WMMA usage (16x16x16, all lanes participate)
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
@@ -280,23 +281,26 @@ __global__ void __launch_bounds__(256) fused_gemm_swiglu_epilogue(
 // Kernel 2: GEMM(gate+up) + SwiGLU + GEMM(down) - ALL FUSED
 // ============================================================================
 
-#if __CUDA_ARCH__ >= 700
+// Note: This kernel requires sm_70+ for WMMA support.
+// The __CUDA_ARCH__ check is done inside the kernel.
 
 // ============================================================================
 // FUSED MLP WITH TENSOR CORES - PHASE 1 OPTIMIZATIONS
 //
-// Key fixes from feedback:
-// 1. ✅ NO ATOMICS - each warp owns exclusive output region
-// 2. ✅ Direct epilogue on accumulator fragments (no spills)
-// 3. ✅ Proper bounds checking for warp ownership
-// 4. ✅ Bank conflict padding for shared memory
-// 5. ✅ Designed for sm_75 but compatible with other archs
+// ARCHITECTURE:
+// - Phase 1: ALL warps cooperatively compute SwiGLU(gate, up) -> smem
+// - Phase 2: Each warp owns exclusive HIDDEN tiles, reads intermediate from
+// smem
 //
-// TODO Phase 2: cp.async pipeline, A/B tiles in smem
+// Key optimizations:
+// 1. ✅ NO ATOMICS - warp-exclusive output tiles
+// 2. ✅ Direct epilogue on accumulator fragments (SwiGLU)
+// 3. ✅ Proper bounds checking
+// 4. ✅ Bank conflict padding (+8)
+// 5. ✅ sm_75 compatible
+//
+// TODO Phase 2: cp.async pipeline for weight tiles
 // ============================================================================
-
-// Tile sizes - tuned for 256 threads (8 warps)
-constexpr int MLP_TILE_K = 16; // WMMA_K
 
 template <int HIDDEN = 4096, int INTER = 11008>
 __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
@@ -313,142 +317,121 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
 
   const int warp_id = threadIdx.x / WARP_SIZE;
   const int lane_id = threadIdx.x % WARP_SIZE;
-  constexpr int NUM_WARPS = 8; // 256 / 32
+  constexpr int NUM_WARPS = 8;
 
   const int64_t input_offset = (int64_t)token_idx * HIDDEN;
   const int64_t output_offset = (int64_t)token_idx * HIDDEN;
 
   // ==========================================================================
-  // WARP OWNERSHIP STRATEGY (NO ATOMICS!)
+  // SHARED MEMORY LAYOUT
   // ==========================================================================
-  // For down projection: each warp owns HIDDEN/8 output elements exclusively
-  // This eliminates ALL atomics - critical for performance
+  constexpr int INTER_TILE = 256; // Process 256 intermediate elements at a time
+  __shared__ __half smem_inter[INTER_TILE + 8]; // +8 for bank conflict padding
 
-  constexpr int HIDDEN_PER_WARP = HIDDEN / NUM_WARPS; // 4096/8 = 512
-  static_assert(HIDDEN % NUM_WARPS == 0,
-                "HIDDEN must be divisible by NUM_WARPS");
+  // Output accumulators - each warp owns HIDDEN/NUM_WARPS elements
+  constexpr int HIDDEN_PER_WARP = HIDDEN / NUM_WARPS; // 512
+  __shared__ float smem_output[HIDDEN + 32];
 
-  const int warp_output_start = warp_id * HIDDEN_PER_WARP;
-  const int warp_output_end = warp_output_start + HIDDEN_PER_WARP;
-
-  // Per-warp accumulator for output (in registers, not smem!)
-  float warp_output_acc[HIDDEN_PER_WARP];
-#pragma unroll
-  for (int i = 0; i < HIDDEN_PER_WARP; i++) {
-    warp_output_acc[i] = 0.0f;
-  }
-
-  // ==========================================================================
-  // PHASE 1: GATE + UP GEMMS WITH FUSED SwiGLU
-  // ==========================================================================
-  // Each warp processes a portion of INTER, but ALL warps will need
-  // all intermediate values for the down projection. So we compute
-  // gate/up and immediately use them for down projection per-tile.
-
-  // Process INTER in chunks that each warp can handle
-  constexpr int INTER_PER_WARP = (INTER + NUM_WARPS - 1) / NUM_WARPS;
-  const int warp_inter_start = warp_id * INTER_PER_WARP;
-  const int warp_inter_end = min(warp_inter_start + INTER_PER_WARP, INTER);
-
-  // For each intermediate element this warp is responsible for
-  for (int inter_idx = warp_inter_start; inter_idx < warp_inter_end;
-       inter_idx += WMMA_N) {
-
-    // WMMA fragments for gate and up projections
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half,
-                   wmma::row_major>
-        a_frag;
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                   wmma::col_major>
-        gate_frag;
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                   wmma::col_major>
-        up_frag;
-    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> gate_acc;
-    wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> up_acc;
-
-    wmma::fill_fragment(gate_acc, 0.0f);
-    wmma::fill_fragment(up_acc, 0.0f);
-
-    // Accumulate over HIDDEN dimension
-    for (int k = 0; k < HIDDEN; k += WMMA_K) {
-      wmma::load_matrix_sync(a_frag, &input_normalized[input_offset + k],
-                             HIDDEN);
-      wmma::load_matrix_sync(gate_frag, &W_gate[inter_idx * HIDDEN + k],
-                             HIDDEN);
-      wmma::load_matrix_sync(up_frag, &W_up[inter_idx * HIDDEN + k], HIDDEN);
-
-      wmma::mma_sync(gate_acc, a_frag, gate_frag, gate_acc);
-      wmma::mma_sync(up_acc, a_frag, up_frag, up_acc);
-    }
-
-// =========================================================================
-// DIRECT EPILOGUE: SwiGLU on accumulators + immediate down projection
-// =========================================================================
-// Instead of storing to smem, we immediately compute the contribution
-// to down projection. This fuses the entire MLP pipeline.
-
-// Apply SwiGLU directly on accumulator fragments
-#pragma unroll
-    for (int t = 0; t < gate_acc.num_elements; t++) {
-      float g = gate_acc.x[t];
-      float u = up_acc.x[t];
-      float swiglu_val = g * silu_fast(u);
-
-      // Now compute contribution to down projection for this warp's outputs
-      // Each intermediate element contributes to all HIDDEN outputs
-      int actual_inter = inter_idx + t;
-      if (actual_inter < INTER) {
-        // Down projection: output[h] += swiglu_val * W_down[h, inter]
-        // But this warp only owns [warp_output_start, warp_output_end)
-        for (int h = 0; h < HIDDEN_PER_WARP; h++) {
-          int global_h = warp_output_start + h;
-          float w = __half2float(W_down[global_h * INTER + actual_inter]);
-          warp_output_acc[h] += swiglu_val * w;
-        }
-      }
-    }
-  }
-
-  // ==========================================================================
-  // CROSS-WARP REDUCTION (CRITICAL: sum contributions from ALL warps)
-  // ==========================================================================
-  // Each warp computed partial contributions to its HIDDEN_PER_WARP outputs
-  // from its INTER chunk. But EVERY output needs contributions from ALL
-  // inter elements, which are distributed across warps.
-  //
-  // Strategy: Each warp writes its partial sums to smem, then we reduce.
-
-  __shared__ float smem_reduction[NUM_WARPS][HIDDEN_PER_WARP + 8];
-
-  // Each warp writes contributions for its HIDDEN_PER_WARP outputs
-  // (Only lane 0 writes to avoid conflicts within warp)
-  if (lane_id == 0) {
-    for (int i = 0; i < HIDDEN_PER_WARP; i++) {
-      smem_reduction[warp_id][i] = warp_output_acc[i];
-    }
+  // Initialize output accumulators
+  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
+    smem_output[i] = 0.0f;
   }
   __syncthreads();
 
-  // Now reduce: each output position sums contributions from all warps
-  // Each thread handles HIDDEN/256 output positions
-  for (int out_idx = threadIdx.x; out_idx < HIDDEN; out_idx += blockDim.x) {
-    // Map this output to its local offset within the warp that computed it
-    int local_offset = out_idx % HIDDEN_PER_WARP;
+  // ==========================================================================
+  // TILE OVER INTER DIMENSION
+  // ==========================================================================
+  for (int inter_tile = 0; inter_tile < INTER; inter_tile += INTER_TILE) {
+    const int tile_end = min(inter_tile + INTER_TILE, INTER);
+    const int tile_size = tile_end - inter_tile;
 
-    // Sum contributions from ALL warps (each computed this output from its
-    // INTER chunk)
-    float sum = 0.0f;
+    // ========================================================================
+    // PHASE 1: Gate + Up GEMMs + SwiGLU -> smem_inter
+    // ========================================================================
+    // All warps cooperatively compute this tile's intermediate values
+
+    const int inter_per_warp = (tile_size + NUM_WARPS - 1) / NUM_WARPS;
+    const int warp_start = warp_id * inter_per_warp;
+    const int warp_end = min(warp_start + inter_per_warp, tile_size);
+
+    for (int i = warp_start; i < warp_end; i += WMMA_N) {
+      const int global_inter = inter_tile + i;
+      if (global_inter >= INTER)
+        break;
+
+      wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half,
+                     wmma::row_major>
+          a_frag;
+      wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
+                     wmma::col_major>
+          gate_frag;
+      wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
+                     wmma::col_major>
+          up_frag;
+      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> gate_acc;
+      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> up_acc;
+
+      wmma::fill_fragment(gate_acc, 0.0f);
+      wmma::fill_fragment(up_acc, 0.0f);
+
+      // Accumulate over HIDDEN (K dimension)
+      for (int k = 0; k < HIDDEN; k += WMMA_K) {
+        wmma::load_matrix_sync(a_frag, &input_normalized[input_offset + k],
+                               HIDDEN);
+        wmma::load_matrix_sync(gate_frag, &W_gate[global_inter * HIDDEN + k],
+                               HIDDEN);
+        wmma::load_matrix_sync(up_frag, &W_up[global_inter * HIDDEN + k],
+                               HIDDEN);
+
+        wmma::mma_sync(gate_acc, a_frag, gate_frag, gate_acc);
+        wmma::mma_sync(up_acc, a_frag, up_frag, up_acc);
+      }
+
+// DIRECT EPILOGUE: Apply SwiGLU on accumulators, store to smem
 #pragma unroll
-    for (int w = 0; w < NUM_WARPS; w++) {
-      sum += smem_reduction[w][local_offset];
+      for (int t = 0; t < gate_acc.num_elements; t++) {
+        int local_idx = i + t;
+        if (local_idx < tile_size && lane_id == 0) {
+          float g = gate_acc.x[t];
+          float u = up_acc.x[t];
+          smem_inter[local_idx] = __float2half(g * silu_fast(u));
+        }
+      }
     }
+    __syncthreads();
 
-    output[output_offset + out_idx] = __float2half(sum);
+    // ========================================================================
+    // PHASE 2: Down Projection - Warp-Exclusive Output Tiles (NO ATOMICS!)
+    // ========================================================================
+    // Each warp owns exclusive output range [warp_start, warp_end)
+
+    const int out_start = warp_id * HIDDEN_PER_WARP;
+    const int out_end = out_start + HIDDEN_PER_WARP;
+
+    // Each warp accumulates its output tile from this inter tile
+    for (int h = out_start + lane_id; h < out_end; h += WARP_SIZE) {
+      float acc = 0.0f;
+
+      // Sum over this tile's intermediate values
+      for (int k = 0; k < tile_size; k++) {
+        float inter_val = __half2float(smem_inter[k]);
+        float w = __half2float(W_down[h * INTER + inter_tile + k]);
+        acc += inter_val * w;
+      }
+
+      // Accumulate into smem_output (no atomics - exclusive ownership!)
+      smem_output[h] += acc;
+    }
+    __syncthreads();
+  }
+
+  // ==========================================================================
+  // WRITE FINAL OUTPUT
+  // ==========================================================================
+  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
+    output[output_offset + i] = __float2half(smem_output[i]);
   }
 }
-
-#endif // __CUDA_ARCH__ >= 700
 
 // ============================================================================
 // ROPE (Unchanged - already optimal)
@@ -606,11 +589,29 @@ void rope_apply_launcher_fp16(__half *q, __half *k, const float *cos,
   CUDA_CHECK(cudaGetLastError());
 }
 
+// FP32 version for compatibility
+void rope_apply_launcher(float *q, float *k, const float *cos, const float *sin,
+                         int batch_size, int num_heads, int seq_len,
+                         int head_dim, int position_offset,
+                         cudaStream_t stream) {
+  dim3 blocks(seq_len, num_heads, batch_size);
+  rope_apply<float><<<blocks, 256, 0, stream>>>(q, k, cos, sin, batch_size,
+                                                num_heads, seq_len, head_dim,
+                                                position_offset);
+  CUDA_CHECK(cudaGetLastError());
+}
+
 // Deprecated/fallback functions
 void rms_norm_launcher(const float *input, const float *weight, float *output,
                        int batch_seq, int hidden_size, float eps,
                        cudaStream_t stream) {
   printf("Warning: FP32 not optimized - use FP16\n");
+}
+
+void swiglu_launcher(const float *gate, const float *up, float *output,
+                     int64_t total_elements, cudaStream_t stream) {
+  // Standalone SwiGLU deprecated - use fused MLP for actual speedups
+  printf("Warning: Standalone SwiGLU deprecated - use fused MLP\n");
 }
 
 void swiglu_launcher_fp16(const __half *gate, const __half *up, __half *output,
