@@ -445,14 +445,45 @@ template <typename T> __device__ T *align_ptr(void *ptr, int align_bytes = 16) {
   return (T *)aligned;
 }
 
+// ============================================================================
+// FUSED MLP WITH RMSNORM + TENSOR CORES (The "Deep Fusion" Kernel)
+//
+// Operations:
+// 1. Load Input (FP16/FP32) -> SMEM
+// 2. Compute RMSNorm (Warp Reduction) -> Normalize in SMEM
+// 3. GEMM 1: Gate & Up Projections (Fused)
+// 4. SwiGLU Activation
+// 5. GEMM 2: Down Projection
+//
+// Improvements:
+// - Vectorized loads (128-bit)
+// - Fused RMSNorm (No separate kernel, no global read/write)
+// - Warp-level reductions (No atomics)
+// ============================================================================
+
+// Vectorized load helper for 128-bit (16 bytes)
+// Corresponds to int4 or float4
+__device__ __forceinline__ void load_128bit(const void *src, void *dst) {
+  *reinterpret_cast<int4 *>(dst) = *reinterpret_cast<const int4 *>(src);
+}
+
+// Memory alignment helper
+template <typename T> __device__ T *align_ptr(void *ptr, int align_bytes = 16) {
+  uintptr_t addr = (uintptr_t)ptr;
+  uintptr_t aligned = (addr + align_bytes - 1) & ~(align_bytes - 1);
+  return (T *)aligned;
+}
+
 template <typename T_IO, typename T_W>
-__global__ void __launch_bounds__(256) fused_mlp_tensor_core(
-    const T_IO *__restrict__ input_normalized, // [batch_seq, HIDDEN]
-    const T_W *__restrict__ W_gate,            // [HIDDEN, INTER] col-major
-    const T_W *__restrict__ W_up,              // [HIDDEN, INTER] col-major
-    const T_W *__restrict__ W_down,            // [INTER, HIDDEN] col-major
-    T_IO *__restrict__ output,                 // [batch_seq, HIDDEN]
-    const int batch_seq, const int HIDDEN, const int INTER) {
+__global__ void __launch_bounds__(256) fused_mlp_norm_gemm(
+    const T_IO *__restrict__ input,       // [batch_seq, HIDDEN] (Un-normalized)
+    const T_IO *__restrict__ norm_weight, // [HIDDEN]
+    const T_W *__restrict__ W_gate,       // [HIDDEN, INTER] col-major
+    const T_W *__restrict__ W_up,         // [HIDDEN, INTER] col-major
+    const T_W *__restrict__ W_down,       // [INTER, HIDDEN] col-major
+    T_IO *__restrict__ output,            // [batch_seq, HIDDEN]
+    void *__restrict__ workspace, // Scratchpad (unused for now, optional stash)
+    const int batch_seq, const int HIDDEN, const int INTER, const float eps) {
 
   const int token_idx = blockIdx.x;
   if (token_idx >= batch_seq)
@@ -466,50 +497,143 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
   const int64_t output_offset = (int64_t)token_idx * HIDDEN;
 
   // ==========================================================================
-  // SHARED MEMORY LAYOUT (Dynamic)
+  // SHARED MEMORY LAYOUT
   // ==========================================================================
-  // Layout: [Input (Half): HIDDEN] | [Padding] | [Output (Float): HIDDEN]
-  // NOTE: smem_weights and smem_inter are Static Shared Memory
-
   extern __shared__ char smem_dyn_base[];
   __half *smem_input = (__half *)smem_dyn_base;
-  // Offset output buffer properly (align to 16 bytes)
+  // Overlay output buffer since we don't need input after GEMM 1 is done?
+  // careful: we read smem_input during GEMM 1.
+  // We write smem_output during GEMM 2.
+  // We can reuse smem_input space IF GEMM 1 is fully complete, but we tile
+  // GEMM 1. Actually, GEMM 1 consumes smem_input to produce smem_inter. GEMM 2
+  // consumes smem_inter to produce smem_output. We can overlap
+  // swiglu/intermediate if we are careful, but let's keep it simple + safe
+  // first.
+
+  // Align smem pointers
   float *smem_output = align_ptr<float>(smem_input + HIDDEN);
 
-  // Static shared memory (Separate bank?)
+  // Static shared memory for weights (Separate bank?)
   __shared__ __half smem_weights[NUM_WARPS][2][WMMA_K * WMMA_N];
   constexpr int INTER_TILE = 256;
   __shared__ __half smem_inter[INTER_TILE + 8];
 
   // ==========================================================================
-  // STEP 0: LOAD INPUT TO SHARED MEMORY (Convert to HALF)
+  // STAGE 1: LOAD INPUT & NORM WEIGHTS -> SMEM (Vectorized)
   // ==========================================================================
-  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
-    smem_input[i] = to_half(input_normalized[input_offset + i]);
-    smem_output[i] = 0.0f;
+  // We load 8 halfs (128 bits) per thread if possible
+  // HIDDEN must be divisible by 8 for pure vectorization, else scalar tail.
+  // T_IO is likely half or float.
+
+  // Compute Variance (Sum of Squares) on the fly during load?
+  // Better to load first, then reduce. decoupling memory from ALU.
+
+  float local_sum_sq = 0.0f;
+
+  for (int i = threadIdx.x * 8; i < HIDDEN; i += blockDim.x * 8) {
+    // Vectorized Load (128-bit)
+    // Check bounds for full vector
+    if (i + 7 < HIDDEN) {
+      int4 loaded_vec; // 16 bytes = 8 x fp16
+      load_128bit(&input[input_offset + i], &loaded_vec);
+      __half *h_ptr = reinterpret_cast<__half *>(&loaded_vec);
+
+      // Store to SMEM
+      *reinterpret_cast<int4 *>(&smem_input[i]) = loaded_vec;
+
+// Accumulate SumSq
+#pragma unroll
+      for (int k = 0; k < 8; k++) {
+        float val = __half2float(h_ptr[k]);
+        local_sum_sq += val * val;
+      }
+    } else {
+      // Scalar Tail Fallback
+      for (int k = 0; k < 8 && (i + k) < HIDDEN; k++) {
+        __half val = input[input_offset + i + k];
+        smem_input[i + k] = val;
+        float fval = __half2float(val);
+        local_sum_sq += fval * fval;
+      }
+    }
   }
-  __syncthreads();
 
   // ==========================================================================
-  // TILE OVER INTER DIMENSION
+  // STAGE 2: REDUCE VARIANCE (Warp -> Block)
   // ==========================================================================
+  local_sum_sq = warp_reduce_sum(local_sum_sq);
+
+  __shared__ float s_warps[NUM_WARPS];
+  if (lane_id == 0)
+    s_warps[warp_id] = local_sum_sq;
+  __syncthreads();
+
+  float rstd = 0.0f;
+  if (warp_id == 0) {
+    float block_sum = (lane_id < NUM_WARPS) ? s_warps[lane_id] : 0.0f;
+    block_sum = warp_reduce_sum(block_sum);
+    if (lane_id == 0) {
+      rstd = rsqrtf(block_sum / float(HIDDEN) + eps);
+      s_warps[0] = rstd; // Broadcast via smem
+    }
+  }
+  __syncthreads();
+  rstd = s_warps[0];
+
+  // ==========================================================================
+  // STAGE 3: NORMALIZE IN SMEM (Vectors)
+  // ==========================================================================
+  for (int i = threadIdx.x * 8; i < HIDDEN; i += blockDim.x * 8) {
+    if (i + 7 < HIDDEN) {
+      // Load Norm Weights (Global -> Reg)
+      int4 w_vec;
+      load_128bit(&norm_weight[i], &w_vec);
+      __half *w_ptr = reinterpret_cast<__half *>(&w_vec);
+
+      // Load Input from SMEM
+      int4 inp_vec = *reinterpret_cast<int4 *>(&smem_input[i]);
+      __half *inp_ptr = reinterpret_cast<__half *>(&inp_vec);
+
+// Normalize
+#pragma unroll
+      for (int k = 0; k < 8; k++) {
+        float val = __half2float(inp_ptr[k]);
+        float w = __half2float(w_ptr[k]);
+        inp_ptr[k] = __float2half(val * rstd * w);
+      }
+
+      // Store back to SMEM
+      *reinterpret_cast<int4 *>(&smem_input[i]) = inp_vec;
+    } else {
+      // Tail
+      for (int k = 0; k < 8 && (i + k) < HIDDEN; k++) {
+        float val = __half2float(smem_input[i + k]);
+        float w = __half2float(norm_weight[i + k]);
+        smem_input[i + k] = __float2half(val * rstd * w);
+      }
+    }
+  }
+  __syncthreads();
+  // FENCE: Input is now normalized in SMEM. Ready for GEMM.
+
+  // ==========================================================================
+  // STAGE 4: GEMM 1 (Gate + Up) -> SwiGLU -> SMEM Inter
+  // ==========================================================================
+
+  // Reuse existing GEMM logic... [Optimized for read from SMEM input]
+
   for (int inter_tile = 0; inter_tile < INTER; inter_tile += INTER_TILE) {
     const int tile_end = min(inter_tile + INTER_TILE, INTER);
     const int tile_size = tile_end - inter_tile;
 
-    // ========================================================================
-    // PHASE 1: Gate + Up GEMMs -> SwiGLU -> smem_inter
-    // ========================================================================
     const int inter_per_warp = (tile_size + NUM_WARPS - 1) / NUM_WARPS;
     const int warp_start = warp_id * inter_per_warp;
-    // Bounds check
     const int warp_actual_len =
         (warp_start < tile_size) ? min(inter_per_warp, tile_size - warp_start)
                                  : 0;
 
     for (int i = 0; i < warp_actual_len; i += WMMA_N) {
       const int current_inter_col = inter_tile + warp_start + i;
-      // Safety check (should be covered by loop bound but good for edges)
       if (current_inter_col >= INTER)
         break;
 
@@ -518,23 +642,23 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
       wmma::fill_fragment(gate_acc, 0.0f);
       wmma::fill_fragment(up_acc, 0.0f);
 
-      // Loop K (Inner Product)
       for (int k = 0; k < HIDDEN; k += WMMA_K) {
-        // A Fragment: Load from smem_input
+        // A Fragment: Load from smem_input (Now Normalized!)
         wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half,
                        wmma::row_major>
             a_frag;
+        wmma::load_matrix_sync(a_frag, &smem_input[k], 0); // Stride 0 broadcast
 
-        // Handle K-remainder edge case? WMMA requires full tiles.
-        // Requirement: HIDDEN % 16 == 0.
-        wmma::load_matrix_sync(a_frag, &smem_input[k],
-                               0); // Stride 0 for broadcast
+        // B Fragments (Weights) - Load from Global to SMEM then Msg?
+        // Or keep existing staged load Logic?
+        // Existing logic loads directly from global to smem_weights in a tiled
+        // way inside the loop. Let's keep existing weight loading logic for
+        // safety/correctness first.
 
-        // B Fragments (Weights)
         __half *warp_gate_smem = smem_weights[warp_id][0];
         __half *warp_up_smem = smem_weights[warp_id][1];
 
-// Cooperative Load [16x16] tile
+// Cooperative Load Weights
 #pragma unroll
         for (int e = 0; e < 8; e++) {
           int lane_offset = lane_id * 8 + e;
@@ -554,33 +678,33 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
           }
         }
 
+        // TODO: cp.async could go here for NEXT tile.
+
         wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
                        wmma::col_major>
             gate_frag;
         wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
                        wmma::col_major>
             up_frag;
+
         wmma::load_matrix_sync(gate_frag, warp_gate_smem, 16);
         wmma::load_matrix_sync(up_frag, warp_up_smem, 16);
+
         wmma::mma_sync(gate_acc, a_frag, gate_frag, gate_acc);
         wmma::mma_sync(up_acc, a_frag, up_frag, up_acc);
       }
 
-      // EPILOGUE: SwiGLU -> smem_inter
-      // Store accumulators (float) to register file (float array)
+      // SwiGLU Epilogue
       float gate_vals[WMMA_M * WMMA_N];
       float up_vals[WMMA_M * WMMA_N];
-
       wmma::store_matrix_sync(gate_vals, gate_acc, WMMA_N, wmma::mem_row_major);
       wmma::store_matrix_sync(up_vals, up_acc, WMMA_N, wmma::mem_row_major);
 
 #pragma unroll
       for (int t = 0; t < WMMA_N; t++) {
-        // We only care about the first row (since all rows of A were identical)
         if (current_inter_col + t < INTER) {
           float g = gate_vals[t];
           float u = up_vals[t];
-          // Store to shared memory
           smem_inter[warp_start + i + t] = __float2half(g * silu_fast(u));
         }
       }
@@ -588,7 +712,7 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
     __syncthreads();
 
     // ========================================================================
-    // PHASE 2: Down Projection
+    // GEMM 2: Down Projection
     // ========================================================================
     const int out_chunk_size = (HIDDEN + NUM_WARPS - 1) / NUM_WARPS;
     const int out_start = warp_id * out_chunk_size;
@@ -596,8 +720,16 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
 
     for (int h = out_start + lane_id; h < out_end; h += WARP_SIZE) {
       float acc = 0.0f;
+      // Initialize if first tile, else accumulate
+      if (inter_tile == 0)
+        smem_output[h] = 0.0f;
+      else
+        acc = smem_output[h]; // This read might be redundant if we just += to
+                              // smem directly?
+      // Wait, smem_output is accumulated across tiles.
+      // Correct: We accumulate partial results from each inter_tile chunk.
+
       int k = 0;
-// Unroll
 #pragma unroll 4
       for (; k + 1 < tile_size; k += 2) {
         __half2 inter_h2 = *reinterpret_cast<const __half2 *>(&smem_inter[k]);
@@ -608,20 +740,45 @@ __global__ void __launch_bounds__(256) fused_mlp_tensor_core(
         acc += iv0 * w0 + iv1 * w1;
       }
       for (; k < tile_size; k++) {
-        float iv = __half2float(smem_inter[k]);
-        float w = to_float(W_down[h * INTER + inter_tile + k]);
-        acc += iv * w;
+        acc += __half2float(smem_inter[k]) *
+               to_float(W_down[h * INTER + inter_tile + k]);
       }
-      smem_output[h] += acc;
+      smem_output[h] = acc; // Update accumulator
     }
     __syncthreads();
   }
 
-  // Write Final Output
-  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
-    output[output_offset + i] = from_float<T_IO>(smem_output[i]);
+  // Write Final Output (Vectorized Store)
+  for (int i = threadIdx.x * 4; i < HIDDEN; i += blockDim.x * 4) {
+    if (i + 3 < HIDDEN) {
+      // Can we do float4 store? T_IO might be half.
+      // Requires conversion.
+      float4 f_vals;
+      f_vals.x = smem_output[i];
+      f_vals.y = smem_output[i + 1];
+      f_vals.z = smem_output[i + 2];
+      f_vals.w = smem_output[i + 3];
+
+      if constexpr (std::is_same_v<T_IO, __half>) {
+        // Convert to half4
+        half4 h_vals;
+        h_vals.xy = __float2half2_rn(make_float2(f_vals.x, f_vals.y));
+        h_vals.zw = __float2half2_rn(make_float2(f_vals.z, f_vals.w));
+        // Store int2 (half4 is 64 bit)
+        *reinterpret_cast<int2 *>(&output[output_offset + i]) =
+            *reinterpret_cast<int2 *>(&h_vals);
+      } else {
+        *reinterpret_cast<float4 *>(&output[output_offset + i]) = f_vals;
+      }
+    } else {
+      // Tail
+      for (int k = 0; k < 4 && (i + k) < HIDDEN; k++) {
+        output[output_offset + i + k] = from_float<T_IO>(smem_output[i + k]);
+      }
+    }
   }
 }
+
 /* OLD KERNEL BODY REPLACED
 
   const int token_idx = blockIdx.x;

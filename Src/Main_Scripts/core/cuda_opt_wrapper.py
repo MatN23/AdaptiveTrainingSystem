@@ -596,95 +596,40 @@ class FusedMLPBlock(nn.Module):
             dtype_in = x.dtype
             dtype_w = self.gate_proj.weight.dtype
             
-            # Allocate workspace: Needed size = batch_seq * hidden * sizeof(half)
-            # We use half workspace for all kernels currently (internal precision)
-            workspace_size = batch_seq * hidden * 2 
+            # Allocate workspace if needed (unused currently but kept for ABI)
+            workspace = torch.empty(0, device=x.device)
+            output = torch.empty_like(x_flat)
+            stream = torch.cuda.current_stream().cuda_stream
             
             # Use specific implementation based on types
             # 1. FP16 (Standard)
             if dtype_in == torch.float16 and dtype_w == torch.float16:
-                # Alloc workspace
-                workspace = torch.empty(batch_seq, hidden, dtype=torch.float16, device=x.device)
-                output = torch.empty_like(x_flat)
-                
-                stream = torch.cuda.current_stream().cuda_stream
-                
-                # Weights are [d_out, d_in] (Row Major in PyTorch) -> Transpose to Col Major for CUDA?
-                # CUDA expects Col-Major [HIDDEN, INTER]. 
-                # PyTorch Linear weight is [out_features, in_features].
-                # Gate: [INTER, HIDDEN]. Transposed -> [HIDDEN, INTER] (Col Major compatible if we treat as Row Major?)
-                # Wait. cuBLAS Col Major means A[i + j*LDA].
-                # PyTorch Matrix is Row Major in memory. 
-                # If we pass PyTorch pointer to CUDA expecting Col Major, we effectively transpose.
-                # W_gate (PyTorch) is [INTER, HIDDEN].
-                # CUDA expects W_gate ptr. 
-                # If CUDA interprets as Col Major [HIDDEN, INTER]:
-                #   Element (row=k, col=i) -> index k + i*HIDDEN.
-                #   PyTorch [INTER, HIDDEN] element (row=i, col=k) -> index i*HIDDEN + k.
-                #   This matches! k + i*HIDDEN == i*HIDDEN + k!
-                # So PyTorch [INTER, HIDDEN] Row Major == CUDA [HIDDEN, INTER] Col Major.
-                # Correct.
-                
-                _transformer_ops_lib.fused_mlp_block_launcher_fp16(
-                     ctypes.c_void_p(x_flat.data_ptr()),
-                     ctypes.c_void_p(self.norm_weight.data_ptr()),
-                     ctypes.c_void_p(self.gate_proj.weight.data_ptr()),
-                     ctypes.c_void_p(self.up_proj.weight.data_ptr()),
-                     ctypes.c_void_p(self.down_proj.weight.data_ptr()),
-                     ctypes.c_void_p(output.data_ptr()),
-                     ctypes.c_void_p(workspace.data_ptr()),
-                     ctypes.c_int(batch_seq),
-                     ctypes.c_int(self.hidden_size),
-                     ctypes.c_int(self.intermediate_size),
-                     ctypes.c_float(self.eps),
-                     ctypes.c_void_p(stream)
+                _transformer_ops_lib.fused_mlp_norm_gemm_launcher_fp16(
+                        ctypes.c_void_p(x_flat.data_ptr()),
+                        ctypes.c_void_p(self.norm_weight.data.data_ptr()),
+                        ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(self.up_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(output.data_ptr()),
+                        ctypes.c_void_p(workspace.data_ptr()),
+                        ctypes.c_int(batch_seq),
+                        ctypes.c_int(self.hidden_size),
+                        ctypes.c_int(self.intermediate_size),
+                        ctypes.c_float(self.eps),
+                        ctypes.c_void_p(stream)
                 )
                 
             # 2. FP32 (Float)
             elif dtype_in == torch.float32 and dtype_w == torch.float32:
-                 # Alloc workspace (float for internal buffer? No, kernel uses half internally for smem, 
-                 # but generic launcher might expect float workspace if it reuses it?)
-                 # Our launcher signature: float* workspace.
-                 workspace = torch.empty(batch_seq, hidden, dtype=torch.float32, device=x.device)
-                 output = torch.empty_like(x_flat)
-                 stream = torch.cuda.current_stream().cuda_stream
-                 
-                 _transformer_ops_lib.fused_mlp_block_launcher_fp32(
-                     ctypes.c_void_p(x_flat.data_ptr()),
-                     ctypes.c_void_p(self.norm_weight.data_ptr()),
-                     ctypes.c_void_p(self.gate_proj.weight.data_ptr()),
-                     ctypes.c_void_p(self.up_proj.weight.data_ptr()),
-                     ctypes.c_void_p(self.down_proj.weight.data_ptr()),
-                     ctypes.c_void_p(output.data_ptr()),
-                     ctypes.c_void_p(workspace.data_ptr()), # passed as float*
-                     ctypes.c_int(batch_seq),
-                     ctypes.c_int(self.hidden_size),
-                     ctypes.c_int(self.intermediate_size),
-                     ctypes.c_float(self.eps),
-                     ctypes.c_void_p(stream)
-                 )
+                 # TODO: Implement FP32 version of fused_mlp_norm_gemm if needed
+                 # For now fallback or use existing
+                 return self._pytorch_fallback(x)
 
             # 3. W8A16 (FP16 Input, uint8 Weight)
             elif dtype_in == torch.float16 and dtype_w == torch.uint8:
-                 workspace = torch.empty(batch_seq, hidden, dtype=torch.float16, device=x.device)
-                 output = torch.empty_like(x_flat)
-                 stream = torch.cuda.current_stream().cuda_stream
+                 # TODO: Implement W8A16 version
+                 return self._pytorch_fallback(x)
                  
-                 _transformer_ops_lib.fused_mlp_block_launcher_w8a16(
-                     ctypes.c_void_p(x_flat.data_ptr()),
-                     ctypes.c_void_p(self.norm_weight.data_ptr()),
-                     ctypes.c_void_p(self.gate_proj.weight.data_ptr()),
-                     ctypes.c_void_p(self.up_proj.weight.data_ptr()),
-                     ctypes.c_void_p(self.down_proj.weight.data_ptr()),
-                     ctypes.c_void_p(output.data_ptr()),
-                     ctypes.c_void_p(workspace.data_ptr()),
-                     ctypes.c_int(batch_seq),
-                     ctypes.c_int(self.hidden_size),
-                     ctypes.c_int(self.intermediate_size),
-                     ctypes.c_float(self.eps),
-                     ctypes.c_void_p(stream)
-                 )
-            
             else:
                  # Mismatch or unsupported -> Fallback
                  return self._pytorch_fallback(x)
