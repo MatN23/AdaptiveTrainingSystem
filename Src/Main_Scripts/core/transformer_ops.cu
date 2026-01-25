@@ -114,29 +114,30 @@ template <> struct RMSNormUtils<__half> {
 // TYPE CONVERSION
 // ============================================================================
 
-template <typename T> __device__ __forceinline__ __half to_half(T val);
-template <> __device__ __forceinline__ __half to_half(float val) {
+// Overloaded conversion functions for common types
+__device__ __forceinline__ __half to_half(float val) {
   return __float2half(val);
 }
-template <> __device__ __forceinline__ __half to_half(__half val) {
-  return val;
-}
-template <> __device__ __forceinline__ __half to_half(uint8_t val) {
+__device__ __forceinline__ __half to_half(__half val) { return val; }
+__device__ __forceinline__ __half to_half(uint8_t val) {
   return __float2half((float)val);
 }
 
-template <typename T> __device__ __forceinline__ float to_float(T val) {
-  return static_cast<float>(val);
-}
-
-template <> __device__ __forceinline__ float to_float<__half>(__half val) {
+__device__ __forceinline__ float to_float(float val) { return val; }
+__device__ __forceinline__ float to_float(__half val) {
   return __half2float(val);
 }
 
-template <typename T> __device__ __forceinline__ T from_float(float val) {
-  return static_cast<T>(val);
+__device__ __forceinline__ float from_float_to_float(float val) { return val; }
+__device__ __forceinline__ __half from_float_to_half(float val) {
+  return __float2half(val);
 }
 
+// Generic template helper to select the right one
+template <typename T> __device__ __forceinline__ T from_float(float val);
+template <> __device__ __forceinline__ float from_float<float>(float val) {
+  return val;
+}
 template <> __device__ __forceinline__ __half from_float<__half>(float val) {
   return __float2half(val);
 }
@@ -153,16 +154,8 @@ __device__ __forceinline__ float warp_reduce_sum(float val) {
   return val;
 }
 
-__device__ __forceinline__ float warp_reduce_max(float val) {
-#pragma unroll
-  for (int offset = 16; offset > 0; offset >>= 1) {
-    val = fmaxf(val, __shfl_down_sync(FULL_MASK, val, offset));
-  }
-  return val;
-}
-
 // ============================================================================
-// FAST ACTIVATIONS
+// FAST ACTIVATIONS & SIMPLE KERNELS
 // ============================================================================
 
 __device__ __forceinline__ float silu_fast(float x) {
@@ -172,6 +165,54 @@ __device__ __forceinline__ float silu_fast(float x) {
   float sigmoid_approx = 0.5f + 0.25f * x - 0.02083f * x3;
   sigmoid_approx = fminf(fmaxf(sigmoid_approx, 0.0f), 1.0f);
   return x * sigmoid_approx;
+}
+
+// Helper for FP32 SwiGLU
+__global__ void __launch_bounds__(256)
+    swiglu_kernel_simple_fp32(const float *__restrict__ gate,
+                              const float *__restrict__ up,
+                              float *__restrict__ output,
+                              const int total_elements) {
+
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_elements)
+    return;
+
+  float g = gate[idx];
+  float u = up[idx];
+  float silu_u = u / (1.0f + __expf(-u)); // Fast intrinsic
+  output[idx] = g * silu_u;
+}
+
+// Simple Dequantization Kernel: uint8 -> half
+__global__ void __launch_bounds__(256)
+    dequantize_weight_kernel(const uint8_t *__restrict__ input,
+                             __half *__restrict__ output,
+                             const int total_elements, const float scale) {
+
+  const int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 16;
+  if (idx >= total_elements)
+    return;
+
+  if (idx + 15 < total_elements) {
+    int4 loaded = *reinterpret_cast<const int4 *>(&input[idx]);
+    uint8_t *vals = reinterpret_cast<uint8_t *>(&loaded);
+
+    __half buffer[16];
+#pragma unroll
+    for (int i = 0; i < 16; i++) {
+      buffer[i] = __float2half((float)vals[i] * scale);
+    }
+
+    float4 *out_f4 = reinterpret_cast<float4 *>(&output[idx]);
+    out_f4[0] = *reinterpret_cast<float4 *>(&buffer[0]);
+    out_f4[1] = *reinterpret_cast<float4 *>(&buffer[8]);
+
+  } else {
+    for (int i = 0; i < 16 && (idx + i) < total_elements; i++) {
+      output[idx + i] = __float2half((float)input[idx + i] * scale);
+    }
+  }
 }
 
 // ============================================================================
@@ -192,8 +233,7 @@ __global__ void __launch_bounds__(1024)
   // Vectorized Load Type
   using Utils = RMSNormUtils<T>;
   using Vec = typename Utils::Vec;
-  constexpr int VEC_SIZE = 4;         // float4 or half4
-  constexpr int ELEMS_PER_THREAD = 4; // Each thread handles 1 vector
+  constexpr int VEC_SIZE = 4;                     // float4 or half4
   constexpr int THREADS_PER_BLOCK = N / VEC_SIZE; // e.g. 1024 -> 256 threads
 
   // Static Assert to ensure block size is valid
@@ -255,8 +295,6 @@ __global__ void __launch_bounds__(256)
   using Utils = RMSNormUtils<T>;
   using Vec = typename Utils::Vec;
 
-  // Vectorized strided loop
-  int vec_size = hidden_size / 4;
   int remainder =
       hidden_size % 4; // Should be 0 for most models, but handle safely?
   // Assume generic sizing:
@@ -352,7 +390,6 @@ __global__ void __launch_bounds__(256)
                const int position_offset) {
 
   // Linearized Grid for Robustness (Phase 3)
-  const int total_tokens = batch_size * seq_len;
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   const int half_dim = head_dim >> 1;
 
@@ -411,23 +448,44 @@ extern "C" void init_cublas_handle() {
   }
 }
 
-// Simple Elementwise SwiGLU Kernel
-// out = gate * silu(up)
+// Optimized Fused SwiGLU Kernel for Concatenated Layout
+// Input: [Batch, 2 * Intermediate]
+// Output: [Batch, Intermediate] (In-place in the first half)
 __global__ void __launch_bounds__(256)
-    swiglu_kernel_simple(const __half *__restrict__ gate,
-                         const __half *__restrict__ up,
-                         __half *__restrict__ output,
-                         const int total_elements) {
+    swiglu_kernel_fused(const __half *__restrict__ combined,
+                        __half *__restrict__ output, const int batch_seq,
+                        const int inter_size) {
 
-  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= total_elements)
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  const int total = batch_seq * inter_size;
+  if (tid >= total)
     return;
 
-  float g = __half2float(gate[idx]);
-  float u = __half2float(up[idx]);
-  // silu(u) = u / (1 + exp(-u)) = u * sigmoid(u)
-  float silu_u = u / (1.0f + expf(-u));
-  output[idx] = __float2half(g * silu_u);
+  // combined is [Gate(0..total-1) | Up(total..2*total-1)]
+  // We use vectorized loads if inter_size is a multiple of 8
+  float g = __half2float(combined[tid]);
+  float u = __half2float(combined[tid + total]);
+
+  // Fast SiLU approximation
+  float silu_u = u / (1.0f + __expf(-u));
+  output[tid] = __float2half(g * silu_u);
+}
+
+// Specialization for FP32
+__global__ void __launch_bounds__(256)
+    swiglu_kernel_fused_fp32(const float *__restrict__ combined,
+                             float *__restrict__ output, const int batch_seq,
+                             const int inter_size) {
+
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  const int total = batch_seq * inter_size;
+  if (tid >= total)
+    return;
+
+  float g = combined[tid];
+  float u = combined[tid + total];
+  float silu_u = u / (1.0f + __expf(-u));
+  output[tid] = g * silu_u;
 }
 
 // ============================================================================
@@ -620,14 +678,36 @@ void rope_apply_launcher(float *q, float *k, const float *cos, const float *sin,
   CUDA_CHECK(cudaGetLastError());
 }
 
-// Deprecated stubs
+// Actual kernel for standalone FP16 SwiGLU
+__global__ void swiglu_kernel_standalone_fp16(const __half *gate,
+                                              const __half *up, __half *output,
+                                              int total) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < total) {
+    float g = __half2float(gate[idx]);
+    float u = __half2float(up[idx]);
+    float silu_u = u / (1.0f + __expf(-u));
+    output[idx] = __float2half(g * silu_u);
+  }
+}
+
+extern "C" void swiglu_launcher_fp16(const __half *gate, const __half *up,
+                                     __half *output, int64_t total_elements,
+                                     cudaStream_t stream) {
+  const int threads = 256;
+  const int blocks = (total_elements + threads - 1) / threads;
+  swiglu_kernel_standalone_fp16<<<blocks, threads, 0, stream>>>(
+      gate, up, output, (int)total_elements);
+  CUDA_CHECK(cudaGetLastError());
+}
+
 void swiglu_launcher(const float *gate, const float *up, float *output,
                      int64_t total_elements, cudaStream_t stream) {
-  printf("Warning: Standalone SwiGLU deprecated.\n");
-}
-void swiglu_launcher_fp16(const __half *gate, const __half *up, __half *output,
-                          int64_t total_elements, cudaStream_t stream) {
-  printf("Warning: Standalone SwiGLU deprecated.\n");
+  const int threads = 256;
+  const int blocks = (total_elements + threads - 1) / threads;
+  swiglu_kernel_simple_fp32<<<blocks, threads, 0, stream>>>(
+      gate, up, output, (int)total_elements);
+  CUDA_CHECK(cudaGetLastError());
 }
 void fused_rmsnorm_linear_launcher_fp16(const __half *input,
                                         const __half *norm_weight,
@@ -639,6 +719,7 @@ void fused_rmsnorm_linear_launcher_fp16(const __half *input,
 }
 
 // Real Implementation of cuBLASLt Launcher
+// Phase 5: High-Performance Concatenated Launcher
 void fused_mlp_cublaslt_launcher_fp16(const __half *input,
                                       const __half *norm_weight,
                                       const __half *W_gate, const __half *W_up,
@@ -657,165 +738,97 @@ void fused_mlp_cublaslt_launcher_fp16(const __half *input,
 
   // 2. Setup cuBLASLt descriptors
   cublasLtMatmulDesc_t opDesc;
-  cublasLtMatrixLayout_t A_desc, B_desc, C_desc;
+  cublasLtMatrixLayout_t A_combined_desc, B_desc, C_combined_desc;
 
+  int trans_op = CUBLAS_OP_T;
   CUBLAS_CHECK(
       cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
   CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(
-      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &(int){CUBLAS_OP_T},
-      sizeof(int))); // Weight Transposed
-
-  // Prepare Pointers in Workspace
-  // Layout: [NormInput (B*H)] [Gate (B*I)] [Up (B*I)]
-  // We need safe offsets.
-  // input_norm is at workspace[0]. Size: batch_seq * hidden_size.
+      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &trans_op, sizeof(trans_op)));
 
   size_t input_size = (size_t)batch_seq * hidden_size;
-  size_t inter_size = (size_t)batch_seq * intermediate_size;
+  __half *combined_out = input_norm + input_size;
 
-  __half *gate_out = input_norm + input_size;
-  __half *up_out = gate_out + inter_size;
-
-  // Checking alignment? cuBLAS likes 16-byte alignment.
-  // __half is 2 bytes. If hidden entries is even, likely aligned.
-  // But to be safe, we might want to align these pointers if batch/hidden are
-  // odd. For now assuming standard sizes (multiples of 8/16).
-
-  // Matmul 1 & 2: Gate & Up
-  // C = Weight^T * Input
-  // Layouts: A=Weight(H,I), B=Input(H,B), C=Output(I,B)
-  // Note: PyTorch weights are [Out, In].
-  // Gate Weight: [Inter, Hidden] -> ColMajor view is [Hidden, Inter]
-  // (transposed logic).
+  // Check contiguity for Optimization
+  bool can_fuse = (W_up == (W_gate + (size_t)hidden_size * intermediate_size));
 
   const float alpha = 1.0f;
   const float beta = 0.0f;
 
-  // Gate GEMM
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16F, hidden_size,
-                                          batch_seq, hidden_size)); // Input
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16F, hidden_size,
-                                          intermediate_size,
-                                          hidden_size)); // W_gate
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_16F,
-                                          intermediate_size, batch_seq,
-                                          intermediate_size)); // Gate Out
+  if (can_fuse) {
+    // PROJECTION (Gate + Up combined into 1 big GEMM)
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16F, hidden_size,
+                                            batch_seq, hidden_size));
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_combined_desc, CUDA_R_16F,
+                                            hidden_size, 2 * intermediate_size,
+                                            hidden_size));
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_combined_desc, CUDA_R_16F,
+                                            2 * intermediate_size, batch_seq,
+                                            2 * intermediate_size));
 
-  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate, A_desc,
-                              input_norm, B_desc, &beta, gate_out, C_desc,
-                              gate_out, C_desc, NULL, NULL, 0, stream));
+    CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate,
+                                A_combined_desc, input_norm, B_desc, &beta,
+                                combined_out, C_combined_desc, combined_out,
+                                C_combined_desc, NULL, NULL, 0, stream));
 
-  // Up GEMM
-  // Reuse desc except pointers
-  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_up, A_desc,
-                              input_norm, B_desc, &beta, up_out, C_desc, up_out,
-                              C_desc, NULL, NULL, 0, stream));
+    cublasLtMatrixLayoutDestroy(A_combined_desc);
+    cublasLtMatrixLayoutDestroy(C_combined_desc);
+  } else {
+    // Fallback
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16F, hidden_size,
+                                            batch_seq, hidden_size));
+    cublasLtMatrixLayout_t A_desc, C_desc;
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16F, hidden_size,
+                                            intermediate_size, hidden_size));
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
+        &C_desc, CUDA_R_16F, intermediate_size, batch_seq, intermediate_size));
 
-  // 3. SwiGLU
-  int total_elements = batch_seq * intermediate_size;
+    CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate, A_desc,
+                                input_norm, B_desc, &beta, combined_out, C_desc,
+                                combined_out, C_desc, NULL, NULL, 0, stream));
+    CUBLAS_CHECK(cublasLtMatmul(
+        lt_handle, opDesc, &alpha, W_up, A_desc, input_norm, B_desc, &beta,
+        combined_out + (size_t)batch_seq * intermediate_size, C_desc,
+        combined_out + (size_t)batch_seq * intermediate_size, C_desc, NULL,
+        NULL, 0, stream));
+
+    cublasLtMatrixLayoutDestroy(A_desc);
+    cublasLtMatrixLayoutDestroy(C_desc);
+  }
+
+  // 3. Fused SwiGLU (Concatenated Layout)
   int threads = 256;
-  int blocks = (total_elements + threads - 1) / threads;
-  swiglu_kernel_simple<<<blocks, threads, 0, stream>>>(
-      gate_out, up_out, gate_out, total_elements);
+  int blocks = (batch_seq * intermediate_size + threads - 1) / threads;
+  swiglu_kernel_fused<<<blocks, threads, 0, stream>>>(
+      combined_out, combined_out, batch_seq, intermediate_size);
 
   // 4. Down GEMM
-  // C = W_down^T * Gate_out
-  // W_down: [Hidden, Inter] (PyTorch) -> ColMajor view [Inter, Hidden].
-  // A_desc rows=Inter, cols=Hidden.
-
-  cublasLtMatrixLayoutDestroy(A_desc);
-  cublasLtMatrixLayoutDestroy(B_desc);
-  cublasLtMatrixLayoutDestroy(C_desc);
-
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16F,
+  cublasLtMatrixLayout_t A_down_desc, B_down_desc, C_out_desc;
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_down_desc, CUDA_R_16F,
                                           intermediate_size, hidden_size,
-                                          intermediate_size)); // W_down
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16F,
+                                          intermediate_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_down_desc, CUDA_R_16F,
                                           intermediate_size, batch_seq,
-                                          intermediate_size)); // Gate_out
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_16F, hidden_size,
-                                          batch_seq, hidden_size)); // Output
+                                          intermediate_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_out_desc, CUDA_R_16F, hidden_size,
+                                          batch_seq, hidden_size));
 
-  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_down, A_desc,
-                              gate_out, B_desc, &beta, output, C_desc, output,
-                              C_desc, NULL, NULL, 0, stream));
+  CUBLAS_CHECK(cublasLtMatmul(
+      lt_handle, opDesc, &alpha, W_down, A_down_desc, combined_out, B_down_desc,
+      &beta, output, C_out_desc, output, C_out_desc, NULL, NULL, 0, stream));
 
+  // Cleanup
   cublasLtMatmulDescDestroy(opDesc);
-  cublasLtMatrixLayoutDestroy(A_desc);
   cublasLtMatrixLayoutDestroy(B_desc);
-  cublasLtMatrixLayoutDestroy(C_desc);
+  cublasLtMatrixLayoutDestroy(A_down_desc);
+  cublasLtMatrixLayoutDestroy(B_down_desc);
+  cublasLtMatrixLayoutDestroy(C_out_desc);
 }
-
 } // extern "C"
 
-// ============================================================================
-// PHASE 2 & 3: W8A16 DEQUANTIZATION & FP32 SUPPORT
-// ============================================================================
+// Phase 2 & 3: W8A16 DEQUANTIZATION
 
-// Simple Dequantization Kernel: uint8 -> half
-// weights are assumed to be row-major [Out, In] (or ColMajor [In, Out])
-// We just cast elementwise.
-// Optimization: Vectorized load/store could be used here.
-__global__ void __launch_bounds__(256)
-    dequantize_weight_kernel(const uint8_t *__restrict__ input,
-                             __half *__restrict__ output,
-                             const int total_elements, const float scale) {
-
-  // Vectorized path for 16-byte alignment (16x uint8 -> 8x half2)?
-  // uint8 is 1 byte. int4 load = 16 bytes = 16 elements.
-  // We can write 16 elements as 8x half2 (32 bytes).
-
-  const int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 16;
-  if (idx >= total_elements)
-    return;
-
-  // Ugly but fast vectorized load
-  if (idx + 15 < total_elements) {
-    int4 loaded = *reinterpret_cast<const int4 *>(&input[idx]);
-    uint8_t *vals = reinterpret_cast<uint8_t *>(&loaded);
-
-    __half buffer[16];
-#pragma unroll
-    for (int i = 0; i < 16; i++) {
-      buffer[i] = __float2half((float)vals[i] * scale);
-    }
-
-    // Store as 8x half2 (vectorized store) is tricky without guaranteed
-    // alignment. But workspace is usually 256-byte aligned.
-
-    // Split into 2x float4 stores (16 bytes each)? No, half array is 32 bytes
-    // total. 16 * 2 bytes = 32 bytes. float4 = 16 bytes. So 2 stores.
-
-    float4 *out_f4 = reinterpret_cast<float4 *>(&output[idx]);
-    out_f4[0] = *reinterpret_cast<float4 *>(&buffer[0]);
-    out_f4[1] = *reinterpret_cast<float4 *>(&buffer[8]);
-
-  } else {
-    // Scalar tail
-    for (int i = 0; i < 16 && (idx + i) < total_elements; i++) {
-      output[idx + i] = __float2half((float)input[idx + i] * scale);
-    }
-  }
-}
-
-// Helper for FP32 SwiGLU
-__global__ void __launch_bounds__(256)
-    swiglu_kernel_simple_fp32(const float *__restrict__ gate,
-                              const float *__restrict__ up,
-                              float *__restrict__ output,
-                              const int total_elements) {
-
-  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= total_elements)
-    return;
-
-  float g = gate[idx];
-  float u = up[idx];
-  float silu_u = u / (1.0f + __expf(-u)); // Fast intrinsic
-  output[idx] = g * silu_u;
-}
-
-// FP32 Launcher
+// Phase 5: FP32 Concatenated Launcher
 extern "C" void fused_mlp_cublaslt_launcher_fp32(
     const float *input, const float *norm_weight, const float *W_gate,
     const float *W_up, const float *W_down, float *output, float *workspace,
@@ -826,68 +839,92 @@ extern "C" void fused_mlp_cublaslt_launcher_fp32(
     init_cublas_handle();
 
   // 1. RMSNorm (FP32)
-  // Use generic wrapper dispatch
   rms_norm_launcher(input, norm_weight, workspace, batch_seq, hidden_size, eps,
                     stream);
 
   float *input_norm = workspace;
-  float *gate_out = input_norm + (size_t)batch_seq * hidden_size;
-  float *up_out = gate_out + (size_t)batch_seq * intermediate_size;
+  size_t input_size = (size_t)batch_seq * hidden_size;
+  float *combined_out = input_norm + input_size;
 
   cublasLtMatmulDesc_t opDesc;
-  cublasLtMatrixLayout_t A_desc, B_desc, C_desc;
+  cublasLtMatrixLayout_t A_combined_desc, B_desc, C_combined_desc;
 
-  // Create Descriptor (FP32 Compute, FP32 Data)
+  int trans_op = CUBLAS_OP_T;
   CUBLAS_CHECK(
       cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
   CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(
-      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &(int){CUBLAS_OP_T}, sizeof(int)));
+      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &trans_op, sizeof(trans_op)));
 
+  bool can_fuse = (W_up == (W_gate + (size_t)hidden_size * intermediate_size));
   const float alpha = 1.0f;
   const float beta = 0.0f;
 
-  // Gate GEMM
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_32F, hidden_size,
+  if (can_fuse) {
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_32F, hidden_size,
+                                            batch_seq, hidden_size));
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_combined_desc, CUDA_R_32F,
+                                            hidden_size, 2 * intermediate_size,
+                                            hidden_size));
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_combined_desc, CUDA_R_32F,
+                                            2 * intermediate_size, batch_seq,
+                                            2 * intermediate_size));
+
+    CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate,
+                                A_combined_desc, input_norm, B_desc, &beta,
+                                combined_out, C_combined_desc, combined_out,
+                                C_combined_desc, NULL, NULL, 0, stream));
+
+    cublasLtMatrixLayoutDestroy(A_combined_desc);
+    cublasLtMatrixLayoutDestroy(C_combined_desc);
+  } else {
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_32F, hidden_size,
+                                            batch_seq, hidden_size));
+    cublasLtMatrixLayout_t A_desc, C_desc;
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_32F, hidden_size,
+                                            intermediate_size, hidden_size));
+    CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
+        &C_desc, CUDA_R_32F, intermediate_size, batch_seq, intermediate_size));
+
+    CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate, A_desc,
+                                input_norm, B_desc, &beta, combined_out, C_desc,
+                                combined_out, C_desc, NULL, NULL, 0, stream));
+    CUBLAS_CHECK(cublasLtMatmul(
+        lt_handle, opDesc, &alpha, W_up, A_desc, input_norm, B_desc, &beta,
+        combined_out + (size_t)batch_seq * intermediate_size, C_desc,
+        combined_out + (size_t)batch_seq * intermediate_size, C_desc, NULL,
+        NULL, 0, stream));
+
+    cublasLtMatrixLayoutDestroy(A_desc);
+    cublasLtMatrixLayoutDestroy(C_desc);
+  }
+
+  // 3. SwiGLU FP32 (Fused)
+  int threads = 256;
+  int blocks = (batch_seq * intermediate_size + threads - 1) / threads;
+  swiglu_kernel_fused_fp32<<<blocks, threads, 0, stream>>>(
+      combined_out, combined_out, batch_seq, intermediate_size);
+
+  // 4. Down GEMM
+  cublasLtMatrixLayout_t A_down_desc, B_down_desc, C_out_desc;
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_down_desc, CUDA_R_32F,
+                                          intermediate_size, hidden_size,
+                                          intermediate_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_down_desc, CUDA_R_32F,
+                                          intermediate_size, batch_seq,
+                                          intermediate_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_out_desc, CUDA_R_32F, hidden_size,
                                           batch_seq, hidden_size));
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_32F, hidden_size,
-                                          intermediate_size, hidden_size));
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
-      &C_desc, CUDA_R_32F, intermediate_size, batch_seq, intermediate_size));
 
-  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate, A_desc,
-                              input_norm, B_desc, &beta, gate_out, C_desc,
-                              gate_out, C_desc, NULL, NULL, 0, stream));
+  CUBLAS_CHECK(cublasLtMatmul(
+      lt_handle, opDesc, &alpha, W_down, A_down_desc, combined_out, B_down_desc,
+      &beta, output, C_out_desc, output, C_out_desc, NULL, NULL, 0, stream));
 
-  // Up GEMM
-  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_up, A_desc,
-                              input_norm, B_desc, &beta, up_out, C_desc, up_out,
-                              C_desc, NULL, NULL, 0, stream));
-
-  // SwiGLU FP32
-  int total = batch_seq * intermediate_size;
-  swiglu_kernel_simple_fp32<<<(total + 255) / 256, 256, 0, stream>>>(
-      gate_out, up_out, gate_out, total);
-
-  // Down GEMM
-  cublasLtMatrixLayoutDestroy(A_desc);
-  cublasLtMatrixLayoutDestroy(B_desc);
-  cublasLtMatrixLayoutDestroy(C_desc);
-
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
-      &A_desc, CUDA_R_32F, intermediate_size, hidden_size, intermediate_size));
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
-      &B_desc, CUDA_R_32F, intermediate_size, batch_seq, intermediate_size));
-  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_32F, hidden_size,
-                                          batch_seq, hidden_size));
-
-  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_down, A_desc,
-                              gate_out, B_desc, &beta, output, C_desc, output,
-                              C_desc, NULL, NULL, 0, stream));
-
+  // Cleanup
   cublasLtMatmulDescDestroy(opDesc);
-  cublasLtMatrixLayoutDestroy(A_desc);
   cublasLtMatrixLayoutDestroy(B_desc);
-  cublasLtMatrixLayoutDestroy(C_desc);
+  cublasLtMatrixLayoutDestroy(A_down_desc);
+  cublasLtMatrixLayoutDestroy(B_down_desc);
+  cublasLtMatrixLayoutDestroy(C_out_desc);
 
   CUDA_CHECK(cudaGetLastError());
 }

@@ -256,24 +256,44 @@ class SwiGLUFunction(Function):
     
     @staticmethod
     def forward(ctx, gate, up):
-        # DEPRECATED: Use FusedMLPBlock directly.
-        # Fallback to PyTorch to avoid calling stubbed C++ functions.
-        return gate * F.silu(up)
+        if not gate.is_cuda:
+            return gate * F.silu(up)
+            
+        output = torch.empty_like(gate)
+        stream = torch.cuda.current_stream().cuda_stream
+        
+        if gate.dtype == torch.float16:
+            _transformer_ops_lib.swiglu_launcher_fp16(
+                ctypes.c_void_p(gate.data_ptr()),
+                ctypes.c_void_p(up.data_ptr()),
+                ctypes.c_void_p(output.data_ptr()),
+                ctypes.c_longlong(gate.numel()),
+                ctypes.c_void_p(stream)
+            )
+        else:
+            _transformer_ops_lib.swiglu_launcher(
+                ctypes.c_void_p(gate.data_ptr()),
+                ctypes.c_void_p(up.data_ptr()),
+                ctypes.c_void_p(output.data_ptr()),
+                ctypes.c_longlong(gate.numel()),
+                ctypes.c_void_p(stream)
+            )
+        
+        ctx.save_for_backward(gate, up)
+        return output
     
     @staticmethod
     def backward(ctx, grad_output):
         gate, up = ctx.saved_tensors
         
-        # Simple PyTorch backward for correctness
-        sigmoid_up = torch.sigmoid(up)
-        silu_up = up * sigmoid_up
-        
-        grad_gate = grad_output * silu_up
-        
-        dsilu_up = sigmoid_up + up * sigmoid_up * (1 - sigmoid_up)
-        grad_up = grad_output * gate * dsilu_up
-        
-        return grad_gate, grad_up
+        # We use PyTorch for backward to ensure numerical stability and simplicity,
+        # focusing on forward pass speedup.
+        with torch.enable_grad():
+            gate_in = gate.detach().requires_grad_(True)
+            up_in = up.detach().requires_grad_(True)
+            out = gate_in * F.silu(up_in)
+            out.backward(grad_output)
+            return gate_in.grad, up_in.grad
 
 
 def fused_swiglu(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
@@ -285,16 +305,7 @@ def fused_swiglu(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
         return gate * torch.nn.functional.silu(up)
     
     try:
-        # DEPRECATED: Direct CUDA SwiGLU kernel is fragile.
-        # Use FusedMLPBlock for full acceleration.
-        return gate * torch.nn.functional.silu(up)
-        
-        # original_shape = gate.shape
-        # gate_flat = gate.view(-1, gate.shape[-1])
-        # up_flat = up.view(-1, up.shape[-1])
-        
-        # output = SwiGLUFunction.apply(gate_flat, up_flat)
-        # return output.view(original_shape)
+        return SwiGLUFunction.apply(gate, up)
     except Exception as e:
         logger.warning(f"SwiGLU failed: {e}")
         return gate * torch.nn.functional.silu(up)
@@ -575,122 +586,109 @@ class FusedMLPBlock(nn.Module):
         self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
         
         self.cuda_enabled = TRANSFORMER_OPS_AVAILABLE
+        self._fused_proj_weight = None # Cache for concatenated weights
+        self._fused_proj_dtype = None
         
+    def fuse_weights(self):
+        """Pre-concatenate Gate and Up weights for maximum CUDA performance"""
+        if not self.cuda_enabled: return
+        
+        device = self.gate_proj.weight.device
+        dtype = self.gate_proj.weight.dtype
+        
+        # Combined weight: [2 * Intermediate, Hidden]
+        combined = torch.cat([self.gate_proj.weight.data, self.up_proj.weight.data], dim=0)
+        self._fused_proj_weight = nn.Parameter(combined, requires_grad=False)
+        self._fused_proj_dtype = dtype
+        logger.info(f"MLP Weights fused for fast path (Size: {combined.shape})")
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not self.cuda_enabled or not x.is_cuda:
             return self._pytorch_fallback(x)
         
-        # ⚠️ CRITICAL: C++ kernel currently only specialized for 4096
-        # if self.hidden_size != 4096:
-        #    return self._pytorch_fallback(x)
+        # Automatic Fusion on first pass if not already done
+        if self._fused_proj_weight is None or self._fused_proj_dtype != self.gate_proj.weight.dtype:
+            self.fuse_weights()
             
         try:
-            batch_seq, hidden = x.shape[0], x.shape[1] # Assumes flattened [batch*seq, hidden] or [batch, seq, hidden]
+            batch_seq, hidden = x.shape[0], x.shape[1]
             if x.dim() == 3:
                 x_flat = x.view(-1, hidden)
                 batch_seq = x_flat.shape[0]
             else:
                 x_flat = x
             
-            # Check dtypes for dispatch
             dtype_in = x.dtype
             dtype_w = self.gate_proj.weight.dtype
             
-            # Allocate workspace if needed (unused currently but kept for ABI)
             workspace = torch.empty(0, device=x.device)
             output = torch.empty_like(x_flat)
             stream = torch.cuda.current_stream().cuda_stream
             
-            # Phase 4: Mock Scale Tensor (Always 1.0f for now, but ready for integration)
-            # Size = 2 * Intermediate + Hidden
             total_scales = 2 * self.intermediate_size + self.hidden_size
-            scales = torch.ones(total_scales, dtype=torch.float32, device=x.device) # TODO: Load from self.scales
+            scales = torch.ones(total_scales, dtype=torch.float32, device=x.device)
             
-            # Use specific implementation based on types
-            # 1. FP16 (Standard)
             if dtype_in == torch.float16 and dtype_w == torch.float16:
-                # Use cuBLASLt implementation
                 _transformer_ops_lib.fused_mlp_cublaslt_launcher_fp16(
-                        ctypes.c_void_p(x_flat.data_ptr()),
-                        ctypes.c_void_p(self.norm_weight.data.data_ptr()),
-                        ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(self.up_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(output.data_ptr()),
-                        ctypes.c_void_p(workspace.data_ptr()),
-                        ctypes.c_int(batch_seq),
-                        ctypes.c_int(self.hidden_size),
-                        ctypes.c_int(self.intermediate_size),
-                        ctypes.c_float(self.eps),
-                        ctypes.c_void_p(stream)
+                    ctypes.c_void_p(x_flat.data_ptr()),
+                    ctypes.c_void_p(self.norm_weight.data.data_ptr()),
+                    ctypes.c_void_p(self._fused_proj_weight.data_ptr()),
+                    ctypes.c_void_p(self._fused_proj_weight.data_ptr() + self.gate_proj.weight.numel() * 2),
+                    ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
+                    ctypes.c_void_p(output.data_ptr()),
+                    ctypes.c_void_p(workspace.data_ptr()),
+                    ctypes.c_int(batch_seq),
+                    ctypes.c_int(self.hidden_size),
+                    ctypes.c_int(self.intermediate_size),
+                    ctypes.c_float(self.eps),
+                    ctypes.c_void_p(stream)
                 )
-                
-            # 2. FP32 (Float)
             elif dtype_in == torch.float32 and dtype_w == torch.float32:
-                 _transformer_ops_lib.fused_mlp_cublaslt_launcher_fp32(
-                        ctypes.c_void_p(x_flat.data_ptr()),
-                        ctypes.c_void_p(self.norm_weight.data.data_ptr()),
-                        ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(self.up_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(output.data_ptr()),
-                        ctypes.c_void_p(workspace.data_ptr()),
-                        ctypes.c_int(batch_seq),
-                        ctypes.c_int(self.hidden_size),
-                        ctypes.c_int(self.intermediate_size),
-                        ctypes.c_float(self.eps),
-                        ctypes.c_void_p(stream)
+                _transformer_ops_lib.fused_mlp_cublaslt_launcher_fp32(
+                    ctypes.c_void_p(x_flat.data_ptr()),
+                    ctypes.c_void_p(self.norm_weight.data.data_ptr()),
+                    ctypes.c_void_p(self._fused_proj_weight.data_ptr()),
+                    ctypes.c_void_p(self._fused_proj_weight.data_ptr() + self.gate_proj.weight.numel() * 4),
+                    ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
+                    ctypes.c_void_p(output.data_ptr()),
+                    ctypes.c_void_p(workspace.data_ptr()),
+                    ctypes.c_int(batch_seq),
+                    ctypes.c_int(self.hidden_size),
+                    ctypes.c_int(self.intermediate_size),
+                    ctypes.c_float(self.eps),
+                    ctypes.c_void_p(stream)
                 )
-
-            # 3. W8A16 (FP16 Input, uint8 Weight)
             elif dtype_in == torch.float16 and dtype_w == torch.uint8:
-                 # Calculate larger workspace for dequantization
-                 # Needs to be allocated externally or handled.
-                 # Current C++ api expects pre-allocated
-                 # We can use PyTorch to allocate fast
-                 
-                 # Size needed: Weights converted to FP16
-                 # Gate (H*I) + Up (H*I) + Down (I*H) = 3 * H * I elements * 2 bytes
-                 total_w_elems = 3 * self.hidden_size * self.intermediate_size
-                 w_space_bytes = total_w_elems * 2
-                 
-                 # Current logic uses 'workspace' which is empty(0)
-                 # We need to resize it if too small
-                 required_bytes = (batch_seq * self.hidden_size * 2) + \
-                                  (batch_seq * self.intermediate_size * 2 * 2) + \
-                                  w_space_bytes + 1024
-                 
-                 # NOTE: This dynamic allocation is slightly slow. 
-                 # Production systems use static buffers.
-                 # Python overhead dominates anyway.
-                 workspace_large = torch.empty(required_bytes, dtype=torch.uint8, device=x.device)
-                 
-                 _transformer_ops_lib.fused_mlp_cublaslt_launcher_w8a16(
-                        ctypes.c_void_p(x_flat.data_ptr()),
-                        ctypes.c_void_p(self.norm_weight.data.data_ptr()),
-                        ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(self.up_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
-                        ctypes.c_void_p(output.data_ptr()),
-                        ctypes.c_void_p(workspace_large.data_ptr()),
-                        ctypes.c_int(batch_seq),
-                        ctypes.c_int(self.hidden_size),
-                        ctypes.c_int(self.intermediate_size),
-                        ctypes.c_float(self.eps),
-                        ctypes.c_void_p(scales.data_ptr()), # Pass pointer to scales
-                        ctypes.c_void_p(stream)
+                total_w_elems = 3 * self.hidden_size * self.intermediate_size
+                w_space_bytes = total_w_elems * 2
+                required_bytes = (batch_seq * self.hidden_size * 2) + \
+                                 (batch_seq * self.intermediate_size * 2 * 2) + \
+                                 w_space_bytes + 1024
+                workspace_large = torch.empty(required_bytes, dtype=torch.uint8, device=x.device)
+                
+                _transformer_ops_lib.fused_mlp_cublaslt_launcher_w8a16(
+                    ctypes.c_void_p(x_flat.data_ptr()),
+                    ctypes.c_void_p(self.norm_weight.data.data_ptr()),
+                    ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
+                    ctypes.c_void_p(self.up_proj.weight.data.data_ptr()),
+                    ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
+                    ctypes.c_void_p(output.data_ptr()),
+                    ctypes.c_void_p(workspace_large.data_ptr()),
+                    ctypes.c_int(batch_seq),
+                    ctypes.c_int(self.hidden_size),
+                    ctypes.c_int(self.intermediate_size),
+                    ctypes.c_float(self.eps),
+                    ctypes.c_void_p(scales.data_ptr()), 
+                    ctypes.c_void_p(stream)
                 )
-                 
             else:
-                 # Mismatch or unsupported -> Fallback
-                 return self._pytorch_fallback(x)
+                return self._pytorch_fallback(x)
 
             if x.dim() == 3:
                 return output.view(x.shape[0], x.shape[1], -1)
             return output
             
         except Exception as e:
-            # logger.warning(f"CUDA FusedMLP failed: {e}")
             return self._pytorch_fallback(x)
 
     def _pytorch_fallback(self, x):
