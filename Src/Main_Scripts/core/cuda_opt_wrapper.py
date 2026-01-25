@@ -601,10 +601,16 @@ class FusedMLPBlock(nn.Module):
             output = torch.empty_like(x_flat)
             stream = torch.cuda.current_stream().cuda_stream
             
+            # Phase 4: Mock Scale Tensor (Always 1.0f for now, but ready for integration)
+            # Size = 2 * Intermediate + Hidden
+            total_scales = 2 * self.intermediate_size + self.hidden_size
+            scales = torch.ones(total_scales, dtype=torch.float32, device=x.device) # TODO: Load from self.scales
+            
             # Use specific implementation based on types
             # 1. FP16 (Standard)
             if dtype_in == torch.float16 and dtype_w == torch.float16:
-                _transformer_ops_lib.fused_mlp_norm_gemm_launcher_fp16(
+                # Use cuBLASLt implementation
+                _transformer_ops_lib.fused_mlp_cublaslt_launcher_fp16(
                         ctypes.c_void_p(x_flat.data_ptr()),
                         ctypes.c_void_p(self.norm_weight.data.data_ptr()),
                         ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
@@ -621,14 +627,59 @@ class FusedMLPBlock(nn.Module):
                 
             # 2. FP32 (Float)
             elif dtype_in == torch.float32 and dtype_w == torch.float32:
-                 # TODO: Implement FP32 version of fused_mlp_norm_gemm if needed
-                 # For now fallback or use existing
-                 return self._pytorch_fallback(x)
+                 _transformer_ops_lib.fused_mlp_cublaslt_launcher_fp32(
+                        ctypes.c_void_p(x_flat.data_ptr()),
+                        ctypes.c_void_p(self.norm_weight.data.data_ptr()),
+                        ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(self.up_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(output.data_ptr()),
+                        ctypes.c_void_p(workspace.data_ptr()),
+                        ctypes.c_int(batch_seq),
+                        ctypes.c_int(self.hidden_size),
+                        ctypes.c_int(self.intermediate_size),
+                        ctypes.c_float(self.eps),
+                        ctypes.c_void_p(stream)
+                )
 
             # 3. W8A16 (FP16 Input, uint8 Weight)
             elif dtype_in == torch.float16 and dtype_w == torch.uint8:
-                 # TODO: Implement W8A16 version
-                 return self._pytorch_fallback(x)
+                 # Calculate larger workspace for dequantization
+                 # Needs to be allocated externally or handled.
+                 # Current C++ api expects pre-allocated
+                 # We can use PyTorch to allocate fast
+                 
+                 # Size needed: Weights converted to FP16
+                 # Gate (H*I) + Up (H*I) + Down (I*H) = 3 * H * I elements * 2 bytes
+                 total_w_elems = 3 * self.hidden_size * self.intermediate_size
+                 w_space_bytes = total_w_elems * 2
+                 
+                 # Current logic uses 'workspace' which is empty(0)
+                 # We need to resize it if too small
+                 required_bytes = (batch_seq * self.hidden_size * 2) + \
+                                  (batch_seq * self.intermediate_size * 2 * 2) + \
+                                  w_space_bytes + 1024
+                 
+                 # NOTE: This dynamic allocation is slightly slow. 
+                 # Production systems use static buffers.
+                 # Python overhead dominates anyway.
+                 workspace_large = torch.empty(required_bytes, dtype=torch.uint8, device=x.device)
+                 
+                 _transformer_ops_lib.fused_mlp_cublaslt_launcher_w8a16(
+                        ctypes.c_void_p(x_flat.data_ptr()),
+                        ctypes.c_void_p(self.norm_weight.data.data_ptr()),
+                        ctypes.c_void_p(self.gate_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(self.up_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(self.down_proj.weight.data.data_ptr()),
+                        ctypes.c_void_p(output.data_ptr()),
+                        ctypes.c_void_p(workspace_large.data_ptr()),
+                        ctypes.c_int(batch_seq),
+                        ctypes.c_int(self.hidden_size),
+                        ctypes.c_int(self.intermediate_size),
+                        ctypes.c_float(self.eps),
+                        ctypes.c_void_p(scales.data_ptr()), # Pass pointer to scales
+                        ctypes.c_void_p(stream)
+                )
                  
             else:
                  # Mismatch or unsupported -> Fallback

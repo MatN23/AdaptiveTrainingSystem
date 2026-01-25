@@ -19,7 +19,7 @@ else
 fi
 
 ARCH_FLAG="-arch=sm_${GPU_ARCH}"
-NVCC_FLAGS="-O3 ${ARCH_FLAG} --compiler-options '-fPIC' --use_fast_math --ptxas-options=-v"
+NVCC_FLAGS="-O3 ${ARCH_FLAG} --compiler-options '-fPIC' --use_fast_math --ptxas-options=-v -lcublasLt"
 
 echo ""
 echo "Compilation flags: ${NVCC_FLAGS}"

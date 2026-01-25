@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cublasLt.h>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -178,12 +179,6 @@ __device__ __forceinline__ float silu_fast(float x) {
 // ============================================================================
 
 // For hidden_size = 4096 (8 warps, each handles 512 dims)
-// For hidden_size = 4096 (8 warps, each handles 512 dims)
-// For arbitrary hidden_size
-// ============================================================================
-// TEMPLATE-SPECIALIZED RMSNORM (High Performance)
-// ============================================================================
-
 template <typename T, int N>
 __global__ void __launch_bounds__(1024)
     rms_norm_aligned(const T *__restrict__ input,
@@ -321,604 +316,7 @@ __global__ void __launch_bounds__(256)
 }
 
 // ============================================================================
-// FUSED GEMM + SWIGLU EPILOGUE (CUTLASS-style)
-//
-// C = SwiGLU(A @ W_gate, A @ W_up)
-//
-// Key: TWO GEMMs with fused activation, not separate kernels
-// ============================================================================
-
-#if __CUDA_ARCH__ >= 700
-
-template <int HIDDEN = 4096, int INTER = 11008>
-__global__ void __launch_bounds__(256) fused_gemm_swiglu_epilogue(
-    const __half *__restrict__ input,  // [batch_seq, HIDDEN]
-    const __half *__restrict__ W_gate, // [HIDDEN, INTER] col-major
-    const __half *__restrict__ W_up,   // [HIDDEN, INTER] col-major
-    __half *__restrict__ output,       // [batch_seq, INTER]
-    const int batch_seq) {
-
-  const int token_idx = blockIdx.x;
-  if (token_idx >= batch_seq)
-    return;
-
-  const int warp_id = threadIdx.x / 32;
-  const int lane_id = threadIdx.x % 32;
-
-  // Each warp computes 16 outputs (WMMA_N)
-  // 8 warps → 128 outputs per block, so need multiple blocks for INTER=11008
-  const int outputs_per_block = 128;
-  const int block_output_start = blockIdx.y * outputs_per_block;
-  const int warp_output = block_output_start + warp_id * WMMA_N;
-
-  if (warp_output >= INTER)
-    return;
-
-  const int64_t input_offset = (int64_t)token_idx * HIDDEN;
-
-  // WMMA fragments for BOTH GEMMs
-  wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half,
-                 wmma::row_major>
-      a_frag;
-  wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                 wmma::col_major>
-      gate_frag;
-  wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                 wmma::col_major>
-      up_frag;
-  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> gate_acc;
-  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> up_acc;
-
-  wmma::fill_fragment(gate_acc, 0.0f);
-  wmma::fill_fragment(up_acc, 0.0f);
-
-  // Accumulate over hidden dimension
-  for (int k = 0; k < HIDDEN; k += WMMA_K) {
-    // Load input once, reuse for both GEMMs
-    wmma::load_matrix_sync(a_frag, &input[input_offset + k], HIDDEN);
-
-    // Load weights for both projections
-    wmma::load_matrix_sync(gate_frag, &W_gate[warp_output * HIDDEN + k],
-                           HIDDEN);
-    wmma::load_matrix_sync(up_frag, &W_up[warp_output * HIDDEN + k], HIDDEN);
-
-    // Dual GEMM
-    wmma::mma_sync(gate_acc, a_frag, gate_frag, gate_acc);
-    wmma::mma_sync(up_acc, a_frag, up_frag, up_acc);
-  }
-
-  // EPILOGUE: Apply SwiGLU and store
-  __half gate_vals[WMMA_M * WMMA_N];
-  __half up_vals[WMMA_M * WMMA_N];
-
-  wmma::store_matrix_sync(gate_vals, gate_acc, WMMA_N, wmma::mem_row_major);
-  wmma::store_matrix_sync(up_vals, up_acc, WMMA_N, wmma::mem_row_major);
-
-// Apply SwiGLU element-wise
-#pragma unroll
-  for (int i = 0; i < WMMA_N; i++) {
-    if (warp_output + i < INTER) {
-      float g = __half2float(gate_vals[i]);
-      float u = __half2float(up_vals[i]);
-      output[(int64_t)token_idx * INTER + warp_output + i] =
-          __float2half(g * silu_fast(u));
-    }
-  }
-}
-
-#endif // __CUDA_ARCH__ >= 700
-
-// ============================================================================
-// FUSED MLP BLOCK (3 kernels → 2 kernels)
-//
-// Kernel 1: RMSNorm
-// Kernel 2: GEMM(gate+up) + SwiGLU + GEMM(down) - ALL FUSED
-// ============================================================================
-
-// Note: This kernel requires sm_70+ for WMMA support.
-// The __CUDA_ARCH__ check is done inside the kernel.
-
-// (Type conversion helpers removed - defined above)
-
-// ============================================================================
-// FUSED MLP WITH TENSOR CORES - PHASE 1 OPTIMIZATIONS
-//
-// ARCHITECTURE:
-// - Phase 1: ALL warps cooperatively compute SwiGLU(gate, up) -> smem
-// - Phase 2: Each warp owns exclusive HIDDEN tiles, reads intermediate from
-// smem
-//
-// Key optimizations:
-// 1. ✅ NO ATOMICS - warp-exclusive output tiles
-// 2. ✅ Direct epilogue on accumulator fragments (SwiGLU)
-// 3. ✅ Proper bounds checking
-// 4. ✅ Bank conflict padding (+8)
-// 5. ✅ sm_75 compatible
-//
-// TODO Phase 2: cp.async pipeline for weight tiles
-// ============================================================================
-
-// Helper to align shared memory pointer
-template <typename T> __device__ T *align_ptr(void *ptr, int align_bytes = 16) {
-  uintptr_t addr = (uintptr_t)ptr;
-  uintptr_t aligned = (addr + align_bytes - 1) & ~(align_bytes - 1);
-  return (T *)aligned;
-}
-
-// ============================================================================
-// FUSED MLP WITH RMSNORM + TENSOR CORES (The "Deep Fusion" Kernel)
-//
-// Operations:
-// 1. Load Input (FP16/FP32) -> SMEM
-// 2. Compute RMSNorm (Warp Reduction) -> Normalize in SMEM
-// 3. GEMM 1: Gate & Up Projections (Fused)
-// 4. SwiGLU Activation
-// 5. GEMM 2: Down Projection
-//
-// Improvements:
-// - Vectorized loads (128-bit)
-// - Fused RMSNorm (No separate kernel, no global read/write)
-// - Warp-level reductions (No atomics)
-// ============================================================================
-
-// Vectorized load helper for 128-bit (16 bytes)
-// Corresponds to int4 or float4
-__device__ __forceinline__ void load_128bit(const void *src, void *dst) {
-  *reinterpret_cast<int4 *>(dst) = *reinterpret_cast<const int4 *>(src);
-}
-
-// Memory alignment helper
-template <typename T> __device__ T *align_ptr(void *ptr, int align_bytes = 16) {
-  uintptr_t addr = (uintptr_t)ptr;
-  uintptr_t aligned = (addr + align_bytes - 1) & ~(align_bytes - 1);
-  return (T *)aligned;
-}
-
-template <typename T_IO, typename T_W>
-__global__ void __launch_bounds__(256) fused_mlp_norm_gemm(
-    const T_IO *__restrict__ input,       // [batch_seq, HIDDEN] (Un-normalized)
-    const T_IO *__restrict__ norm_weight, // [HIDDEN]
-    const T_W *__restrict__ W_gate,       // [HIDDEN, INTER] col-major
-    const T_W *__restrict__ W_up,         // [HIDDEN, INTER] col-major
-    const T_W *__restrict__ W_down,       // [INTER, HIDDEN] col-major
-    T_IO *__restrict__ output,            // [batch_seq, HIDDEN]
-    void *__restrict__ workspace, // Scratchpad (unused for now, optional stash)
-    const int batch_seq, const int HIDDEN, const int INTER, const float eps) {
-
-  const int token_idx = blockIdx.x;
-  if (token_idx >= batch_seq)
-    return;
-
-  const int warp_id = threadIdx.x / WARP_SIZE;
-  const int lane_id = threadIdx.x % WARP_SIZE;
-  constexpr int NUM_WARPS = 8; // Fixed block size 256
-
-  const int64_t input_offset = (int64_t)token_idx * HIDDEN;
-  const int64_t output_offset = (int64_t)token_idx * HIDDEN;
-
-  // ==========================================================================
-  // SHARED MEMORY LAYOUT
-  // ==========================================================================
-  extern __shared__ char smem_dyn_base[];
-  __half *smem_input = (__half *)smem_dyn_base;
-  // Overlay output buffer since we don't need input after GEMM 1 is done?
-  // careful: we read smem_input during GEMM 1.
-  // We write smem_output during GEMM 2.
-  // We can reuse smem_input space IF GEMM 1 is fully complete, but we tile
-  // GEMM 1. Actually, GEMM 1 consumes smem_input to produce smem_inter. GEMM 2
-  // consumes smem_inter to produce smem_output. We can overlap
-  // swiglu/intermediate if we are careful, but let's keep it simple + safe
-  // first.
-
-  // Align smem pointers
-  float *smem_output = align_ptr<float>(smem_input + HIDDEN);
-
-  // Static shared memory for weights (Separate bank?)
-  __shared__ __half smem_weights[NUM_WARPS][2][WMMA_K * WMMA_N];
-  constexpr int INTER_TILE = 256;
-  __shared__ __half smem_inter[INTER_TILE + 8];
-
-  // ==========================================================================
-  // STAGE 1: LOAD INPUT & NORM WEIGHTS -> SMEM (Vectorized)
-  // ==========================================================================
-  // We load 8 halfs (128 bits) per thread if possible
-  // HIDDEN must be divisible by 8 for pure vectorization, else scalar tail.
-  // T_IO is likely half or float.
-
-  // Compute Variance (Sum of Squares) on the fly during load?
-  // Better to load first, then reduce. decoupling memory from ALU.
-
-  float local_sum_sq = 0.0f;
-
-  for (int i = threadIdx.x * 8; i < HIDDEN; i += blockDim.x * 8) {
-    // Vectorized Load (128-bit)
-    // Check bounds for full vector
-    if (i + 7 < HIDDEN) {
-      int4 loaded_vec; // 16 bytes = 8 x fp16
-      load_128bit(&input[input_offset + i], &loaded_vec);
-      __half *h_ptr = reinterpret_cast<__half *>(&loaded_vec);
-
-      // Store to SMEM
-      *reinterpret_cast<int4 *>(&smem_input[i]) = loaded_vec;
-
-// Accumulate SumSq
-#pragma unroll
-      for (int k = 0; k < 8; k++) {
-        float val = __half2float(h_ptr[k]);
-        local_sum_sq += val * val;
-      }
-    } else {
-      // Scalar Tail Fallback
-      for (int k = 0; k < 8 && (i + k) < HIDDEN; k++) {
-        __half val = input[input_offset + i + k];
-        smem_input[i + k] = val;
-        float fval = __half2float(val);
-        local_sum_sq += fval * fval;
-      }
-    }
-  }
-
-  // ==========================================================================
-  // STAGE 2: REDUCE VARIANCE (Warp -> Block)
-  // ==========================================================================
-  local_sum_sq = warp_reduce_sum(local_sum_sq);
-
-  __shared__ float s_warps[NUM_WARPS];
-  if (lane_id == 0)
-    s_warps[warp_id] = local_sum_sq;
-  __syncthreads();
-
-  float rstd = 0.0f;
-  if (warp_id == 0) {
-    float block_sum = (lane_id < NUM_WARPS) ? s_warps[lane_id] : 0.0f;
-    block_sum = warp_reduce_sum(block_sum);
-    if (lane_id == 0) {
-      rstd = rsqrtf(block_sum / float(HIDDEN) + eps);
-      s_warps[0] = rstd; // Broadcast via smem
-    }
-  }
-  __syncthreads();
-  rstd = s_warps[0];
-
-  // ==========================================================================
-  // STAGE 3: NORMALIZE IN SMEM (Vectors)
-  // ==========================================================================
-  for (int i = threadIdx.x * 8; i < HIDDEN; i += blockDim.x * 8) {
-    if (i + 7 < HIDDEN) {
-      // Load Norm Weights (Global -> Reg)
-      int4 w_vec;
-      load_128bit(&norm_weight[i], &w_vec);
-      __half *w_ptr = reinterpret_cast<__half *>(&w_vec);
-
-      // Load Input from SMEM
-      int4 inp_vec = *reinterpret_cast<int4 *>(&smem_input[i]);
-      __half *inp_ptr = reinterpret_cast<__half *>(&inp_vec);
-
-// Normalize
-#pragma unroll
-      for (int k = 0; k < 8; k++) {
-        float val = __half2float(inp_ptr[k]);
-        float w = __half2float(w_ptr[k]);
-        inp_ptr[k] = __float2half(val * rstd * w);
-      }
-
-      // Store back to SMEM
-      *reinterpret_cast<int4 *>(&smem_input[i]) = inp_vec;
-    } else {
-      // Tail
-      for (int k = 0; k < 8 && (i + k) < HIDDEN; k++) {
-        float val = __half2float(smem_input[i + k]);
-        float w = __half2float(norm_weight[i + k]);
-        smem_input[i + k] = __float2half(val * rstd * w);
-      }
-    }
-  }
-  __syncthreads();
-  // FENCE: Input is now normalized in SMEM. Ready for GEMM.
-
-  // ==========================================================================
-  // STAGE 4: GEMM 1 (Gate + Up) -> SwiGLU -> SMEM Inter
-  // ==========================================================================
-
-  // Reuse existing GEMM logic... [Optimized for read from SMEM input]
-
-  for (int inter_tile = 0; inter_tile < INTER; inter_tile += INTER_TILE) {
-    const int tile_end = min(inter_tile + INTER_TILE, INTER);
-    const int tile_size = tile_end - inter_tile;
-
-    const int inter_per_warp = (tile_size + NUM_WARPS - 1) / NUM_WARPS;
-    const int warp_start = warp_id * inter_per_warp;
-    const int warp_actual_len =
-        (warp_start < tile_size) ? min(inter_per_warp, tile_size - warp_start)
-                                 : 0;
-
-    for (int i = 0; i < warp_actual_len; i += WMMA_N) {
-      const int current_inter_col = inter_tile + warp_start + i;
-      if (current_inter_col >= INTER)
-        break;
-
-      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> gate_acc;
-      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> up_acc;
-      wmma::fill_fragment(gate_acc, 0.0f);
-      wmma::fill_fragment(up_acc, 0.0f);
-
-      for (int k = 0; k < HIDDEN; k += WMMA_K) {
-        // A Fragment: Load from smem_input (Now Normalized!)
-        wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half,
-                       wmma::row_major>
-            a_frag;
-        wmma::load_matrix_sync(a_frag, &smem_input[k], 0); // Stride 0 broadcast
-
-        // B Fragments (Weights) - Load from Global to SMEM then Msg?
-        // Or keep existing staged load Logic?
-        // Existing logic loads directly from global to smem_weights in a tiled
-        // way inside the loop. Let's keep existing weight loading logic for
-        // safety/correctness first.
-
-        __half *warp_gate_smem = smem_weights[warp_id][0];
-        __half *warp_up_smem = smem_weights[warp_id][1];
-
-// Cooperative Load Weights
-#pragma unroll
-        for (int e = 0; e < 8; e++) {
-          int lane_offset = lane_id * 8 + e;
-          int local_k = lane_offset % 16;
-          int local_n = lane_offset / 16;
-          int global_k = k + local_k;
-          int global_n = current_inter_col + local_n;
-
-          if (global_k < HIDDEN && global_n < INTER) {
-            warp_gate_smem[lane_offset] =
-                to_half(W_gate[global_n * HIDDEN + global_k]);
-            warp_up_smem[lane_offset] =
-                to_half(W_up[global_n * HIDDEN + global_k]);
-          } else {
-            warp_gate_smem[lane_offset] = 0;
-            warp_up_smem[lane_offset] = 0;
-          }
-        }
-
-        // TODO: cp.async could go here for NEXT tile.
-
-        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                       wmma::col_major>
-            gate_frag;
-        wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                       wmma::col_major>
-            up_frag;
-
-        wmma::load_matrix_sync(gate_frag, warp_gate_smem, 16);
-        wmma::load_matrix_sync(up_frag, warp_up_smem, 16);
-
-        wmma::mma_sync(gate_acc, a_frag, gate_frag, gate_acc);
-        wmma::mma_sync(up_acc, a_frag, up_frag, up_acc);
-      }
-
-      // SwiGLU Epilogue
-      float gate_vals[WMMA_M * WMMA_N];
-      float up_vals[WMMA_M * WMMA_N];
-      wmma::store_matrix_sync(gate_vals, gate_acc, WMMA_N, wmma::mem_row_major);
-      wmma::store_matrix_sync(up_vals, up_acc, WMMA_N, wmma::mem_row_major);
-
-#pragma unroll
-      for (int t = 0; t < WMMA_N; t++) {
-        if (current_inter_col + t < INTER) {
-          float g = gate_vals[t];
-          float u = up_vals[t];
-          smem_inter[warp_start + i + t] = __float2half(g * silu_fast(u));
-        }
-      }
-    }
-    __syncthreads();
-
-    // ========================================================================
-    // GEMM 2: Down Projection
-    // ========================================================================
-    const int out_chunk_size = (HIDDEN + NUM_WARPS - 1) / NUM_WARPS;
-    const int out_start = warp_id * out_chunk_size;
-    const int out_end = min(out_start + out_chunk_size, HIDDEN);
-
-    for (int h = out_start + lane_id; h < out_end; h += WARP_SIZE) {
-      float acc = 0.0f;
-      // Initialize if first tile, else accumulate
-      if (inter_tile == 0)
-        smem_output[h] = 0.0f;
-      else
-        acc = smem_output[h]; // This read might be redundant if we just += to
-                              // smem directly?
-      // Wait, smem_output is accumulated across tiles.
-      // Correct: We accumulate partial results from each inter_tile chunk.
-
-      int k = 0;
-#pragma unroll 4
-      for (; k + 1 < tile_size; k += 2) {
-        __half2 inter_h2 = *reinterpret_cast<const __half2 *>(&smem_inter[k]);
-        float iv0 = __half2float(inter_h2.x);
-        float iv1 = __half2float(inter_h2.y);
-        float w0 = to_float(W_down[h * INTER + inter_tile + k]);
-        float w1 = to_float(W_down[h * INTER + inter_tile + k + 1]);
-        acc += iv0 * w0 + iv1 * w1;
-      }
-      for (; k < tile_size; k++) {
-        acc += __half2float(smem_inter[k]) *
-               to_float(W_down[h * INTER + inter_tile + k]);
-      }
-      smem_output[h] = acc; // Update accumulator
-    }
-    __syncthreads();
-  }
-
-  // Write Final Output (Vectorized Store)
-  for (int i = threadIdx.x * 4; i < HIDDEN; i += blockDim.x * 4) {
-    if (i + 3 < HIDDEN) {
-      // Can we do float4 store? T_IO might be half.
-      // Requires conversion.
-      float4 f_vals;
-      f_vals.x = smem_output[i];
-      f_vals.y = smem_output[i + 1];
-      f_vals.z = smem_output[i + 2];
-      f_vals.w = smem_output[i + 3];
-
-      if constexpr (std::is_same_v<T_IO, __half>) {
-        // Convert to half4
-        half4 h_vals;
-        h_vals.xy = __float2half2_rn(make_float2(f_vals.x, f_vals.y));
-        h_vals.zw = __float2half2_rn(make_float2(f_vals.z, f_vals.w));
-        // Store int2 (half4 is 64 bit)
-        *reinterpret_cast<int2 *>(&output[output_offset + i]) =
-            *reinterpret_cast<int2 *>(&h_vals);
-      } else {
-        *reinterpret_cast<float4 *>(&output[output_offset + i]) = f_vals;
-      }
-    } else {
-      // Tail
-      for (int k = 0; k < 4 && (i + k) < HIDDEN; k++) {
-        output[output_offset + i + k] = from_float<T_IO>(smem_output[i + k]);
-      }
-    }
-  }
-}
-
-/* OLD KERNEL BODY REPLACED
-
-  const int token_idx = blockIdx.x;
-  if (token_idx >= batch_seq)
-    return;
-
-  const int warp_id = threadIdx.x / WARP_SIZE;
-  const int lane_id = threadIdx.x % WARP_SIZE;
-  constexpr int NUM_WARPS = 8;
-
-  const int64_t input_offset = (int64_t)token_idx * HIDDEN;
-  const int64_t output_offset = (int64_t)token_idx * HIDDEN;
-
-  // ==========================================================================
-  // SHARED MEMORY LAYOUT
-  // ==========================================================================
-  constexpr int INTER_TILE = 256; // Process 256 intermediate elements at a time
-  __shared__ __half smem_inter[INTER_TILE + 8]; // +8 for bank conflict padding
-
-  // Output accumulators - each warp owns HIDDEN/NUM_WARPS elements
-  constexpr int HIDDEN_PER_WARP = HIDDEN / NUM_WARPS; // 512
-  __shared__ float smem_output[HIDDEN + 32];
-
-  // Initialize output accumulators
-  for (int i = threadIdx.x; i < HIDDEN; i += blockDim.x) {
-    smem_output[i] = 0.0f;
-  }
-  __syncthreads();
-
-  // ==========================================================================
-  // TILE OVER INTER DIMENSION
-  // ==========================================================================
-  for (int inter_tile = 0; inter_tile < INTER; inter_tile += INTER_TILE) {
-    const int tile_end = min(inter_tile + INTER_TILE, INTER);
-    const int tile_size = tile_end - inter_tile;
-
-    // ========================================================================
-    // PHASE 1: Gate + Up GEMMs + SwiGLU -> smem_inter
-    // ========================================================================
-    // All warps cooperatively compute this tile's intermediate values
-
-    const int inter_per_warp = (tile_size + NUM_WARPS - 1) / NUM_WARPS;
-    const int warp_start = warp_id * inter_per_warp;
-    const int warp_end = min(warp_start + inter_per_warp, tile_size);
-
-    for (int i = warp_start; i < warp_end; i += WMMA_N) {
-      const int global_inter = inter_tile + i;
-      if (global_inter >= INTER)
-        break;
-
-      wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half,
-                     wmma::row_major>
-          a_frag;
-      wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                     wmma::col_major>
-          gate_frag;
-      wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half,
-                     wmma::col_major>
-          up_frag;
-      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> gate_acc;
-      wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> up_acc;
-
-      wmma::fill_fragment(gate_acc, 0.0f);
-      wmma::fill_fragment(up_acc, 0.0f);
-
-      // Accumulate over HIDDEN (K dimension)
-      for (int k = 0; k < HIDDEN; k += WMMA_K) {
-        wmma::load_matrix_sync(a_frag, &input_normalized[input_offset + k],
-                               HIDDEN);
-        wmma::load_matrix_sync(gate_frag, &W_gate[global_inter * HIDDEN + k],
-                               HIDDEN);
-        wmma::load_matrix_sync(up_frag, &W_up[global_inter * HIDDEN + k],
-                               HIDDEN);
-
-        wmma::mma_sync(gate_acc, a_frag, gate_frag, gate_acc);
-        wmma::mma_sync(up_acc, a_frag, up_frag, up_acc);
-      }
-
-// DIRECT EPILOGUE: Apply SwiGLU on accumulators, store to smem
-// FIX: Distribute writes across lanes instead of only lane 0
-#pragma unroll
-      for (int t = 0; t < gate_acc.num_elements; t++) {
-        int local_idx = i + t;
-        int target_lane = t % WARP_SIZE; // Distribute writes across lanes
-        if (local_idx < tile_size && lane_id == target_lane) {
-          float g = gate_acc.x[t];
-          float u = up_acc.x[t];
-          smem_inter[local_idx] = __float2half(g * silu_fast(u));
-        }
-      }
-    }
-    __syncthreads();
-
-    // ========================================================================
-    // PHASE 2: Down Projection - Vectorized with half2
-    // ========================================================================
-    // Each warp owns exclusive output range [out_start, out_end)
-
-    const int out_start = warp_id * HIDDEN_PER_WARP;
-    const int out_end = out_start + HIDDEN_PER_WARP;
-
-    // Each lane handles multiple outputs with stride
-    for (int h = out_start + lane_id; h < out_end; h += WARP_SIZE) {
-      float acc = 0.0f;
-
-      // Vectorized inner loop: process 2 intermediate values at a time
-      int k = 0;
-#pragma unroll 4
-      for (; k + 1 < tile_size; k += 2) {
-        // Load 2 intermediate values (half2)
-        __half2 inter_h2 = *reinterpret_cast<const __half2 *>(&smem_inter[k]);
-        float inter_val0 = __half2float(inter_h2.x);
-        float inter_val1 = __half2float(inter_h2.y);
-
-        // Load weights (still scalar - could vectorize W_down too)
-        float w0 = __half2float(W_down[h * INTER + inter_tile + k]);
-        float w1 = __half2float(W_down[h * INTER + inter_tile + k + 1]);
-
-        acc += inter_val0 * w0 + inter_val1 * w1;
-      }
-      // Handle remainder
-      for (; k < tile_size; k++) {
-        float inter_val = __half2float(smem_inter[k]);
-        float w = __half2float(W_down[h * INTER + inter_tile + k]);
-        acc += inter_val * w;
-      }
-
-      // Accumulate into smem_output (no atomics - exclusive ownership!)
-      smem_output[h] += acc;
-    }
-    __syncthreads();
-  }
-
-  // ==========================================================================
-  // WRITE FINAL OUTPUT
-  // ==========================================================================
-*/
-
-// ============================================================================
-// ROPE (Unchanged - already optimal)
+// ROPE (Linearized Grid Fix for Phase 3)
 // ============================================================================
 
 __global__ void __launch_bounds__(256)
@@ -952,22 +350,39 @@ __global__ void __launch_bounds__(256)
                const float *__restrict__ sin_cache, const int batch_size,
                const int num_heads, const int seq_len, const int head_dim,
                const int position_offset) {
-  const int batch_idx = blockIdx.z;
-  const int head_idx = blockIdx.y;
-  const int pos = blockIdx.x;
 
-  if (batch_idx >= batch_size || head_idx >= num_heads || pos >= seq_len)
-    return;
-
+  // Linearized Grid for Robustness (Phase 3)
+  const int total_tokens = batch_size * seq_len;
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   const int half_dim = head_dim >> 1;
-  const int64_t base_offset =
-      ((int64_t)batch_idx * num_heads + head_idx) * seq_len * head_dim +
-      (int64_t)pos * head_dim;
 
-  for (int d = threadIdx.x; d < half_dim; d += blockDim.x) {
+  // Calculate total elements to process (each thread processes one pair of
+  // head_dim indices) Total work = batch * heads * seq * (head_dim/2) But wait,
+  // the inner loop iterates over half_dim. Actually, we want to parallelize
+  // over (Batch, Head, Seq). Let's stick to the simple linearized grid over
+  // tokens and threads loop over dimensions or vice versa.
+
+  // The original kernel had 3D grid. The new one assumes 1D grid launching
+  // enough threads.
+  const int total_items = batch_size * num_heads * seq_len * half_dim;
+
+  for (int i = idx; i < total_items; i += gridDim.x * blockDim.x) {
+    // Decode index i -> (b, h, s, d)
+    int rem = i;
+    const int d = rem % half_dim;
+    rem /= half_dim;
+    const int s = rem % seq_len;
+    rem /= seq_len;
+    const int h = rem % num_heads;
+    const int b = rem / num_heads;
+
+    const int64_t base_offset =
+        ((int64_t)b * num_heads + h) * seq_len * head_dim +
+        (int64_t)s * head_dim;
     const int64_t idx0 = base_offset + d;
     const int64_t idx1 = base_offset + half_dim + d;
-    const int64_t cache_idx = (int64_t)(position_offset + pos) * half_dim + d;
+
+    const int64_t cache_idx = (int64_t)(position_offset + s) * half_dim + d;
 
     const float cos_val = __ldg(&cos_cache[cache_idx]);
     const float sin_val = __ldg(&sin_cache[cache_idx]);
@@ -982,6 +397,37 @@ __global__ void __launch_bounds__(256)
     k[idx0] = from_float<T>(k0 * cos_val - k1 * sin_val);
     k[idx1] = from_float<T>(k0 * sin_val + k1 * cos_val);
   }
+}
+
+// ============================================================================
+// CUBLASLT INTEGRATION
+// ============================================================================
+
+static cublasLtHandle_t lt_handle = nullptr;
+
+extern "C" void init_cublas_handle() {
+  if (lt_handle == nullptr) {
+    cublasLtCreate(&lt_handle);
+  }
+}
+
+// Simple Elementwise SwiGLU Kernel
+// out = gate * silu(up)
+__global__ void __launch_bounds__(256)
+    swiglu_kernel_simple(const __half *__restrict__ gate,
+                         const __half *__restrict__ up,
+                         __half *__restrict__ output,
+                         const int total_elements) {
+
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_elements)
+    return;
+
+  float g = __half2float(gate[idx]);
+  float u = __half2float(up[idx]);
+  // silu(u) = u / (1 + exp(-u)) = u * sigmoid(u)
+  float silu_u = u / (1.0f + expf(-u));
+  output[idx] = __float2half(g * silu_u);
 }
 
 // ============================================================================
@@ -1003,10 +449,17 @@ void dispatch_rms_norm(const T *input, const T *weight, T *output,
     rms_norm_aligned<T, 1024>
         <<<batch_seq, 256, 0, stream>>>(input, weight, output, batch_seq, eps);
   } else if (hidden_size == 8192) {
-    // Need overlapping or loop for >4096 because max threads is 1024 (covers
-    // 4096 elements with vec4) For now, fallback for >4096 or implement looped
-    // kernel
-    rms_norm_dynamic<T><<<batch_seq, 256, 0, stream>>>(
+    // Phase 4: 8192 specialization using multiple elements per thread
+    // 8192 floats / 4 (float4) = 2048 vectors.
+    // Max threads 1024. So each thread needs to handle 2 vectors (8 elements).
+    // Re-use aligned kernel with loop? No, template expects 1 vec/thread logic.
+    // We will use 1024 threads and loop inside?
+    // Actually, simple way: Launch rms_norm_dynamic with optimized block for
+    // 8192. Or better: Just use dynamic kernel which is already robust. Let's
+    // implement a specific 8192 kernel if we really want perf, but for now to
+    // be safe and fast, dynamic with 256 or 512 block is fine. Let's bump
+    // dynamic block to 512 for large sizes?
+    rms_norm_dynamic<T><<<batch_seq, 512, 0, stream>>>(
         input, weight, output, batch_seq, hidden_size, eps);
   } else {
     rms_norm_dynamic<T><<<batch_seq, 256, 0, stream>>>(
@@ -1014,12 +467,23 @@ void dispatch_rms_norm(const T *input, const T *weight, T *output,
   }
 }
 
+// Helper to check cuBLAS status
+#define CUBLAS_CHECK(call)                                                     \
+  do {                                                                         \
+    cublasStatus_t status = call;                                              \
+    if (status != CUBLAS_STATUS_SUCCESS) {                                     \
+      printf("CUBLAS error at %s:%d\n", __FILE__, __LINE__);                   \
+    }                                                                          \
+  } while (0)
+
 extern "C" {
 
-// Forward declaration
 void rms_norm_launcher(const float *input, const float *weight, float *output,
                        int batch_seq, int hidden_size, float eps,
-                       cudaStream_t stream);
+                       cudaStream_t stream) {
+  dispatch_rms_norm(input, weight, output, batch_seq, hidden_size, eps, stream);
+  CUDA_CHECK(cudaGetLastError());
+}
 
 void rms_norm_launcher_fp16(const __half *input, const __half *weight,
                             __half *output, int batch_seq, int hidden_size,
@@ -1028,59 +492,60 @@ void rms_norm_launcher_fp16(const __half *input, const __half *weight,
   CUDA_CHECK(cudaGetLastError());
 }
 
-// Fused MLP with pre-allocated workspace (NO cudaMalloc in hot path!)
-// workspace must be at least batch_seq * hidden_size * sizeof(__half) bytes
-// Fused MLP with pre-allocated workspace (NO cudaMalloc in hot path!)
-// workspace must be at least batch_seq * hidden_size * sizeof(__half) bytes
-void fused_mlp_block_launcher_fp16(
-    const __half *input, const __half *norm_weight, const __half *W_gate,
-    const __half *W_up, const __half *W_down, __half *output,
-    __half *workspace, // Pre-allocated buffer for normalized output
-    int batch_seq, int hidden_size, int intermediate_size, float eps,
-    cudaStream_t stream) {
+// Forward declare for legacy wrapper use
+void fused_mlp_cublaslt_launcher_fp16(const __half *input,
+                                      const __half *norm_weight,
+                                      const __half *W_gate, const __half *W_up,
+                                      const __half *W_down, __half *output,
+                                      __half *workspace, int batch_seq,
+                                      int hidden_size, int intermediate_size,
+                                      float eps, cudaStream_t stream);
 
-  rms_norm_launcher_fp16(input, norm_weight, workspace, batch_seq, hidden_size,
-                         eps, stream);
+// Wrapper that redirects to cuBLASLt implementation
+void fused_mlp_block_launcher_fp16(const __half *input,
+                                   const __half *norm_weight,
+                                   const __half *W_gate, const __half *W_up,
+                                   const __half *W_down, __half *output,
+                                   __half *workspace, int batch_seq,
+                                   int hidden_size, int intermediate_size,
+                                   float eps, cudaStream_t stream) {
 
-  // Dynamic shared memory calculation:
-  // smem_input (half) + smem_output (float) + 16 (align)
-  size_t smem_size =
-      (size_t)hidden_size * (sizeof(__half) + sizeof(float)) + 64;
-
-  // Ensure we don't exceed hardware limits limits (48KB/64KB/96KB)
-  // For HIDDEN=8192: 8192*6 = ~48KB. Fits.
-
-  fused_mlp_tensor_core<__half, __half><<<batch_seq, 256, smem_size, stream>>>(
-      workspace, W_gate, W_up, W_down, output, batch_seq, hidden_size,
-      intermediate_size);
+  // Redirect to robust cuBLASLt implementation
+  fused_mlp_cublaslt_launcher_fp16(
+      input, norm_weight, W_gate, W_up, W_down, output,
+      workspace, // Reuse workspace for intermediates
+      batch_seq, hidden_size, intermediate_size, eps, stream);
 
   CUDA_CHECK(cudaGetLastError());
 }
 
-// FP32 Launcher (Staged Pipeline: Load float -> Convert half -> Smem -> Tensor
-// Core)
+// Forward Declares
+void fused_mlp_cublaslt_launcher_fp32(const float *input,
+                                      const float *norm_weight,
+                                      const float *W_gate, const float *W_up,
+                                      const float *W_down, float *output,
+                                      float *workspace, int batch_seq,
+                                      int hidden_size, int intermediate_size,
+                                      float eps, cudaStream_t stream);
+
+void fused_mlp_cublaslt_launcher_w8a16(
+    const __half *input, const __half *norm_weight, const uint8_t *W_gate,
+    const uint8_t *W_up, const uint8_t *W_down, __half *output,
+    __half *workspace, int batch_seq, int hidden_size, int intermediate_size,
+    float eps, float scale, cudaStream_t stream);
+
 void fused_mlp_block_launcher_fp32(const float *input, const float *norm_weight,
                                    const float *W_gate, const float *W_up,
                                    const float *W_down, float *output,
                                    float *workspace, int batch_seq,
                                    int hidden_size, int intermediate_size,
                                    float eps, cudaStream_t stream) {
-
-  // Use generic rms_norm (FP32)
-  rms_norm_dynamic<float><<<batch_seq, 256, 0, stream>>>(
-      input, norm_weight, workspace, batch_seq, hidden_size, eps);
-
-  size_t smem_size =
-      (size_t)hidden_size * (sizeof(__half) + sizeof(float)) + 64;
-
-  fused_mlp_tensor_core<float, float><<<batch_seq, 256, smem_size, stream>>>(
-      workspace, W_gate, W_up, W_down, output, batch_seq, hidden_size,
-      intermediate_size);
-
-  CUDA_CHECK(cudaGetLastError());
+  // Phase 3: Wiring
+  fused_mlp_cublaslt_launcher_fp32(input, norm_weight, W_gate, W_up, W_down,
+                                   output, workspace, batch_seq, hidden_size,
+                                   intermediate_size, eps, stream);
 }
 
-// W8A16 Launcher (FP16 Activation, FP8 Weight)
 void fused_mlp_block_launcher_w8a16(const __half *input,
                                     const __half *norm_weight,
                                     const uint8_t *W_gate, const uint8_t *W_up,
@@ -1088,31 +553,23 @@ void fused_mlp_block_launcher_w8a16(const __half *input,
                                     __half *workspace, int batch_seq,
                                     int hidden_size, int intermediate_size,
                                     float eps, cudaStream_t stream) {
-
-  rms_norm_launcher_fp16(input, norm_weight, workspace, batch_seq, hidden_size,
-                         eps, stream);
-
-  size_t smem_size =
-      (size_t)hidden_size * (sizeof(__half) + sizeof(float)) + 64;
-
-  fused_mlp_tensor_core<__half, uint8_t><<<batch_seq, 256, smem_size, stream>>>(
-      workspace, W_gate, W_up, W_down, output, batch_seq, hidden_size,
-      intermediate_size);
-
-  CUDA_CHECK(cudaGetLastError());
+  // Phase 3: Wiring with default scale 1.0
+  fused_mlp_cublaslt_launcher_w8a16(input, norm_weight, W_gate, W_up, W_down,
+                                    output, workspace, batch_seq, hidden_size,
+                                    intermediate_size, eps, 1.0f, stream);
 }
 
-// Legacy API that allocates internally (for backward compatibility)
-// NOTE: This is SLOW - use the workspace version for production!
+// Legacy API (Allocates internally - slow)
 void fused_mlp_block_launcher_fp16_legacy(
     const __half *input, const __half *norm_weight, const __half *W_gate,
     const __half *W_up, const __half *W_down, __half *output, int batch_seq,
     int hidden_size, int intermediate_size, float eps, cudaStream_t stream) {
 
-  // Allocate workspace (SLOW - only for compatibility)
   __half *workspace;
-  CUDA_CHECK(
-      cudaMalloc(&workspace, (size_t)batch_seq * hidden_size * sizeof(__half)));
+  CUDA_CHECK(cudaMalloc(
+      &workspace,
+      (size_t)batch_seq * hidden_size * sizeof(__half) +
+          (size_t)batch_seq * intermediate_size * 2 * sizeof(__half) + 1024));
 
   fused_mlp_block_launcher_fp16(input, norm_weight, W_gate, W_up, W_down,
                                 output, workspace, batch_seq, hidden_size,
@@ -1137,51 +594,353 @@ void rope_apply_launcher_fp16(__half *q, __half *k, const float *cos,
                               const float *sin, int batch_size, int num_heads,
                               int seq_len, int head_dim, int position_offset,
                               cudaStream_t stream) {
-  dim3 blocks(seq_len, num_heads, batch_size);
-  rope_apply<__half><<<blocks, 256, 0, stream>>>(q, k, cos, sin, batch_size,
-                                                 num_heads, seq_len, head_dim,
-                                                 position_offset);
+  const int half_dim = head_dim / 2;
+  const int total_items = batch_size * num_heads * seq_len * half_dim;
+  const int threads = 256;
+  const int blocks = (total_items + threads - 1) / threads; // 1D Grid
+
+  rope_apply<__half><<<blocks, threads, 0, stream>>>(q, k, cos, sin, batch_size,
+                                                     num_heads, seq_len,
+                                                     head_dim, position_offset);
   CUDA_CHECK(cudaGetLastError());
 }
 
-// FP32 version for compatibility
 void rope_apply_launcher(float *q, float *k, const float *cos, const float *sin,
                          int batch_size, int num_heads, int seq_len,
                          int head_dim, int position_offset,
                          cudaStream_t stream) {
-  dim3 blocks(seq_len, num_heads, batch_size);
-  rope_apply<float><<<blocks, 256, 0, stream>>>(q, k, cos, sin, batch_size,
-                                                num_heads, seq_len, head_dim,
-                                                position_offset);
+  const int half_dim = head_dim / 2;
+  const int total_items = batch_size * num_heads * seq_len * half_dim;
+  const int threads = 256;
+  const int blocks = (total_items + threads - 1) / threads; // 1D Grid
+
+  rope_apply<float><<<blocks, threads, 0, stream>>>(q, k, cos, sin, batch_size,
+                                                    num_heads, seq_len,
+                                                    head_dim, position_offset);
   CUDA_CHECK(cudaGetLastError());
 }
 
-// Deprecated/fallback functions
-void rms_norm_launcher(const float *input, const float *weight, float *output,
-                       int batch_seq, int hidden_size, float eps,
-                       cudaStream_t stream) {
-  dispatch_rms_norm(input, weight, output, batch_seq, hidden_size, eps, stream);
-  CUDA_CHECK(cudaGetLastError());
-}
-
+// Deprecated stubs
 void swiglu_launcher(const float *gate, const float *up, float *output,
                      int64_t total_elements, cudaStream_t stream) {
-  // Standalone SwiGLU deprecated - use fused MLP for actual speedups
-  printf("Warning: Standalone SwiGLU deprecated - use fused MLP\n");
+  printf("Warning: Standalone SwiGLU deprecated.\n");
 }
-
 void swiglu_launcher_fp16(const __half *gate, const __half *up, __half *output,
                           int64_t total_elements, cudaStream_t stream) {
-  printf("Warning: Standalone SwiGLU deprecated - use fused MLP\n");
+  printf("Warning: Standalone SwiGLU deprecated.\n");
 }
-
 void fused_rmsnorm_linear_launcher_fp16(const __half *input,
                                         const __half *norm_weight,
                                         const __half *W, __half *output,
                                         int batch_seq, int hidden_size,
                                         int out_size, float eps,
                                         cudaStream_t stream) {
-  printf("Warning: Use fused_mlp_block_launcher_fp16 for full pipeline\n");
+  printf("Warning: Use fused_mlp_block_launcher_fp16.\n");
+}
+
+// Real Implementation of cuBLASLt Launcher
+void fused_mlp_cublaslt_launcher_fp16(const __half *input,
+                                      const __half *norm_weight,
+                                      const __half *W_gate, const __half *W_up,
+                                      const __half *W_down, __half *output,
+                                      __half *workspace, int batch_seq,
+                                      int hidden_size, int intermediate_size,
+                                      float eps, cudaStream_t stream) {
+
+  if (!lt_handle)
+    init_cublas_handle();
+
+  // 1. RMSNorm
+  __half *input_norm = workspace;
+  rms_norm_launcher_fp16(input, norm_weight, input_norm, batch_seq, hidden_size,
+                         eps, stream);
+
+  // 2. Setup cuBLASLt descriptors
+  cublasLtMatmulDesc_t opDesc;
+  cublasLtMatrixLayout_t A_desc, B_desc, C_desc;
+
+  CUBLAS_CHECK(
+      cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
+  CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(
+      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &(int){CUBLAS_OP_T},
+      sizeof(int))); // Weight Transposed
+
+  // Prepare Pointers in Workspace
+  // Layout: [NormInput (B*H)] [Gate (B*I)] [Up (B*I)]
+  // We need safe offsets.
+  // input_norm is at workspace[0]. Size: batch_seq * hidden_size.
+
+  size_t input_size = (size_t)batch_seq * hidden_size;
+  size_t inter_size = (size_t)batch_seq * intermediate_size;
+
+  __half *gate_out = input_norm + input_size;
+  __half *up_out = gate_out + inter_size;
+
+  // Checking alignment? cuBLAS likes 16-byte alignment.
+  // __half is 2 bytes. If hidden entries is even, likely aligned.
+  // But to be safe, we might want to align these pointers if batch/hidden are
+  // odd. For now assuming standard sizes (multiples of 8/16).
+
+  // Matmul 1 & 2: Gate & Up
+  // C = Weight^T * Input
+  // Layouts: A=Weight(H,I), B=Input(H,B), C=Output(I,B)
+  // Note: PyTorch weights are [Out, In].
+  // Gate Weight: [Inter, Hidden] -> ColMajor view is [Hidden, Inter]
+  // (transposed logic).
+
+  const float alpha = 1.0f;
+  const float beta = 0.0f;
+
+  // Gate GEMM
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16F, hidden_size,
+                                          batch_seq, hidden_size)); // Input
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16F, hidden_size,
+                                          intermediate_size,
+                                          hidden_size)); // W_gate
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_16F,
+                                          intermediate_size, batch_seq,
+                                          intermediate_size)); // Gate Out
+
+  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate, A_desc,
+                              input_norm, B_desc, &beta, gate_out, C_desc,
+                              gate_out, C_desc, NULL, NULL, 0, stream));
+
+  // Up GEMM
+  // Reuse desc except pointers
+  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_up, A_desc,
+                              input_norm, B_desc, &beta, up_out, C_desc, up_out,
+                              C_desc, NULL, NULL, 0, stream));
+
+  // 3. SwiGLU
+  int total_elements = batch_seq * intermediate_size;
+  int threads = 256;
+  int blocks = (total_elements + threads - 1) / threads;
+  swiglu_kernel_simple<<<blocks, threads, 0, stream>>>(
+      gate_out, up_out, gate_out, total_elements);
+
+  // 4. Down GEMM
+  // C = W_down^T * Gate_out
+  // W_down: [Hidden, Inter] (PyTorch) -> ColMajor view [Inter, Hidden].
+  // A_desc rows=Inter, cols=Hidden.
+
+  cublasLtMatrixLayoutDestroy(A_desc);
+  cublasLtMatrixLayoutDestroy(B_desc);
+  cublasLtMatrixLayoutDestroy(C_desc);
+
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_16F,
+                                          intermediate_size, hidden_size,
+                                          intermediate_size)); // W_down
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_16F,
+                                          intermediate_size, batch_seq,
+                                          intermediate_size)); // Gate_out
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_16F, hidden_size,
+                                          batch_seq, hidden_size)); // Output
+
+  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_down, A_desc,
+                              gate_out, B_desc, &beta, output, C_desc, output,
+                              C_desc, NULL, NULL, 0, stream));
+
+  cublasLtMatmulDescDestroy(opDesc);
+  cublasLtMatrixLayoutDestroy(A_desc);
+  cublasLtMatrixLayoutDestroy(B_desc);
+  cublasLtMatrixLayoutDestroy(C_desc);
 }
 
 } // extern "C"
+
+// ============================================================================
+// PHASE 2 & 3: W8A16 DEQUANTIZATION & FP32 SUPPORT
+// ============================================================================
+
+// Simple Dequantization Kernel: uint8 -> half
+// weights are assumed to be row-major [Out, In] (or ColMajor [In, Out])
+// We just cast elementwise.
+// Optimization: Vectorized load/store could be used here.
+__global__ void __launch_bounds__(256)
+    dequantize_weight_kernel(const uint8_t *__restrict__ input,
+                             __half *__restrict__ output,
+                             const int total_elements, const float scale) {
+
+  // Vectorized path for 16-byte alignment (16x uint8 -> 8x half2)?
+  // uint8 is 1 byte. int4 load = 16 bytes = 16 elements.
+  // We can write 16 elements as 8x half2 (32 bytes).
+
+  const int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 16;
+  if (idx >= total_elements)
+    return;
+
+  // Ugly but fast vectorized load
+  if (idx + 15 < total_elements) {
+    int4 loaded = *reinterpret_cast<const int4 *>(&input[idx]);
+    uint8_t *vals = reinterpret_cast<uint8_t *>(&loaded);
+
+    __half buffer[16];
+#pragma unroll
+    for (int i = 0; i < 16; i++) {
+      buffer[i] = __float2half((float)vals[i] * scale);
+    }
+
+    // Store as 8x half2 (vectorized store) is tricky without guaranteed
+    // alignment. But workspace is usually 256-byte aligned.
+
+    // Split into 2x float4 stores (16 bytes each)? No, half array is 32 bytes
+    // total. 16 * 2 bytes = 32 bytes. float4 = 16 bytes. So 2 stores.
+
+    float4 *out_f4 = reinterpret_cast<float4 *>(&output[idx]);
+    out_f4[0] = *reinterpret_cast<float4 *>(&buffer[0]);
+    out_f4[1] = *reinterpret_cast<float4 *>(&buffer[8]);
+
+  } else {
+    // Scalar tail
+    for (int i = 0; i < 16 && (idx + i) < total_elements; i++) {
+      output[idx + i] = __float2half((float)input[idx + i] * scale);
+    }
+  }
+}
+
+// Helper for FP32 SwiGLU
+__global__ void __launch_bounds__(256)
+    swiglu_kernel_simple_fp32(const float *__restrict__ gate,
+                              const float *__restrict__ up,
+                              float *__restrict__ output,
+                              const int total_elements) {
+
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total_elements)
+    return;
+
+  float g = gate[idx];
+  float u = up[idx];
+  float silu_u = u / (1.0f + __expf(-u)); // Fast intrinsic
+  output[idx] = g * silu_u;
+}
+
+// FP32 Launcher
+extern "C" void fused_mlp_cublaslt_launcher_fp32(
+    const float *input, const float *norm_weight, const float *W_gate,
+    const float *W_up, const float *W_down, float *output, float *workspace,
+    int batch_seq, int hidden_size, int intermediate_size, float eps,
+    cudaStream_t stream) {
+
+  if (!lt_handle)
+    init_cublas_handle();
+
+  // 1. RMSNorm (FP32)
+  // Use generic wrapper dispatch
+  rms_norm_launcher(input, norm_weight, workspace, batch_seq, hidden_size, eps,
+                    stream);
+
+  float *input_norm = workspace;
+  float *gate_out = input_norm + (size_t)batch_seq * hidden_size;
+  float *up_out = gate_out + (size_t)batch_seq * intermediate_size;
+
+  cublasLtMatmulDesc_t opDesc;
+  cublasLtMatrixLayout_t A_desc, B_desc, C_desc;
+
+  // Create Descriptor (FP32 Compute, FP32 Data)
+  CUBLAS_CHECK(
+      cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
+  CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(
+      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &(int){CUBLAS_OP_T}, sizeof(int)));
+
+  const float alpha = 1.0f;
+  const float beta = 0.0f;
+
+  // Gate GEMM
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&B_desc, CUDA_R_32F, hidden_size,
+                                          batch_seq, hidden_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&A_desc, CUDA_R_32F, hidden_size,
+                                          intermediate_size, hidden_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
+      &C_desc, CUDA_R_32F, intermediate_size, batch_seq, intermediate_size));
+
+  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_gate, A_desc,
+                              input_norm, B_desc, &beta, gate_out, C_desc,
+                              gate_out, C_desc, NULL, NULL, 0, stream));
+
+  // Up GEMM
+  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_up, A_desc,
+                              input_norm, B_desc, &beta, up_out, C_desc, up_out,
+                              C_desc, NULL, NULL, 0, stream));
+
+  // SwiGLU FP32
+  int total = batch_seq * intermediate_size;
+  swiglu_kernel_simple_fp32<<<(total + 255) / 256, 256, 0, stream>>>(
+      gate_out, up_out, gate_out, total);
+
+  // Down GEMM
+  cublasLtMatrixLayoutDestroy(A_desc);
+  cublasLtMatrixLayoutDestroy(B_desc);
+  cublasLtMatrixLayoutDestroy(C_desc);
+
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
+      &A_desc, CUDA_R_32F, intermediate_size, hidden_size, intermediate_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(
+      &B_desc, CUDA_R_32F, intermediate_size, batch_seq, intermediate_size));
+  CUBLAS_CHECK(cublasLtMatrixLayoutCreate(&C_desc, CUDA_R_32F, hidden_size,
+                                          batch_seq, hidden_size));
+
+  CUBLAS_CHECK(cublasLtMatmul(lt_handle, opDesc, &alpha, W_down, A_desc,
+                              gate_out, B_desc, &beta, output, C_desc, output,
+                              C_desc, NULL, NULL, 0, stream));
+
+  cublasLtMatmulDescDestroy(opDesc);
+  cublasLtMatrixLayoutDestroy(A_desc);
+  cublasLtMatrixLayoutDestroy(B_desc);
+  cublasLtMatrixLayoutDestroy(C_desc);
+
+  CUDA_CHECK(cudaGetLastError());
+}
+
+// W8A16 Launcher
+// Strategy: Dequantize weights to FP16 in workspace, then run FP16 GEMM.
+extern "C" void fused_mlp_cublaslt_launcher_w8a16(
+    const __half *input, const __half *norm_weight, const uint8_t *W_gate,
+    const uint8_t *W_up, const uint8_t *W_down, __half *output,
+    __half *workspace, // Needs EXTRA space for dequantized weights!
+    int batch_seq, int hidden_size, int intermediate_size, float eps,
+    float transform_scale, cudaStream_t stream) {
+
+  // 1. Calculate Offsets in Workspace
+  // Layout:
+  // [NormInput (B*H)]
+  // [GateOut (B*I)]
+  // [UpOut (B*I)]
+  // [W_gate_fp16 (H*I)]
+  // [W_up_fp16 (H*I)]
+  // [W_down_fp16 (H*I)]
+
+  size_t size_input = (size_t)batch_seq * hidden_size;
+  size_t size_inter = (size_t)batch_seq * intermediate_size;
+  size_t size_weight_proj = (size_t)hidden_size * intermediate_size;
+
+  // Existing workspace usage from FP16 path
+  __half *base_ws = workspace;
+
+  // Pointers for Dequantized Weights (Temporary)
+  // We append them AFTER the activation buffers
+  __half *w_gate_fp16 = base_ws + size_input + 2 * size_inter;
+  __half *w_up_fp16 = w_gate_fp16 + size_weight_proj;
+  __half *w_down_fp16 = w_up_fp16 + size_weight_proj;
+
+  // 2. Dequantize Weights (Async)
+  int blocks_proj = (size_weight_proj + 255) / 256;
+
+  // Gate
+  dequantize_weight_kernel<<<blocks_proj, 256, 0, stream>>>(
+      W_gate, w_gate_fp16, size_weight_proj, transform_scale);
+  // Up
+  dequantize_weight_kernel<<<blocks_proj, 256, 0, stream>>>(
+      W_up, w_up_fp16, size_weight_proj, transform_scale);
+  // Down
+  dequantize_weight_kernel<<<blocks_proj, 256, 0, stream>>>(
+      W_down, w_down_fp16, size_weight_proj,
+      transform_scale); // Note: W_down size match? Yes loop-back.
+
+  // 3. Call Standard FP16 Launcher
+  // Use the dequantized pointers!
+  fused_mlp_cublaslt_launcher_fp16(
+      input, norm_weight, w_gate_fp16, w_up_fp16, w_down_fp16, output,
+      workspace, // Reuses the beginning of workspace for Activations
+      batch_seq, hidden_size, intermediate_size, eps, stream);
+}
