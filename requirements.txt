@@ -63,5 +63,5 @@ sentencepiece
 google
 protobuf
 ninja
-transformers==4.36.2
+transformers==5.0.0
 pyobjc-framework-Metal
