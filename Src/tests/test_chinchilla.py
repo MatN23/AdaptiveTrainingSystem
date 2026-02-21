@@ -1,6 +1,7 @@
 import pytest
 import torch
 import numpy as np
+from unittest.mock import MagicMock
 from Main_Scripts.training.chinchilla_scaler import (
     ConvergenceDetector, 
     ComputeEfficiencyTracker, 

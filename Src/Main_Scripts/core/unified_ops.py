@@ -91,6 +91,7 @@ if HAS_CUDA:
 # Try importing Metal operations (macOS only)
 HAS_METAL_OPS = False
 HAS_METAL_MOE = False
+MoEMetalOps = None
 
 if IS_MACOS and HAS_MPS:
     try:
@@ -117,6 +118,22 @@ if IS_MACOS and HAS_MPS:
         except ImportError as e:
             logger.debug(f"Metal operations not available: {e}")
             HAS_METAL_OPS = False
+
+    # Try importing Metal MoE operations
+    try:
+        from moe_metal_wrapper import MoEMetalOps, HAS_METAL_OPS as METAL_MOE_AVAILABLE
+        HAS_METAL_MOE = METAL_MOE_AVAILABLE
+        if HAS_METAL_MOE:
+            logger.info("✅ Metal MoE operations loaded (direct import)")
+    except ImportError:
+        try:
+            from Main_Scripts.core.moe_metal_wrapper import MoEMetalOps, HAS_METAL_OPS as METAL_MOE_AVAILABLE
+            HAS_METAL_MOE = METAL_MOE_AVAILABLE
+            if HAS_METAL_MOE:
+                logger.info("✅ Metal MoE operations loaded (package import)")
+        except ImportError as e:
+            logger.debug(f"Metal MoE operations not available: {e}")
+            HAS_METAL_MOE = False
 
 # ============================================================================
 # BACKEND SELECTION

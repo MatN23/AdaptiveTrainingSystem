@@ -3,6 +3,7 @@ import subprocess
 import argparse
 from pathlib import Path
 import time
+import importlib.util
 
 
 def run_command(cmd, description):
@@ -22,6 +23,14 @@ def run_command(cmd, description):
 
 
 def main():
+    if importlib.util.find_spec("pytest") is None:
+        print("\n" + "=" * 80)
+        print("❌ pytest is not installed in the active Python environment")
+        print(f"Interpreter: {sys.executable}")
+        print("Install with: python -m pip install pytest")
+        print("=" * 80)
+        return 2
+
     parser = argparse.ArgumentParser(description="Run comprehensive tests")
     parser.add_argument('--fast', action='store_true', help='Skip slow tests')
     parser.add_argument('--model-only', action='store_true', help='Only run model tests')
@@ -63,7 +72,8 @@ def main():
             test_files.append(str(tests_dir / 'test_e2e.py'))
     
     # Build pytest command
-    pytest_cmd = ['pytest']
+    # Use the active interpreter so we don't depend on a shell-level `pytest` executable.
+    pytest_cmd = [sys.executable, '-m', 'pytest']
     
     if args.verbose:
         pytest_cmd.append('-v')
