@@ -810,10 +810,13 @@ def create_fast_dataloader(dataset: Union[Dataset, IterableDataset],
     """Create optimized dataloader with smart settings."""
     
     is_streaming = isinstance(dataset, IterableDataset)
+    pin_memory = bool(getattr(config, 'pin_memory', torch.cuda.is_available()))
+    prefetch_factor = getattr(config, 'prefetch_factor', 4)
+    drop_last = bool(getattr(config, 'drop_last', True))
     
     # Determine optimal num_workers
     if hasattr(config, 'num_workers') and config.num_workers is not None:
-        num_workers = config.num_workers
+        num_workers = max(0, int(config.num_workers))
     else:
         cpu_count = os.cpu_count() or 1
         num_workers = min(cpu_count // 2, 8) if not is_streaming else 0
@@ -823,20 +826,23 @@ def create_fast_dataloader(dataset: Union[Dataset, IterableDataset],
             dataset,
             batch_size=config.batch_size,
             num_workers=0,
-            pin_memory=torch.cuda.is_available(),
-            drop_last=True,
+            pin_memory=pin_memory,
+            drop_last=drop_last,
         )
-    else:
-        return DataLoader(
-            dataset,
-            batch_size=config.batch_size,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            pin_memory=torch.cuda.is_available(),
-            prefetch_factor=4 if num_workers > 0 else None,
-            drop_last=True,
-            persistent_workers=num_workers > 0
-        )
+
+    dataloader_kwargs = {
+        'dataset': dataset,
+        'batch_size': config.batch_size,
+        'shuffle': shuffle,
+        'num_workers': num_workers,
+        'pin_memory': pin_memory,
+        'drop_last': drop_last,
+        'persistent_workers': num_workers > 0,
+    }
+    if num_workers > 0 and prefetch_factor is not None:
+        dataloader_kwargs['prefetch_factor'] = max(2, int(prefetch_factor))
+
+    return DataLoader(**dataloader_kwargs)
 
 
 # ============================================================================
@@ -921,14 +927,24 @@ else:
     
     def create_dataloader(dataset, config, shuffle=True):
         """Fallback dataloader creator."""
-        return DataLoader(
-            dataset,
-            batch_size=getattr(config, 'batch_size', 1),
-            shuffle=shuffle,
-            num_workers=getattr(config, 'num_workers', 0),
-            pin_memory=torch.cuda.is_available(),
-            drop_last=True
-        )
+        num_workers = max(0, int(getattr(config, 'num_workers', 0) or 0))
+        pin_memory = bool(getattr(config, 'pin_memory', torch.cuda.is_available()))
+        prefetch_factor = getattr(config, 'prefetch_factor', 4)
+
+        dataloader_kwargs = {
+            'dataset': dataset,
+            'batch_size': getattr(config, 'batch_size', 1),
+            'shuffle': shuffle,
+            'num_workers': num_workers,
+            'pin_memory': pin_memory,
+            'drop_last': True,
+        }
+        if num_workers > 0:
+            dataloader_kwargs['persistent_workers'] = True
+            if prefetch_factor is not None:
+                dataloader_kwargs['prefetch_factor'] = max(2, int(prefetch_factor))
+
+        return DataLoader(**dataloader_kwargs)
     
     def setup_datasets(config, tokenizer):
         """Fallback setup function."""

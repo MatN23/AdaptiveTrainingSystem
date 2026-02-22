@@ -311,36 +311,21 @@ class RMSNorm(nn.Module):
         """Forward pass with guaranteed gradients."""
         input_dtype = x.dtype
         
-        # ✅ FIX: In training mode, always use PyTorch to ensure gradients
-        # TRY OPTIMIZED BACKENDS FIRST (Training & Inference)
-        # Use unified backend if available
+        # Try optimized backend implementation if configured/available.
         if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
             try:
                 return self._impl(x)
             except Exception:
                 pass
-        
-        # Fallback to direct CUDA if unified failed or unavailable
+
+        # Fallback to direct CUDA backend if unified backend is unavailable.
         if hasattr(self, '_cuda_impl') and self._cuda_impl is not None and x.is_cuda:
             try:
                 return self._cuda_impl(x)
             except Exception:
                 pass
-        
-        # Inference: try optimized backends
-        if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
-            try:
-                return self._impl(x)
-            except Exception:
-                pass
-        
-        if self._cuda_impl is not None and x.is_cuda:
-            try:
-                return self._cuda_impl(x)
-            except Exception:
-                pass
-        
-        # PyTorch fallback
+
+        # PyTorch fallback.
         x_normed = self._norm_pytorch(x)
         if self.elementwise_affine:
             x_normed = x_normed * self.weight.float()
@@ -912,69 +897,93 @@ class DenseGroupedQueryAttention(nn.Module):
 # ============================================================================
 
 class MoDRouter(nn.Module):
-    """Fixed version with guaranteed gradient flow"""
-    
+    """Token router for Mixture-of-Depths with lightweight stats collection."""
+
+    def __init__(
+        self,
+        hidden_size: int,
+        capacity_factor: float = 0.5,
+        routing_temperature: float = 1.0,
+        stats_update_interval: int = 64
+    ):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.capacity_factor = capacity_factor
+        self.routing_temperature = routing_temperature
+        self.router = nn.Linear(hidden_size, 1, bias=False)
+        self.stats_update_interval = max(1, int(stats_update_interval))
+        self._routing_stats_step = 0
+        self._routing_stats = {
+            'total_tokens': 0,
+            'computed_tokens': 0.0,
+            'skipped_tokens': 0.0,
+        }
+
+        nn.init.normal_(self.router.weight, mean=0.0, std=0.02)
+
+    def _maybe_update_stats(self, routing_mask: torch.Tensor, total_tokens: int):
+        """Throttle sync-heavy stats updates to avoid per-step stalls."""
+        self._routing_stats_step += 1
+        if self._routing_stats_step % self.stats_update_interval != 0:
+            return
+
+        self._routing_stats['total_tokens'] += total_tokens
+        self._routing_stats['computed_tokens'] += float(routing_mask.sum().item())
+        self._routing_stats['skipped_tokens'] += float((1 - routing_mask).sum().item())
+
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-        """Route tokens with guaranteed gradient flow."""
-        batch_size, seq_len, hidden_size = x.shape
-        
-        # Compute routing logits - ALWAYS maintains gradients
-        routing_logits = self.router(x)  # [batch, seq_len, 1]
-        
-        # Apply temperature scaling
-        routing_logits = routing_logits / self.routing_temperature
-        
-        # Compute routing probabilities
-        routing_probs = torch.sigmoid(routing_logits)  # [batch, seq_len, 1]
-        
-        # Determine capacity
+        """Route tokens with straight-through gradients."""
+        batch_size, seq_len, _ = x.shape
         total_tokens = batch_size * seq_len
-        capacity = int(total_tokens * self.capacity_factor)
-        
+        capacity = max(1, min(total_tokens, int(total_tokens * self.capacity_factor)))
+
+        routing_logits = self.router(x) / self.routing_temperature
+        routing_probs = torch.sigmoid(routing_logits)
+
         if self.training:
-            # Flatten for top-k selection
             flat_probs = routing_probs.view(-1)
-            
-            # Select top-k tokens
-            _, top_indices = torch.topk(flat_probs, k=min(capacity, total_tokens))
-            
-            # Create binary mask
+            _, top_indices = torch.topk(flat_probs, k=capacity)
             routing_mask = torch.zeros_like(flat_probs)
             routing_mask[top_indices] = 1.0
             routing_mask = routing_mask.view(batch_size, seq_len, 1)
-            
-            # ✅ FIX: Use proper straight-through estimator
-            # Forward: use hard mask, Backward: use soft probs
+
+            # Straight-through estimator: hard mask in forward, soft probs in backward.
             routing_weights = routing_mask + (routing_probs - routing_probs.detach())
-            
-            # Update statistics
-            self._routing_stats['total_tokens'] += total_tokens
-            self._routing_stats['computed_tokens'] += routing_mask.sum().item()
-            self._routing_stats['skipped_tokens'] += (1 - routing_mask).sum().item()
-            
-            # Compute auxiliary loss
-            actual_ratio = routing_probs.mean()  # ✅ Use soft probs for loss
+
+            actual_ratio = routing_probs.mean()
             target_ratio = self.capacity_factor
-            aux_loss = F.mse_loss(actual_ratio, torch.tensor(target_ratio, device=x.device))
-            
+            aux_loss = (actual_ratio - target_ratio) ** 2
         else:
-            # During inference: use threshold-based routing
-            threshold = routing_probs.flatten().kthvalue(
-                max(1, total_tokens - capacity)
-            )[0]
-            routing_weights = (routing_probs >= threshold).float()
-            
-            # ✅ FIX: In eval mode, still allow gradients if needed
-            routing_weights = routing_weights + (routing_probs - routing_probs.detach())
-            
+            threshold = routing_probs.flatten().kthvalue(max(1, total_tokens - capacity))[0]
+            routing_mask = (routing_probs >= threshold).float()
+            routing_weights = routing_mask + (routing_probs - routing_probs.detach())
             aux_loss = None
-            
-            # Update statistics
-            self._routing_stats['total_tokens'] += total_tokens
-            self._routing_stats['computed_tokens'] += routing_weights.sum().item()
-            self._routing_stats['skipped_tokens'] += (1 - routing_weights).sum().item()
-        
+
+        self._maybe_update_stats(routing_mask, total_tokens)
         return routing_weights, routing_probs, aux_loss
+
+    def get_routing_stats(self) -> Dict[str, Any]:
+        total = self._routing_stats['total_tokens']
+        if total <= 0:
+            return {'error': 'No routing statistics available'}
+
+        computed = self._routing_stats['computed_tokens']
+        skipped = self._routing_stats['skipped_tokens']
+        return {
+            'total_tokens': total,
+            'computed_tokens': computed,
+            'skipped_tokens': skipped,
+            'computed_ratio': computed / max(total, 1.0),
+            'skipped_ratio': skipped / max(total, 1.0),
+        }
+
+    def reset_routing_stats(self):
+        self._routing_stats = {
+            'total_tokens': 0,
+            'computed_tokens': 0.0,
+            'skipped_tokens': 0.0,
+        }
+        self._routing_stats_step = 0
 
 # ============================================================================
 # FEED-FORWARD NETWORKS
@@ -1071,6 +1080,12 @@ class MoEFFNLayer(nn.Module):
         self.top_k = config.moe_top_k
         self.hidden_size = config.hidden_size
         self.capacity_factor = getattr(config, 'capacity_factor', 1.25)
+        self.validate_cuda_indices = getattr(config, 'validate_moe_cuda_indices', False)
+        self.force_dense_expert_grads = getattr(config, 'force_dense_expert_grads', False)
+        self.routing_stats_update_interval = max(
+            1, int(getattr(config, 'routing_stats_update_interval', 64))
+        )
+        self._routing_stats_step = 0
         
         # ✅ FIX: Check if MoECUDAOps is actually available
         self.use_cuda_ops = (
@@ -1136,21 +1151,23 @@ class MoEFFNLayer(nn.Module):
                     temperature=self.routing_temperature,
                     use_cuda=True
                 )
-                
-                # ✅ VALIDATE INDICES - CUDA kernel can produce bad indices
-                num_experts = gate_logits.size(-1)
-                invalid_mask = (top_k_indices < 0) | (top_k_indices >= num_experts)
-                
-                if invalid_mask.any():
-                    # Bad indices detected - fall back to PyTorch for this batch
-                    logging.warning(f"CUDA gating produced invalid indices, falling back to PyTorch")
-                    top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
+
+                # Optional safety validation (disabled by default to avoid per-step host sync).
+                if self.validate_cuda_indices:
+                    num_experts = gate_logits.size(-1)
+                    invalid_mask = (top_k_indices < 0) | (top_k_indices >= num_experts)
+                    if bool(invalid_mask.any().item()):
+                        logging.warning("CUDA gating produced invalid indices, falling back to PyTorch")
+                        top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
+                    else:
+                        # Preserve gradient path to gate logits.
+                        top_k_logits = torch.gather(scaled_logits, -1, top_k_indices)
+                        top_k_probs = F.softmax(top_k_logits, dim=-1)
                 else:
-                    # ✅ CRITICAL: Re-compute weights in PyTorch using gathered logits.
-                    # This ensures the gradient path to gate_logits is preserved!
+                    # Fast path: trust kernel output and avoid sync-heavy validity checks.
                     top_k_logits = torch.gather(scaled_logits, -1, top_k_indices)
                     top_k_probs = F.softmax(top_k_logits, dim=-1)
-                    
+
             except Exception as e:
                 logging.warning(f"CUDA routing failed: {e}")
                 top_k_indices, top_k_probs = self._pytorch_routing(gate_logits)
@@ -1162,8 +1179,11 @@ class MoEFFNLayer(nn.Module):
         output = self._compute_experts_vectorized(x_flat, top_k_indices, top_k_probs)
         
         # === AUXILIARY LOSS ===
-        gate_probs = F.softmax(gate_logits, dim=-1)
-        aux_loss = self._compute_auxiliary_loss(gate_probs, top_k_indices, total_tokens)
+        if self.load_balancing_weight > 0:
+            gate_probs = F.softmax(gate_logits, dim=-1)
+            aux_loss = self._compute_auxiliary_loss(gate_probs, top_k_indices, total_tokens)
+        else:
+            aux_loss = gate_logits.new_zeros(())
         
         # === STATISTICS ===
         if self.training:
@@ -1181,13 +1201,8 @@ class MoEFFNLayer(nn.Module):
         
         # Temperature scaling
         gate_logits = gate_logits / self.routing_temperature
-        gate_probs = F.softmax(gate_logits, dim=-1)
-        
-        # Top-k selection
-        top_k_probs, top_k_indices = torch.topk(gate_probs, self.top_k, dim=-1)
-        
-        # Renormalize
-        top_k_probs = top_k_probs / (top_k_probs.sum(dim=-1, keepdim=True) + 1e-9)
+        top_k_logits, top_k_indices = torch.topk(gate_logits, self.top_k, dim=-1)
+        top_k_probs = F.softmax(top_k_logits, dim=-1)
         
         return top_k_indices, top_k_probs
     
@@ -1201,48 +1216,55 @@ class MoEFFNLayer(nn.Module):
         Vectorized expert computation with dtype safety.
         ✅ Ensures all tensors have matching dtypes for fp16/bf16/fp32 training.
         """
-        # ✅ CRITICAL FIX: Use zeros_like to match input dtype exactly
         output = torch.zeros_like(x)
-        
-        # Track which experts were used
-        experts_used = set()
-        
-        # Process each expert
-        for expert_id in range(self.num_experts):
-            expert_mask = (indices == expert_id)
-            token_indices = expert_mask.any(dim=-1).nonzero(as_tuple=True)[0]
-            
-            if token_indices.numel() > 0:
-                expert_inputs = x[token_indices]
-                expert_weights = probs[expert_mask].view(-1)
-                expert_outputs = self.experts[expert_id](expert_inputs)
-                
-                # ✅ CRITICAL: Ensure expert_outputs matches x.dtype
-                if expert_outputs.dtype != x.dtype:
-                    expert_outputs = expert_outputs.to(x.dtype)
-                
-                # ✅ CRITICAL: Ensure expert_weights matches x.dtype
-                if expert_weights.dtype != x.dtype:
-                    expert_weights = expert_weights.to(x.dtype)
-                
-                # Compute weighted outputs (all same dtype now)
-                weighted_outputs = expert_outputs * expert_weights.unsqueeze(-1)
-                
-                # ✅ Now both output and weighted_outputs have same dtype
-                output.index_add_(0, token_indices, weighted_outputs)
-                experts_used.add(expert_id)
-        
-        # ✅ FIX: Give unused experts a tiny gradient to prevent None grads
-        if self.training and len(experts_used) < self.num_experts:
+        num_tokens = x.size(0)
+
+        # Flatten token-expert assignments once and sort by expert for locality.
+        # This avoids O(num_experts * num_tokens * top_k) masking work.
+        flat_experts = indices.reshape(-1).to(torch.long)
+        flat_experts = flat_experts.clamp(0, self.num_experts - 1)
+        flat_weights = probs.reshape(-1).to(dtype=x.dtype)
+        flat_tokens = torch.arange(num_tokens, device=x.device, dtype=torch.long)
+        flat_tokens = flat_tokens.unsqueeze(1).expand(-1, self.top_k).reshape(-1)
+
+        order = torch.argsort(flat_experts)
+        flat_experts = flat_experts[order]
+        flat_weights = flat_weights[order]
+        flat_tokens = flat_tokens[order]
+
+        unique_experts, counts = torch.unique_consecutive(flat_experts, return_counts=True)
+        starts = torch.cumsum(counts, dim=0) - counts
+
+        used_experts = set()
+        unique_experts_list = unique_experts.tolist()
+        starts_list = starts.tolist()
+        counts_list = counts.tolist()
+
+        for expert_id, start, count in zip(unique_experts_list, starts_list, counts_list):
+            end = start + count
+
+            token_indices = flat_tokens[start:end]
+            expert_weights = flat_weights[start:end]
+            expert_inputs = x.index_select(0, token_indices)
+            expert_outputs = self.experts[int(expert_id)](expert_inputs)
+
+            if expert_outputs.dtype != x.dtype:
+                expert_outputs = expert_outputs.to(x.dtype)
+
+            weighted_outputs = expert_outputs * expert_weights.unsqueeze(-1)
+            output.index_add_(0, token_indices, weighted_outputs)
+            used_experts.add(int(expert_id))
+
+        # Optional dense-grad mode for debugging/tests that require all expert params to have grads.
+        # Disabled by default because it is expensive.
+        if self.training and self.force_dense_expert_grads and len(used_experts) < self.num_experts:
+            zero = output.new_zeros(())
             for expert_id in range(self.num_experts):
-                if expert_id not in experts_used:
-                    dummy_output = self.experts[expert_id](x[:1])
-                    # Ensure dtype matches
-                    if dummy_output.dtype != x.dtype:
-                        dummy_output = dummy_output.to(x.dtype)
-                    # Add with near-zero weight (maintains dtype)
-                    output[0] = output[0] + dummy_output[0] * 1e-8
-        
+                if expert_id not in used_experts:
+                    for param in self.experts[expert_id].parameters():
+                        zero = zero + param.view(-1)[0] * 0.0
+            output = output + zero
+
         return output
 
     def _compute_auxiliary_loss(
@@ -1255,34 +1277,10 @@ class MoEFFNLayer(nn.Module):
         Compute load balancing auxiliary loss.
         ✅ Fixed: Properly handle indices regardless of shape
         """
-        expert_usage = torch.zeros(self.num_experts, device=gate_probs.device)
-        
-        # Debug print to see what we're getting
-        # print(f"DEBUG: top_k_indices shape: {top_k_indices.shape}, dtype: {top_k_indices.dtype}")
-        
-        for k in range(self.top_k):
-            # ✅ ROBUST FIX: Handle any shape, ensure 1D int64
-            if top_k_indices.dim() == 1:
-                # Already 1D
-                indices_1d = top_k_indices.long()
-            elif top_k_indices.dim() == 2:
-                # 2D: extract column k and flatten
-                indices_1d = top_k_indices[:, k].contiguous().view(-1).long()
-            else:
-                # Higher dimensions: flatten everything
-                indices_1d = top_k_indices.contiguous().view(-1).long()
-            
-            # Ensure no negative values
-            indices_1d = torch.clamp(indices_1d, min=0, max=self.num_experts - 1)
-            
-            expert_counts = torch.bincount(
-                indices_1d,
-                minlength=self.num_experts
-            )
-            expert_usage += expert_counts.float()
-        
-        # Normalize by total token-expert assignments
-        expert_usage = expert_usage / (total_tokens * self.top_k + 1e-9)
+        indices_1d = top_k_indices.contiguous().view(-1).long()
+        indices_1d = torch.clamp(indices_1d, min=0, max=self.num_experts - 1)
+        expert_counts = torch.bincount(indices_1d, minlength=self.num_experts).float()
+        expert_usage = expert_counts / (indices_1d.numel() + 1e-9)
         
         # Gate importance (average probability assigned to each expert)
         gate_importance = gate_probs.mean(dim=0)
@@ -1296,28 +1294,24 @@ class MoEFFNLayer(nn.Module):
     def _update_routing_stats(self, top_k_indices: torch.Tensor, total_tokens: int):
         """
         Update routing statistics for monitoring.
-        ✅ Fixed: Properly handle indices regardless of shape
+        Tracks stats without forcing per-step GPU->CPU synchronization.
         """
         with torch.no_grad():
-            for k in range(self.top_k):
-                # ✅ ROBUST FIX: Handle any shape, ensure 1D int64
-                if top_k_indices.dim() == 1:
-                    indices_1d = top_k_indices.cpu().long()
-                elif top_k_indices.dim() == 2:
-                    indices_1d = top_k_indices[:, k].contiguous().view(-1).cpu().long()
-                else:
-                    indices_1d = top_k_indices.contiguous().view(-1).cpu().long()
-                
-                # Ensure no negative values
-                indices_1d = torch.clamp(indices_1d, min=0, max=self.num_experts - 1)
-                
-                expert_counts = torch.bincount(
-                    indices_1d,
-                    minlength=self.num_experts
-                )
-                self._routing_stats['expert_usage'] += expert_counts.float()
-            
-            self._routing_stats['total_routed'] += total_tokens
+            self._routing_stats_step += 1
+            if self._routing_stats_step % self.routing_stats_update_interval != 0:
+                return
+
+            indices_1d = top_k_indices.contiguous().view(-1).long()
+            indices_1d = torch.clamp(indices_1d, min=0, max=self.num_experts - 1)
+            expert_counts = torch.bincount(indices_1d, minlength=self.num_experts).float()
+
+            usage_tensor = self._routing_stats['expert_usage']
+            if usage_tensor.device != expert_counts.device:
+                usage_tensor = usage_tensor.to(expert_counts.device)
+                self._routing_stats['expert_usage'] = usage_tensor
+
+            self._routing_stats['expert_usage'] += expert_counts
+            self._routing_stats['total_routed'] += int(indices_1d.numel())
     
     def get_routing_stats(self) -> Dict[str, Any]:
         """Get routing statistics for analysis."""
@@ -1326,6 +1320,8 @@ class MoEFFNLayer(nn.Module):
             return {'error': 'No routing statistics available'}
         
         expert_usage = self._routing_stats['expert_usage'].clone()
+        if expert_usage.is_cuda:
+            expert_usage = expert_usage.cpu()
         usage_percentages = (expert_usage / total * 100).tolist()
         
         return {
@@ -1345,6 +1341,7 @@ class MoEFFNLayer(nn.Module):
             'total_routed': 0,
             'dropped_tokens': 0
         }
+        self._routing_stats_step = 0
 
 class DenseSwiGLUWithMoD(nn.Module):
     """Fixed Dense+MoD with guaranteed gradient flow."""
@@ -1358,7 +1355,8 @@ class DenseSwiGLUWithMoD(nn.Module):
             self.router = MoDRouter(
                 config.hidden_size,
                 capacity_factor=getattr(config, 'mod_capacity_factor', 0.5),
-                routing_temperature=getattr(config, 'mod_routing_temperature', 1.0)
+                routing_temperature=getattr(config, 'mod_routing_temperature', 1.0),
+                stats_update_interval=getattr(config, 'mod_routing_stats_update_interval', 64),
             )
         
         # ✅ ALWAYS create PyTorch layers
@@ -2475,6 +2473,9 @@ class DeepSeekConfig:
     load_balancing_weight: float = 0.01
     routing_temperature: float = 1.0
     routing_noise_std: float = 0.1
+    validate_moe_cuda_indices: bool = False
+    force_dense_expert_grads: bool = False
+    routing_stats_update_interval: int = 64
     
     # MoE patterns
     moe_pattern: str = 'all'
@@ -2485,6 +2486,7 @@ class DeepSeekConfig:
     use_mod: bool = False
     mod_capacity_factor: float = 0.5
     mod_routing_temperature: float = 1.0
+    mod_routing_stats_update_interval: int = 64
     
     # Optimization
     use_flash_attention: bool = True
@@ -2492,7 +2494,7 @@ class DeepSeekConfig:
     scale_lm_head_output: bool = False
     
     # CUDA Optimization toggles
-    use_fused_rmsnorm: bool = True
+    use_fused_rmsnorm: bool = False
     use_fused_rope: bool = True
     use_fused_swiglu: bool = True
     use_fused_moe: bool = True

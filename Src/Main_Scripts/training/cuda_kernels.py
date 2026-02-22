@@ -7,6 +7,9 @@ import torch
 import ctypes
 from pathlib import Path
 import logging
+import os
+import subprocess
+from typing import List
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -16,6 +19,63 @@ _cuda_libs_loaded = False
 _fused_loss_lib = None
 _fused_grad_clip_lib = None
 CUSTOM_KERNELS_AVAILABLE = False
+
+
+def _normalize_sm_value(value: str) -> str:
+    cleaned = value.strip().lower().replace("sm_", "").replace("compute_", "")
+    cleaned = cleaned.replace(".", "").replace("+ptx", "")
+    return cleaned if cleaned.isdigit() and len(cleaned) >= 2 else ""
+
+
+def _parse_sm_list(raw_value: str) -> List[str]:
+    sms: List[str] = []
+    normalized = raw_value.replace(",", ";").replace(" ", ";")
+    for token in normalized.split(";"):
+        sm = _normalize_sm_value(token)
+        if sm and sm not in sms:
+            sms.append(sm)
+    return sms
+
+
+def _resolve_target_sms() -> List[str]:
+    env_targets = _parse_sm_list(os.environ.get("CUDA_TARGET_SM", ""))
+    if env_targets:
+        return env_targets
+
+    arch_env_targets = _parse_sm_list(os.environ.get("TORCH_CUDA_ARCH_LIST", ""))
+    if arch_env_targets:
+        return arch_env_targets
+
+    if torch.cuda.is_available():
+        detected_sms: List[str] = []
+        for device_idx in range(torch.cuda.device_count()):
+            major, minor = torch.cuda.get_device_capability(device_idx)
+            sm = f"{major}{minor}"
+            if sm not in detected_sms:
+                detected_sms.append(sm)
+        if detected_sms:
+            return detected_sms
+
+    try:
+        torch_arch_list = torch.cuda.get_arch_list()
+    except Exception:
+        torch_arch_list = []
+    parsed_arch_list = _parse_sm_list(";".join(torch_arch_list))
+    if parsed_arch_list:
+        return parsed_arch_list
+
+    return ["75"]
+
+
+def _sms_to_arch_list(sms: List[str]) -> str:
+    arch_entries = [f"{sm[:-1]}.{sm[-1]}" for sm in sms]
+    if arch_entries:
+        arch_entries[-1] = f"{arch_entries[-1]}+PTX"
+    return ";".join(arch_entries)
+
+
+def _sms_signature(sms: List[str]) -> str:
+    return "_".join(f"sm{sm}" for sm in sms)
 
 
 def _find_so_files():
@@ -53,80 +113,65 @@ def _load_cuda_libraries():
     if not torch.cuda.is_available():
         logger.warning("⚠️  CUDA not available, skipping kernel loading")
         return False
+
+    target_sms = _resolve_target_sms()
+    target_signature = _sms_signature(target_sms)
+
+    training_dir = Path(__file__).parent
+    if not training_dir.exists():
+        # Fallback for colab/weird paths
+        training_dir = Path("/content/LuminaAI/Src/Main_Scripts/training")
+
+    arch_stamp_path = training_dir / ".cuda_kernels_arch"
     
     loss_lib_path, grad_lib_path = _find_so_files()
-    
-    loss_lib_path, grad_lib_path = _find_so_files()
+    current_signature = ""
+    if arch_stamp_path.exists():
+        try:
+            current_signature = arch_stamp_path.read_text().strip()
+        except Exception:
+            current_signature = ""
+
+    if (loss_lib_path is not None and grad_lib_path is not None
+            and current_signature != target_signature):
+        logger.info(
+            "🔁 Rebuilding CUDA kernels for %s (previous build: %s)",
+            ", ".join(f"sm_{sm}" for sm in target_sms),
+            current_signature or "unknown"
+        )
+        loss_lib_path, grad_lib_path = None, None
     
     # JIT Compile if not found
     if loss_lib_path is None or grad_lib_path is None:
-        logger.warning("⚠️  Pre-compiled CUDA kernels not found - attempting JIT compilation...")
+        logger.warning("⚠️  Pre-compiled CUDA kernels not found - attempting compilation...")
         try:
-             from torch.utils.cpp_extension import load
-             import os
-             
-             # Compilation flags
-             cxx_flags = ['-O3']
-             nvcc_flags = ['-O3', '--use_fast_math']
-             if torch.cuda.get_device_capability()[0] >= 8:
-                 nvcc_flags.append('--generate-code=arch=compute_80,code=sm_80')
-             
-             training_dir = Path(__file__).parent
-             if not training_dir.exists(): 
-                # Fallback for colab/weird paths
-                training_dir = Path("/content/LuminaAI/Src/Main_Scripts/training")
-
-             import os
-             build_dir = os.path.join(os.path.expanduser("~"), ".cache/torch_extensions")
-             os.makedirs(build_dir, exist_ok=True)
-
-             logger.info(f"🔨 Compiling fused_loss from {training_dir}...")
-             _fused_loss_lib = load(
-                 name='fused_loss',
-                 sources=[str(training_dir / 'fused_loss.cu')],
-                 extra_cflags=cxx_flags,
-                 extra_cuda_cflags=nvcc_flags,
-                 verbose=True,
-                 build_directory=build_dir
-             )
-             
-             logger.info(f"🔨 Compiling fused_grad_clip from {training_dir}...")
-             _fused_grad_clip_lib = load(
-                 name='fused_grad_clip',
-                 sources=[str(training_dir / 'fused_grad_clip.cu')],
-                 extra_cflags=cxx_flags,
-                 extra_cuda_cflags=nvcc_flags,
-                 verbose=True,
-                 build_directory=build_dir
-             )
-             
-             # For JIT loaded modules, we access functions differently than ctypes.CDLL
-             # But to keep the wrapper class code compatible, we can try to wrap them or just set the global vars
-             # The wrapper classes use _fused_loss_lib.fused_cross_entropy_accuracy_launcher(...)
-             # The JIT loaded module will have that function directly accessible.
-             # However, the wrapper expects ctypes pointers. JIT loaded functions usually take torch tensors directly.
-             # This suggests we should use the JIT-loaded module directly in a separate path or adapter.
-             
-             # CRITICAL FIX: The existing wrapper classes explicitly use ctypes! 
-             # JIT 'load' returns a python module binding, NOT a CDLL.
-             # So we cannot just assign it to _fused_loss_lib and expect ctypes calls to work.
-             
-             # Better instruction: Run the compile script to generate the .so, THEN load it via CDLL.
-             import subprocess
-             
-             compile_script = training_dir / "compile_kernels.sh"
-             if compile_script.exists():
-                 logger.info(f"Running compilation script: {compile_script}")
-                 os.chmod(compile_script, 0o755)
-                 result = subprocess.run([str(compile_script)], capture_output=True, text=True, cwd=str(training_dir))
-                 if result.returncode == 0:
-                     logger.info("✅ Compilation successful!")
-                     # Try finding .so files again
-                     loss_lib_path, grad_lib_path = _find_so_files()
-                 else:
-                     logger.error(f"❌ Compilation failed:\n{result.stderr}")
-             else:
-                 logger.error(f"❌ compile_kernels.sh not found at {compile_script}")
+            compile_script = training_dir / "compile_kernels.sh"
+            if compile_script.exists():
+                target_desc = ", ".join(f"sm_{sm}" for sm in target_sms)
+                logger.info(f"🔨 Compiling CUDA kernels for {target_desc} using {compile_script}")
+                os.chmod(compile_script, 0o755)
+                compile_env = os.environ.copy()
+                compile_env.setdefault("CUDA_TARGET_SM", ",".join(target_sms))
+                compile_env.setdefault("TORCH_CUDA_ARCH_LIST", _sms_to_arch_list(target_sms))
+                result = subprocess.run(
+                    [str(compile_script)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(training_dir),
+                    env=compile_env
+                )
+                if result.returncode == 0:
+                    logger.info("✅ Compilation successful!")
+                    try:
+                        arch_stamp_path.write_text(f"{target_signature}\n")
+                    except Exception as write_err:
+                        logger.warning(f"⚠️  Could not write CUDA arch stamp: {write_err}")
+                    loss_lib_path, grad_lib_path = _find_so_files()
+                else:
+                    error_output = result.stderr.strip() or result.stdout.strip()
+                    logger.error(f"❌ Compilation failed:\n{error_output}")
+            else:
+                logger.error(f"❌ compile_kernels.sh not found at {compile_script}")
 
         except Exception as e:
             logger.error(f"❌ JIT/Compilation failed: {e}")

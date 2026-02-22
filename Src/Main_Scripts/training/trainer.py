@@ -94,13 +94,23 @@ try:
 except ImportError:
     from torch.utils.data import DataLoader
     def create_dataloader(dataset, config, shuffle=True):
-        return DataLoader(
-            dataset,
-            batch_size=getattr(config, 'batch_size', 1),
-            shuffle=shuffle,
-            num_workers=getattr(config, 'num_workers', 0),
-            pin_memory=torch.cuda.is_available()
-        )
+        num_workers = max(0, int(getattr(config, 'num_workers', 0) or 0))
+        pin_memory = bool(getattr(config, 'pin_memory', torch.cuda.is_available()))
+        prefetch_factor = getattr(config, 'prefetch_factor', 4)
+
+        dataloader_kwargs = {
+            'dataset': dataset,
+            'batch_size': getattr(config, 'batch_size', 1),
+            'shuffle': shuffle,
+            'num_workers': num_workers,
+            'pin_memory': pin_memory,
+        }
+        if num_workers > 0:
+            dataloader_kwargs['persistent_workers'] = True
+            if prefetch_factor is not None:
+                dataloader_kwargs['prefetch_factor'] = max(2, int(prefetch_factor))
+
+        return DataLoader(**dataloader_kwargs)
 
 try:
     from monitoring.logger import TrainingHealthMonitor
@@ -806,6 +816,9 @@ class MoEOptimizationManager:
     
     def __init__(self, config):
         self.config = config
+        self.routing_history_size = max(1, int(getattr(config, 'routing_history_size', 512)))
+        self._routing_trim_trigger = self.routing_history_size * 2
+        self._current_log_frequency = max(1, int(getattr(config, 'routing_stats_update_interval', 50)))
         self.routing_stats = {
             'expert_usage': {},
             'load_balance_losses': [],
@@ -813,6 +826,30 @@ class MoEOptimizationManager:
             'communication_overhead': []
         }
         self.optimization_history = []
+
+    @staticmethod
+    def _detach_value(value):
+        if isinstance(value, torch.Tensor):
+            return value.detach()
+        return value
+
+    @staticmethod
+    def _to_float(value) -> float:
+        if isinstance(value, torch.Tensor):
+            try:
+                return float(value.detach().item())
+            except Exception:
+                return float('nan')
+        try:
+            return float(value)
+        except Exception:
+            return float('nan')
+
+    def _append_bounded(self, key: str, value: Any):
+        history = self.routing_stats.setdefault(key, [])
+        history.append(self._detach_value(value))
+        if len(history) > self._routing_trim_trigger:
+            del history[:-self.routing_history_size]
         
     def create_deepspeed_moe_config(self, base_config: dict) -> dict:
         """Create optimized DeepSpeed MoE configuration addressing common issues."""
@@ -916,23 +953,31 @@ class MoEOptimizationManager:
         
         return best_ep_size
     
-    def monitor_routing_balance(self, aux_losses: Dict[str, torch.Tensor], 
-                               routing_probs: Optional[torch.Tensor] = None):
+    def monitor_routing_balance(
+        self,
+        aux_losses: Dict[str, torch.Tensor],
+        routing_probs: Optional[torch.Tensor] = None,
+        current_step: Optional[int] = None
+    ):
         """Monitor and log routing balance metrics (Asynchronous)."""
         
         if 'load_balance_loss' in aux_losses:
-            self.routing_stats['load_balance_losses'].append(aux_losses['load_balance_loss'])
+            self._append_bounded('load_balance_losses', aux_losses['load_balance_loss'])
         
         if routing_probs is not None:
             # ✅ NO SYNC: Keep as tensors
-            expert_usage = routing_probs.sum(dim=0)
-            total_tokens = routing_probs.sum()
-            self.routing_stats.setdefault('expert_usage_tensors', []).append(expert_usage)
-            self.routing_stats.setdefault('total_tokens_tensors', []).append(total_tokens)
+            expert_usage = routing_probs.sum(dim=0).detach()
+            total_tokens = routing_probs.sum().detach()
+            self._append_bounded('expert_usage_tensors', expert_usage)
+            self._append_bounded('total_tokens_tensors', total_tokens)
             
             # 🔥 SYNC GATED: Only run expensive diagnostics during logging steps
             log_frequency = getattr(self, '_current_log_frequency', 50)
-            if getattr(self, 'global_step', 0) % log_frequency == 0:
+            step = current_step
+            if step is None:
+                step = getattr(self, 'global_step', None)
+
+            if step is not None and step % log_frequency == 0:
                 try:
                     expert_usage_np = expert_usage.cpu().numpy()
                     total_tokens_val = total_tokens.item()
@@ -940,9 +985,10 @@ class MoEOptimizationManager:
                     if total_tokens_val > 0:
                         usage_percentages = expert_usage_np / total_tokens_val * 100
                         for expert_id, usage_pct in enumerate(usage_percentages):
-                            if expert_id not in self.routing_stats['expert_usage']:
-                                self.routing_stats['expert_usage'][expert_id] = []
-                            self.routing_stats['expert_usage'][expert_id].append(usage_pct)
+                            expert_history = self.routing_stats['expert_usage'].setdefault(expert_id, [])
+                            expert_history.append(float(usage_pct))
+                            if len(expert_history) > self._routing_trim_trigger:
+                                del expert_history[:-self.routing_history_size]
                         
                         max_usage = usage_percentages.max()
                         min_usage = usage_percentages.min()
@@ -964,11 +1010,15 @@ class MoEOptimizationManager:
         }
         
         if self.routing_stats['load_balance_losses']:
-            recent_losses = self.routing_stats['load_balance_losses'][-100:]
-            diagnostics['load_balance_trend'] = {
-                'recent_avg': np.mean(recent_losses),
-                'trend': 'improving' if len(recent_losses) > 10 and np.mean(recent_losses[-5:]) < np.mean(recent_losses[-10:-5]) else 'stable'
-            }
+            recent_losses = [
+                self._to_float(loss) for loss in self.routing_stats['load_balance_losses'][-100:]
+            ]
+            recent_losses = [loss for loss in recent_losses if math.isfinite(loss)]
+            if recent_losses:
+                diagnostics['load_balance_trend'] = {
+                    'recent_avg': float(np.mean(recent_losses)),
+                    'trend': 'improving' if len(recent_losses) > 10 and np.mean(recent_losses[-5:]) < np.mean(recent_losses[-10:-5]) else 'stable'
+                }
         
         if self.routing_stats['expert_usage']:
             expert_usages = []
@@ -1084,11 +1134,16 @@ class EnhancedConversationTrainer:
         self.best_eval_loss = float('inf')
         self.patience_counter = 0
         self.should_stop = False
+
+        # Keep metric history bounded to avoid long-run GPU memory growth.
+        self.metric_history_size = max(1, int(getattr(config, 'metric_history_size', 2048)))
+        self._metric_trim_trigger = self.metric_history_size * 2
         
         # Initialize training metrics
         self.metrics = {
             'train_losses': [],
             'eval_losses': [],
+            'accuracies': [],
             'learning_rates': [],
             'gradient_norms': [],
             'throughput': [],
@@ -1113,6 +1168,18 @@ class EnhancedConversationTrainer:
         
         # Setup training components
         self._setup_training()
+
+    @staticmethod
+    def _detach_metric_value(value: Any):
+        if isinstance(value, torch.Tensor):
+            return value.detach()
+        return value
+
+    def _append_metric(self, key: str, value: Any):
+        history = self.metrics.setdefault(key, [])
+        history.append(self._detach_metric_value(value))
+        if len(history) > self._metric_trim_trigger:
+            del history[:-self.metric_history_size]
 
     def _handle_partial_accumulation(self):
         """
@@ -1926,6 +1993,7 @@ class EnhancedConversationTrainer:
                     self.metrics = {
                         'train_losses': [],
                         'eval_losses': [],
+                        'accuracies': [],
                         'learning_rates': [],
                         'gradient_norms': [],
                         'throughput': [],
@@ -2426,7 +2494,9 @@ class EnhancedConversationTrainer:
                 loss_dict['loss'] = loss_dict['loss'] + total_aux_loss
                 
                 if aux_losses and self.moe_optimizer:
-                    self.moe_optimizer.monitor_routing_balance(aux_losses)
+                    self.moe_optimizer.monitor_routing_balance(
+                        aux_losses, current_step=self.global_step
+                    )
             else:
                 logits = output
                 loss_dict = self.compute_loss(logits, labels, loss_weights)
@@ -2504,7 +2574,9 @@ class EnhancedConversationTrainer:
                 loss_dict['loss'] = loss_dict['loss'] + total_aux_loss
                 
                 if aux_losses and self.moe_optimizer:
-                    self.moe_optimizer.monitor_routing_balance(aux_losses)
+                    self.moe_optimizer.monitor_routing_balance(
+                        aux_losses, current_step=self.global_step
+                    )
             else:
                 logits = output
                 loss_dict = self.compute_loss(logits, labels, loss_weights)
@@ -2686,19 +2758,16 @@ class EnhancedConversationTrainer:
 
         eval_dataloader = create_dataloader(eval_dataset, self.config, shuffle=False)
 
-        total_loss = 0.0
-        total_raw_loss = 0.0
-        total_tokens = 0
-        total_accuracy = 0.0
         num_batches = 0
 
-        # 🆕 NEW: Track metrics using lists of tensors (avoids per-step sync)
-        all_losses = []
-        all_raw_losses = []
-        all_accuracies = []
-        best_batch = 0 # Placeholder, we might lose exact batch index tracking or compute it via argmin
-        best_accuracy = 0.0
-        best_batch = 0
+        total_loss_t = None
+        total_raw_loss_t = None
+        total_tokens_t = None
+        total_accuracy_t = None
+        best_loss_t = None
+        best_raw_loss_t = None
+        best_accuracy_t = None
+        best_batch_t = None
 
         eval_start_time = time.time()
 
@@ -2733,13 +2802,33 @@ class EnhancedConversationTrainer:
             loss_dict = self.compute_loss(logits, labels, loss_weights)
 
             if not (torch.isnan(loss_dict['loss']).any() or torch.isinf(loss_dict['loss']).any()):
-                # ✅ FIX: Accumulate as tensors in lists to avoid per-batch sync
-                # We will compute sum and min (best) at the very end
-                # This uses detailed memory but is much faster
-                all_losses.append(loss_dict['loss'])
-                all_raw_losses.append(loss_dict['raw_loss'])
-                all_accuracies.append(loss_dict['accuracy'])
-                total_tokens += loss_dict['valid_tokens'] # Add tensor directly
+                loss_t = loss_dict['loss'].detach()
+                raw_loss_t = loss_dict['raw_loss'].detach()
+                accuracy_t = loss_dict['accuracy'].detach()
+                valid_tokens_t = loss_dict['valid_tokens'].detach()
+
+                if total_loss_t is None:
+                    total_loss_t = loss_t
+                    total_raw_loss_t = raw_loss_t
+                    total_accuracy_t = accuracy_t
+                    total_tokens_t = valid_tokens_t
+                    best_loss_t = loss_t
+                    best_raw_loss_t = raw_loss_t
+                    best_accuracy_t = accuracy_t
+                    best_batch_t = torch.tensor(batch_idx, device=loss_t.device, dtype=torch.long)
+                else:
+                    total_loss_t = total_loss_t + loss_t
+                    total_raw_loss_t = total_raw_loss_t + raw_loss_t
+                    total_accuracy_t = total_accuracy_t + accuracy_t
+                    total_tokens_t = total_tokens_t + valid_tokens_t
+
+                    is_better = loss_t < best_loss_t
+                    best_loss_t = torch.where(is_better, loss_t, best_loss_t)
+                    best_raw_loss_t = torch.where(is_better, raw_loss_t, best_raw_loss_t)
+                    best_accuracy_t = torch.where(is_better, accuracy_t, best_accuracy_t)
+                    current_batch_t = torch.tensor(batch_idx, device=best_batch_t.device, dtype=best_batch_t.dtype)
+                    best_batch_t = torch.where(is_better, current_batch_t, best_batch_t)
+
                 num_batches += 1
 
         eval_time = time.time() - eval_start_time
@@ -2758,44 +2847,14 @@ class EnhancedConversationTrainer:
                 'best_eval_accuracy': 0.0,
             }
 
-        # Calculate averages
-        avg_loss = total_loss / num_batches
-        avg_raw_loss = total_raw_loss / num_batches
-        # Calculate averages from tensors
-        if num_batches > 0:
-            # Stack for efficient computation
-            losses_tensor = torch.stack(all_losses)
-            raw_losses_tensor = torch.stack(all_raw_losses)
-            accuracies_tensor = torch.stack(all_accuracies)
-            
-            # Compute totals
-            total_loss_t = losses_tensor.sum()
-            total_raw_loss_t = raw_losses_tensor.sum()
-            total_accuracy_t = accuracies_tensor.sum()
-            
-            # Compute best (min loss)
-            best_loss_idx = torch.argmin(losses_tensor)
-            
-            # Extract values (SYNC HERE - only once per eval)
-            # Use item() to get python scalars
-            avg_loss = total_loss_t.item() / num_batches
-            avg_raw_loss = total_raw_loss_t.item() / num_batches
-            avg_accuracy = total_accuracy_t.item() / num_batches
-            
-            best_loss = losses_tensor[best_loss_idx].item()
-            best_raw_loss = raw_losses_tensor[best_loss_idx].item()
-            best_accuracy = accuracies_tensor[best_loss_idx].item()
-            best_batch = best_loss_idx.item() # This is relative to this eval batch
-            
-            if torch.is_tensor(total_tokens):
-                total_tokens = total_tokens.item()
-        else:
-            avg_loss = float('inf')
-            avg_raw_loss = float('inf')
-            avg_accuracy = 0.0
-            best_loss = float('inf')
-            best_raw_loss = float('inf')
-            best_accuracy = 0.0
+        avg_loss = (total_loss_t / num_batches).item()
+        avg_raw_loss = (total_raw_loss_t / num_batches).item()
+        avg_accuracy = (total_accuracy_t / num_batches).item()
+        best_loss = best_loss_t.item()
+        best_raw_loss = best_raw_loss_t.item()
+        best_accuracy = best_accuracy_t.item()
+        best_batch = int(best_batch_t.item()) if best_batch_t is not None else 0
+        total_tokens = int(total_tokens_t.item()) if total_tokens_t is not None else 0
 
         # Calculate perplexity from averages
         clamped_avg_loss = min(avg_raw_loss, 15.0)
@@ -2921,9 +2980,9 @@ class EnhancedConversationTrainer:
                 accumulation_compute_time += step_metrics['compute_time_ms'] / 1000.0
 
             # ✅ NEW: Populate metrics history for orchestrator reporting
-            self.metrics['train_losses'].append(step_metrics['loss'])
+            self._append_metric('train_losses', step_metrics['loss'])
             if 'accuracy' in step_metrics:
-                self.metrics.setdefault('accuracies', []).append(step_metrics['accuracy'])
+                self._append_metric('accuracies', step_metrics['accuracy'])
 
             # ✅ NO SYNC: Orchestrator updates moved to optimizer step or gated by frequency
 
@@ -2974,9 +3033,9 @@ class EnhancedConversationTrainer:
 
                 # ✅ NEW: Populate optimizer-related metrics history
                 if 'lr' in opt_metrics:
-                    self.metrics['learning_rates'].append(opt_metrics['lr'])
+                    self._append_metric('learning_rates', opt_metrics['lr'])
                 if 'grad_norm' in opt_metrics:
-                    self.metrics['gradient_norms'].append(opt_metrics['grad_norm'])
+                    self._append_metric('gradient_norms', opt_metrics['grad_norm'])
 
                 # Calculate throughput
                 if accumulation_compute_time > 0:
@@ -2988,15 +3047,17 @@ class EnhancedConversationTrainer:
                 # ✅ FIX: Avoid sync "if cycle_throughput > 0"
                 # Check CPU-side time instead. tokens/time will be valid if time > 0.
                 if accumulation_compute_time > 0:
-                    self.throughput_window.append(cycle_throughput) # Appending TENSOR (async)
+                    cycle_throughput = self._detach_metric_value(cycle_throughput)
+                    self.throughput_window.append(cycle_throughput)
                     if len(self.throughput_window) > self.throughput_window_size:
                         self.throughput_window.pop(0)
+                    self._append_metric('throughput', cycle_throughput)
 
                 # Get current throughput (average of recent cycles)
                 tokens_per_sec = self._calculate_throughput()
 
-                # 🔥 FIX: Update epoch metrics with AVERAGED loss
-                if avg_loss > 0:
+                # Update epoch metrics. We avoid tensor->host checks here.
+                if accumulation_metrics['step_count'] > 0:
                     epoch_metrics['total_loss'] += avg_loss
                     epoch_metrics['total_raw_loss'] += avg_raw_loss
                     epoch_metrics['total_tokens'] += accumulation_metrics['tokens']
@@ -3005,7 +3066,7 @@ class EnhancedConversationTrainer:
                     if 'grad_norm' in opt_metrics and opt_metrics['grad_norm'] is not None:
                         epoch_metrics['grad_norm_sum'] += opt_metrics['grad_norm']
 
-                    # Track best step metrics (Sync only when logging or every N steps)
+                    # Track best step metrics (sync only when logging).
                     if should_log:
                         current_loss_val = avg_loss.item() if isinstance(avg_loss, torch.Tensor) else avg_loss
                         if current_loss_val < epoch_metrics['best_loss']:
@@ -3353,6 +3414,7 @@ class EnhancedConversationTrainer:
                     print("Running evaluation...")
                     eval_metrics = self.evaluate(eval_dataset)
                     epoch_metrics.update(eval_metrics)
+                    self._append_metric('eval_losses', eval_metrics['eval_loss'])
 
                     # 🆕 CHANGED: Display best metrics prominently
                     print(f"\n{'='*80}")

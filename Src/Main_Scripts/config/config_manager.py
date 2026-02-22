@@ -68,16 +68,20 @@ class Config:
     
     # CUDA Optimization toggles
     use_cuda: str = "auto"                    # auto, True, False
-    use_fused_rmsnorm: bool = True
+    use_fused_rmsnorm: bool = False
     use_fused_rope: bool = True
     use_fused_swiglu: bool = True
     use_fused_moe: bool = True
     use_fused_loss: bool = True
     use_fused_grad_clip: bool = True
+    validate_moe_cuda_indices: bool = False
+    force_dense_expert_grads: bool = False
+    routing_stats_update_interval: int = 64
     
     # MoE parameters
     use_moe: bool = True
     use_mod: bool = True
+    mod_routing_stats_update_interval: int = 64
     num_experts: int = 8
     moe_top_k: int = 1
     capacity_factor: float = 1.5

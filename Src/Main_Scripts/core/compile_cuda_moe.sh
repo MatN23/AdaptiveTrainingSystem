@@ -48,6 +48,30 @@ print_error() { echo -e "${RED}✗${NC} $1"; }
 print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
 print_info() { echo -e "${BLUE}ℹ${NC} $1"; }
 
+normalize_arch_list() {
+    local raw="$1"
+    local output=""
+    for token in $(echo "$raw" | tr ',;' ' '); do
+        local cleaned
+        cleaned=$(echo "$token" | tr '[:upper:]' '[:lower:]' | sed -E 's/^sm_//; s/^compute_//; s/\+ptx$//; s/\.//g')
+        if [[ "$cleaned" =~ ^[0-9]{2,}$ ]]; then
+            if [[ " $output " != *" $cleaned "* ]]; then
+                output="${output} ${cleaned}"
+            fi
+        fi
+    done
+    echo "$output" | xargs
+}
+
+format_arch_list() {
+    local raw="$1"
+    local formatted=""
+    for arch in $raw; do
+        formatted="${formatted}sm_${arch} "
+    done
+    echo "$formatted" | xargs
+}
+
 show_help() {
     cat << EOF
 CUDA MoE Direct Compiler
@@ -166,13 +190,27 @@ fi
 NVCC_VERSION=$(nvcc --version | grep "release" | awk '{print $5}' | cut -d',' -f1)
 print_success "nvcc $NVCC_VERSION"
 
-# Detect GPU architecture
-if [ "$CUDA_AVAILABLE" = "1" ]; then
-    GPU_ARCH=$(python3 -c "import torch; cap = torch.cuda.get_device_capability(0); print(f'{cap[0]}{cap[1]}')")
-    print_success "Target architecture: sm_$GPU_ARCH"
+# Resolve GPU architectures
+if [ -n "${CUDA_TARGET_SM}" ]; then
+    GPU_ARCHS=$(normalize_arch_list "${CUDA_TARGET_SM}")
+    if [ -z "${GPU_ARCHS}" ]; then
+        GPU_ARCHS="75"
+        print_warning "Invalid CUDA_TARGET_SM='${CUDA_TARGET_SM}', defaulting to sm_75"
+    else
+        print_success "Using forced CUDA_TARGET_SM: $(format_arch_list "${GPU_ARCHS}")"
+    fi
+elif [ "$CUDA_AVAILABLE" = "1" ]; then
+    GPU_ARCHS=$(python3 -c "import torch; caps=[]; [caps.append(f'{m}{n}') for m,n in [torch.cuda.get_device_capability(i) for i in range(torch.cuda.device_count())] if f'{m}{n}' not in caps]; print(' '.join(caps))")
+    GPU_ARCHS=$(normalize_arch_list "${GPU_ARCHS}")
+    if [ -z "${GPU_ARCHS}" ]; then
+        GPU_ARCHS="75"
+        print_warning "Could not detect GPU architecture, defaulting to sm_75"
+    else
+        print_success "Detected target architectures: $(format_arch_list "${GPU_ARCHS}")"
+    fi
 else
-    GPU_ARCH="75"
-    print_warning "Using default: sm_$GPU_ARCH (Turing)"
+    GPU_ARCHS="75"
+    print_warning "Using default: sm_75 (Turing)"
 fi
 
 # Get Python paths
@@ -212,7 +250,9 @@ print_header "Step 3: Compiling CUDA Kernel (.cu → .o)"
 NVCC_CMD="nvcc"
 
 # Architecture flags
-NVCC_CMD+=" -gencode arch=compute_${GPU_ARCH},code=sm_${GPU_ARCH}"
+for arch in $GPU_ARCHS; do
+    NVCC_CMD+=" -gencode arch=compute_${arch},code=sm_${arch}"
+done
 
 # Include directories
 NVCC_CMD+=" -I${PYTHON_INCLUDE}"
@@ -235,6 +275,9 @@ else
     NVCC_CMD+=" -O3"
     NVCC_CMD+=" --use_fast_math"
     NVCC_CMD+=" --extra-device-vectorization"
+    if [ "$GPU_ARCHS" = "75" ]; then
+        NVCC_CMD+=" -Xptxas=-dlcm=ca"
+    fi
 fi
 
 # Add verbosity
@@ -486,7 +529,7 @@ echo ""
 echo "Module details:"
 echo "  • File: $OUTPUT_FILE"
 echo "  • Size: $SO_SIZE"
-echo "  • Architecture: sm_$GPU_ARCH"
+echo "  • Architectures: $(format_arch_list "$GPU_ARCHS")"
 echo "  • Location: $(pwd)/$OUTPUT_FILE"
 echo ""
 echo "Usage in Python:"

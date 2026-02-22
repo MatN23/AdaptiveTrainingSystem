@@ -9,7 +9,7 @@ Automatically converts to float32 for CUDA kernels, then converts back.
 
 import torch
 import torch.nn.functional as F
-from typing import Tuple
+from typing import List, Tuple
 import time
 import os
 from torch.utils.cpp_extension import load
@@ -20,6 +20,73 @@ from torch.utils.cpp_extension import load
 
 CUDA_OPS_AVAILABLE = False
 moe_cuda_ops = None
+
+# CUDA dtype policy:
+# - auto  -> use custom CUDA kernels only for float32 tensors (default)
+# - force -> cast non-float32 tensors to float32 and still use custom kernels
+# - never -> never use custom CUDA kernels
+_CUDA_DTYPE_POLICY = os.environ.get("MOE_CUDA_DTYPE_POLICY", "auto").strip().lower()
+if _CUDA_DTYPE_POLICY not in {"auto", "force", "never"}:
+    _CUDA_DTYPE_POLICY = "auto"
+
+
+def _normalize_sm_value(value: str) -> str:
+    cleaned = value.strip().lower().replace("sm_", "").replace("compute_", "")
+    cleaned = cleaned.replace(".", "").replace("+ptx", "")
+    return cleaned if cleaned.isdigit() and len(cleaned) >= 2 else ""
+
+
+def _parse_sm_list(raw_value: str) -> List[str]:
+    sms: List[str] = []
+    normalized = raw_value.replace(",", ";").replace(" ", ";")
+    for token in normalized.split(";"):
+        sm = _normalize_sm_value(token)
+        if sm and sm not in sms:
+            sms.append(sm)
+    return sms
+
+
+def _resolve_target_sms() -> List[str]:
+    env_targets = _parse_sm_list(os.environ.get("CUDA_TARGET_SM", ""))
+    if env_targets:
+        return env_targets
+
+    arch_env_targets = _parse_sm_list(os.environ.get("TORCH_CUDA_ARCH_LIST", ""))
+    if arch_env_targets:
+        return arch_env_targets
+
+    if torch.cuda.is_available():
+        detected_sms: List[str] = []
+        for device_idx in range(torch.cuda.device_count()):
+            major, minor = torch.cuda.get_device_capability(device_idx)
+            sm = f"{major}{minor}"
+            if sm not in detected_sms:
+                detected_sms.append(sm)
+        if detected_sms:
+            return detected_sms
+
+    try:
+        torch_arch_list = torch.cuda.get_arch_list()
+    except Exception:
+        torch_arch_list = []
+    parsed_arch_list = _parse_sm_list(";".join(torch_arch_list))
+    if parsed_arch_list:
+        return parsed_arch_list
+
+    # Last resort when no arch metadata is available.
+    return ["75"]
+
+
+def _sms_to_arch_list(sms: List[str]) -> str:
+    arch_entries = [f"{sm[:-1]}.{sm[-1]}" for sm in sms]
+    if arch_entries:
+        arch_entries[-1] = f"{arch_entries[-1]}+PTX"
+    return ";".join(arch_entries)
+
+
+def _sms_signature(sms: List[str]) -> str:
+    return "_".join(f"sm{sm}" for sm in sms)
+
 
 try:
     # Get paths FIRST
@@ -32,25 +99,35 @@ try:
     
     print(f"🔨 Compiling CUDA MoE ops from: {cuda_src}")
     print(f"   This takes ~60s on first run...")
-    
-    # Detect GPU arch
-    extra_cuda_cflags = ['-O3', '--use_fast_math']
+
+    target_sms = _resolve_target_sms()
+    target_arch_list = _sms_to_arch_list(target_sms)
+    os.environ["TORCH_CUDA_ARCH_LIST"] = target_arch_list
+
+    extra_cuda_cflags = [
+        '-O3',
+        '--use_fast_math',
+        '--extra-device-vectorization',
+    ]
+    for sm in target_sms:
+        extra_cuda_cflags.append(f'-gencode=arch=compute_{sm},code=sm_{sm}')
+    if target_sms == ["75"]:
+        extra_cuda_cflags.append('-Xptxas=-dlcm=ca')
+
+    target_desc = ", ".join(f"sm_{sm}" for sm in target_sms)
     if torch.cuda.is_available():
-        capability = torch.cuda.get_device_capability(0)
-        arch = f"compute_{capability[0]}{capability[1]}"
-        code = f"sm_{capability[0]}{capability[1]}"
-        extra_cuda_cflags.append(f'-gencode=arch={arch},code={code}')
-        print(f"   Target: {code}")
+        print(f"   Target(s): {target_desc}")
     else:
-        print(f"   ⚠️  CUDA not available, compiling anyway...")
+        print(f"   ⚠️  CUDA not available, compiling for {target_desc}...")
 
     # Ensure build directory exists
-    build_dir = os.path.join(os.path.expanduser("~"), ".cache/torch_extensions")
+    arch_signature = _sms_signature(target_sms)
+    build_dir = os.path.join(os.path.expanduser("~"), ".cache/torch_extensions", arch_signature)
     os.makedirs(build_dir, exist_ok=True)
 
     # Load the CUDA extension
     moe_cuda_ops = load(
-        name='moe_cuda_ops',
+        name=f'moe_cuda_ops_{arch_signature}',
         sources=[cuda_src],
         extra_cuda_cflags=extra_cuda_cflags,
         extra_cflags=['-O3'],
@@ -185,7 +262,14 @@ class MoECUDAOps:
         original_dtype = gate_logits.dtype
         
         # Try CUDA with automatic dtype conversion
-        if use_cuda and CUDA_OPS_AVAILABLE and gate_logits.is_cuda:
+        should_use_cuda = (
+            use_cuda
+            and CUDA_OPS_AVAILABLE
+            and gate_logits.is_cuda
+            and _CUDA_DTYPE_POLICY != "never"
+            and (_CUDA_DTYPE_POLICY == "force" or gate_logits.dtype == torch.float32)
+        )
+        if should_use_cuda:
             try:
                 # Convert to float32 only if needed
                 gate_logits_f32 = to_compute_dtype(gate_logits) if original_dtype != torch.float32 else gate_logits
@@ -241,7 +325,14 @@ class MoECUDAOps:
         """
         original_dtype = tokens.dtype
         
-        if use_cuda and CUDA_OPS_AVAILABLE and tokens.is_cuda:
+        should_use_cuda = (
+            use_cuda
+            and CUDA_OPS_AVAILABLE
+            and tokens.is_cuda
+            and _CUDA_DTYPE_POLICY != "never"
+            and (_CUDA_DTYPE_POLICY == "force" or tokens.dtype == torch.float32)
+        )
+        if should_use_cuda:
             try:
                 # Convert tokens to float32 only if needed
                 tokens_f32 = to_compute_dtype(tokens) if original_dtype != torch.float32 else tokens
@@ -321,7 +412,14 @@ class MoECUDAOps:
         """
         original_dtype = expert_outputs.dtype
         
-        if use_cuda and CUDA_OPS_AVAILABLE and expert_outputs.is_cuda:
+        should_use_cuda = (
+            use_cuda
+            and CUDA_OPS_AVAILABLE
+            and expert_outputs.is_cuda
+            and _CUDA_DTYPE_POLICY != "never"
+            and (_CUDA_DTYPE_POLICY == "force" or expert_outputs.dtype == torch.float32)
+        )
+        if should_use_cuda:
             try:
                 # Convert only if needed
                 expert_outputs_f32 = to_compute_dtype(expert_outputs) if original_dtype != torch.float32 else expert_outputs

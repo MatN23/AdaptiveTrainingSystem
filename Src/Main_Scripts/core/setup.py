@@ -1,10 +1,58 @@
-from setuptools import setup, Extension
+from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 import os
+import torch
 
-# Get CUDA architecture for your GPU
-# T4 = sm_75, A100 = sm_80, V100 = sm_70
-cuda_arch = os.environ.get('TORCH_CUDA_ARCH_LIST', '7.5;8.0')
+
+def _normalize_sm(token: str) -> str:
+    cleaned = token.strip().lower().replace("sm_", "").replace("compute_", "")
+    cleaned = cleaned.replace(".", "").replace("+ptx", "")
+    return cleaned if cleaned.isdigit() and len(cleaned) >= 2 else ""
+
+
+def _parse_sm_list(raw_value: str):
+    sms = []
+    normalized = raw_value.replace(",", ";").replace(" ", ";")
+    for token in normalized.split(";"):
+        sm = _normalize_sm(token)
+        if sm and sm not in sms:
+            sms.append(sm)
+    return sms
+
+
+def _resolve_target_sms():
+    env_arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST", "")
+    parsed_env_sms = _parse_sm_list(env_arch_list)
+    if parsed_env_sms:
+        return parsed_env_sms
+
+    if torch.cuda.is_available():
+        detected_sms = []
+        for device_idx in range(torch.cuda.device_count()):
+            major, minor = torch.cuda.get_device_capability(device_idx)
+            sm = f"{major}{minor}"
+            if sm not in detected_sms:
+                detected_sms.append(sm)
+        if detected_sms:
+            return detected_sms
+
+    parsed_torch_sms = _parse_sm_list(";".join(torch.cuda.get_arch_list()))
+    if parsed_torch_sms:
+        return parsed_torch_sms
+
+    return ["75"]
+
+
+target_sms = _resolve_target_sms()
+nvcc_flags = [
+    "-O3",
+    "--use_fast_math",
+    "--extra-device-vectorization",
+]
+for sm in target_sms:
+    nvcc_flags.extend(["-gencode", f"arch=compute_{sm},code=sm_{sm}"])
+if target_sms == ["75"]:
+    nvcc_flags.append("-Xptxas=-dlcm=ca")
 
 setup(
     name='moe_cuda_ops',
@@ -16,12 +64,7 @@ setup(
             ],
             extra_compile_args={
                 'cxx': ['-O3'],
-                'nvcc': [
-                    '-O3',
-                    '--use_fast_math',
-                    '-gencode', f'arch=compute_75,code=sm_75',  # T4
-                    '-gencode', f'arch=compute_80,code=sm_80',  # A100
-                ]
+                'nvcc': nvcc_flags
             }
         ),
     ],

@@ -287,19 +287,26 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
 # Verify nvcc availability
 nvcc --version
 
-# Compile all kernels
-cd Src/Main_Scripts/training
-./compile_all_kernels.sh
+# Optional: force target architectures (comma or semicolon separated)
+# export CUDA_TARGET_SM=75,80,86,89,90
 
-# Or compile individually
-nvcc -O3 -arch=sm_75 --compiler-options '-fPIC' \
-  --use_fast_math --maxrregcount=64 \
-  --ptxas-options=-v -shared \
-  transformer_ops.cu -o transformer_ops.so
+# Compile transformer + MoE kernels
+cd Src/Main_Scripts/core
+./compile_transformer_ops.sh
+./compile_cuda_moe.sh
+
+# Compile training kernels
+cd ../training
+./compile_kernels.sh
 ```
 
 **Automatic kernel detection:**
 Framework automatically detects and loads compiled kernels at runtime. Falls back to PyTorch if kernels unavailable. No code changes required to use CUDA acceleration.
+
+**Automatic JIT rebuild for current hardware:**
+- If kernel `.so` files are missing or compiled for the wrong SM target, runtime wrappers trigger a rebuild automatically.
+- Target architecture resolution order: `CUDA_TARGET_SM` → `TORCH_CUDA_ARCH_LIST` → detected GPU compute capability → fallback `sm_75`.
+- Set `CUDA_TARGET_SM` when you need deterministic builds across machines.
 
 **Supported architectures:**
 - **sm_75:** Turing (T4, RTX 2080)
@@ -562,8 +569,11 @@ cd AdaptiveTrainingSystem
 pip install -r requirements.txt
 
 # Compile CUDA kernels (optional but recommended for 3-5x speedup)
-cd Src/Main_Scripts/training
-./compile_all_kernels.sh
+cd Src/Main_Scripts/core
+./compile_transformer_ops.sh
+./compile_cuda_moe.sh
+cd ../training
+./compile_kernels.sh
 
 # Verify kernel compilation
 python -c "from cuda_opt_wrapper import TRANSFORMER_OPS_AVAILABLE; print(f'CUDA ops: {TRANSFORMER_OPS_AVAILABLE}')"
@@ -592,11 +602,16 @@ Restores model state, optimizer state, scheduler, training step counter, random 
 python -c "from moe_cuda_wrapper import print_performance_summary; print_performance_summary()"
 
 # Recompile kernels after update
-cd Src/Main_Scripts/training
-./compile_all_kernels.sh
+cd Src/Main_Scripts/core
+./compile_transformer_ops.sh
+./compile_cuda_moe.sh
+cd ../training
+./compile_kernels.sh
 
 # Disable CUDA acceleration (for debugging)
-python Main.py --config config.yaml --no-cuda-ops
+# Set in config:
+# use_cuda: false
+# use_fused_rope/use_fused_swiglu/use_fused_moe/use_fused_loss/use_fused_grad_clip: false
 ```
 
 ---
@@ -764,7 +779,15 @@ Platform-specific optimizations automatically applied based on detected hardware
 
 **Configuration parameters:**
 - `use_flash_attention`: Enable Flash Attention 2.x (2-4× attention speedup)
-- `use_cuda_kernels`: Enable custom CUDA acceleration (3-5× overall speedup)
+- `use_fused_rmsnorm`: Enable fused RMSNorm kernel (default profile: `false`)
+- `use_fused_rope`: Enable fused RoPE kernel (default profile: `true`)
+- `use_fused_swiglu`: Enable fused SwiGLU kernel (default profile: `true`)
+- `use_fused_moe`: Enable CUDA MoE routing/dispatch kernels (default profile: `true`)
+- `use_fused_loss`: Enable fused loss kernel (default profile: `true`)
+- `use_fused_grad_clip`: Enable fused gradient clipping kernel (default profile: `true`)
+- `validate_moe_cuda_indices`: Extra safety checks for CUDA MoE indices (default: `false`, slower)
+- `force_dense_expert_grads`: Force dense expert gradient paths (default: `false`, slower)
+- `routing_stats_update_interval`: Routing stats sync cadence (default: `64` steps)
 - `gradient_checkpointing`: Trade compute for memory (enables larger models)
 - `compile`: PyTorch 2.0 compilation (5-30% additional speedup)
 - `use_deepspeed`: Enable DeepSpeed for multi-GPU
@@ -1303,7 +1326,18 @@ Note: Effective speedup higher than per-operation average due to reduced overhea
 
 **Optimization parameters:**
 - `use_flash_attention`: Enable Flash Attention (boolean, auto-detected)
-- `use_cuda_kernels`: Enable custom CUDA acceleration (boolean, auto-detected)
+- `use_fused_rmsnorm`: Enable fused RMSNorm kernel (boolean, default `false`)
+- `use_fused_rope`: Enable fused RoPE kernel (boolean, default `true`)
+- `use_fused_swiglu`: Enable fused SwiGLU kernel (boolean, default `true`)
+- `use_fused_moe`: Enable CUDA MoE routing/dispatch kernels (boolean, default `true`)
+- `use_fused_loss`: Enable fused loss kernel (boolean, default `true`)
+- `use_fused_grad_clip`: Enable fused gradient clipping kernel (boolean, default `true`)
+- `validate_moe_cuda_indices`: Enable strict CUDA MoE index validation (boolean, default `false`)
+- `force_dense_expert_grads`: Force dense expert gradient path for all experts (boolean, default `false`)
+- `routing_stats_update_interval`: Steps between routing stats sync/updates (int, default `64`)
+- `mod_routing_stats_update_interval`: Steps between MoD stats updates (int, default `64`)
+- `metric_history_size`: Bounded in-memory training metric window (int, default `2048`)
+- `routing_history_size`: Bounded in-memory routing metric window (int, default `512`)
 - `gradient_checkpointing`: Activation checkpointing (boolean)
 - `compile`: PyTorch 2.0 compilation (boolean)
 - `use_deepspeed`: Enable DeepSpeed (boolean)
@@ -1318,6 +1352,8 @@ Note: Effective speedup higher than per-operation average due to reduced overhea
 - `finetuning_eval_paths`: Fine-tuning validation files
 - `base_ratio`: Mixing ratio for interleaved mode (0.0-1.0)
 - `mask_user_tokens`: Mask user messages in loss (boolean)
+- `pin_memory`: Pinned host memory for faster CPU→GPU transfer (boolean, default `true` on CUDA)
+- `prefetch_factor`: DataLoader prefetch depth when `num_workers > 0` (int, default `4`)
 
 **Orchestrator parameters:**
 - `use_adaptive_training`: Enable orchestrator (boolean)
@@ -1362,7 +1398,7 @@ Orchestrator detects OOM exceptions, reduces batch size by 50%, recreates datalo
 - Enable `cpu_offload`: Moves optimizer states to CPU (slower but massive memory savings)
 - Reduce `max_position_embeddings`: Shorter sequences use less memory
 - Lower model size: Try smaller preset configuration
-- Check CUDA kernel memory: Disable custom kernels if causing issues (`--no-cuda-ops`)
+- Check CUDA kernel memory: Temporarily disable fused CUDA ops (`use_fused_* = false`) or set `use_cuda=false`
 
 **Memory estimation:**
 Model memory (FP16) ≈ 2 bytes × total_parameters
@@ -1385,7 +1421,7 @@ Manual fixes:
 - Use mixed precision: BF16 more stable than FP16
 - Enable gradient checkpointing: Can improve numerical stability
 - Check data: Outliers or corrupted samples can cause explosions
-- Verify CUDA kernels: Check for numerical issues (`--no-cuda-ops` to test)
+- Verify CUDA kernels: Check for numerical issues by setting `use_fused_* = false` temporarily
 
 **Loss divergence:**
 Symptoms: Loss increases consistently, validation loss >> training loss, sudden loss spikes
@@ -1419,10 +1455,12 @@ Orchestrator monitors throughput, detects degradation, suggests optimizations (e
 
 **Manual optimizations:**
 - Enable `compile`: PyTorch 2.0 compilation (5-30% speedup)
-- Enable `use_cuda_kernels`: Custom CUDA acceleration (3-5× speedup)
+- Enable fused CUDA ops: `use_fused_rope`, `use_fused_swiglu`, `use_fused_moe`, `use_fused_loss`, `use_fused_grad_clip`
+- Keep `use_fused_rmsnorm=false` unless profiling shows a gain on your workload/GPU
 - Enable `use_flash_attention`: 2-4× attention speedup on Ampere+
 - Use `mixed_bf16` or `mixed_fp16`: 2× speedup over FP32
 - Increase `num_workers`: Parallelize data loading (typically 4-8)
+- Ensure `pin_memory=true` and tune `prefetch_factor` (typically 2-8)
 - Increase `batch_size`: Better GPU utilization (if memory allows)
 - Reduce `gradient_checkpointing`: Faster but more memory
 - Check I/O: Move dataset to fast SSD, use memory-mapped files
@@ -1447,7 +1485,7 @@ Orchestrator monitors throughput, detects degradation, suggests optimizations (e
 **Solutions:**
 - Set `compile=False`: Disable compilation if unstable
 - Set `num_workers=0`: MPS prefers single-threaded data loading
-- Set `use_cuda_kernels=False`: Explicitly disable (automatic, but can force)
+- Set all CUDA fused ops to false (`use_fused_rmsnorm/use_fused_rope/use_fused_swiglu/use_fused_moe/use_fused_loss/use_fused_grad_clip`)
 - Reduce `batch_size`: Start conservative (2-4)
 - Monitor Activity Monitor: Check memory pressure, GPU usage
 - Update PyTorch: MPS backend rapidly improving, use latest version
@@ -1494,7 +1532,8 @@ Solutions:
 - Check compute capability: Ensure GPU supported (sm_75+)
 - Install build tools: `sudo apt-get install build-essential`
 - Check PyTorch CUDA version: Must match CUDA toolkit
-- Try manual compilation: `cd training && ./compile_all_kernels.sh`
+- Try manual compilation:
+  `cd Src/Main_Scripts/core && ./compile_transformer_ops.sh && ./compile_cuda_moe.sh && cd ../training && ./compile_kernels.sh`
 - Check compiler flags: Verify architecture flags match GPU
 
 **Runtime errors:**
@@ -1506,7 +1545,7 @@ Solutions:
 - Enable debugging: Set `CUDA_LAUNCH_BLOCKING=1`
 - Check memory: Verify sufficient GPU memory for kernel buffers
 - Update kernels: Recompile after PyTorch/CUDA update
-- Disable temporarily: Use `--no-cuda-ops` to isolate issue
+- Disable temporarily: set `use_fused_* = false` (or `use_cuda=false`) to isolate issue
 
 **Performance issues:**
 Symptoms: CUDA kernels slower than expected, low speedup, high overhead

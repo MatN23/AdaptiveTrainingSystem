@@ -718,6 +718,14 @@ def config_to_deepseek_config(config: Config):
         moe_top_k=getattr(config, 'moe_top_k', 2),
         capacity_factor=getattr(config, 'capacity_factor', 1.25),
         load_balancing_weight=getattr(config, 'load_balancing_weight', 0.01),
+        use_fused_rmsnorm=getattr(config, 'use_fused_rmsnorm', False),
+        use_fused_rope=getattr(config, 'use_fused_rope', True),
+        use_fused_swiglu=getattr(config, 'use_fused_swiglu', True),
+        use_fused_moe=getattr(config, 'use_fused_moe', True),
+        validate_moe_cuda_indices=getattr(config, 'validate_moe_cuda_indices', False),
+        force_dense_expert_grads=getattr(config, 'force_dense_expert_grads', False),
+        routing_stats_update_interval=getattr(config, 'routing_stats_update_interval', 64),
+        mod_routing_stats_update_interval=getattr(config, 'mod_routing_stats_update_interval', 64),
     )
 
 
@@ -1996,12 +2004,15 @@ def main():
         'use_cuda': 'auto',
         
         # Individual CUDA-optimized operation toggles
-        'use_fused_rmsnorm': True,      # FusedRMSNorm kernel
+        'use_fused_rmsnorm': False,     # FusedRMSNorm kernel
         'use_fused_rope': True,         # FusedRoPE kernel
         'use_fused_swiglu': True,       # FusedSwiGLU kernel
         'use_fused_moe': True,          # MoE CUDA operations
         'use_fused_loss': True,         # Custom fused loss kernel
         'use_fused_grad_clip': True,    # Custom fused gradient clipping kernel
+        'validate_moe_cuda_indices': False,  # Disable per-step sync-heavy index validation
+        'force_dense_expert_grads': False,   # Avoid dummy expert forward passes
+        'routing_stats_update_interval': 64, # Throttle routing stats updates
     }
 
     # ========================================================================
@@ -2684,14 +2695,24 @@ def main():
             
             # Create a dataloader for router training
             from torch.utils.data import DataLoader
-            
-            router_dataloader = DataLoader(
-                train_dataset,
-                batch_size=config.batch_size,
-                shuffle=False,  # Keep order for routing data collection
-                num_workers=config.num_workers,
-                collate_fn=train_dataset.collate_fn if hasattr(train_dataset, 'collate_fn') else None
-            )
+
+            router_num_workers = max(0, int(getattr(config, 'num_workers', 0) or 0))
+            router_pin_memory = bool(getattr(config, 'pin_memory', torch.cuda.is_available()))
+            router_prefetch_factor = getattr(config, 'prefetch_factor', 4)
+            router_loader_kwargs = {
+                'dataset': train_dataset,
+                'batch_size': config.batch_size,
+                'shuffle': False,  # Keep order for routing data collection
+                'num_workers': router_num_workers,
+                'pin_memory': router_pin_memory,
+                'collate_fn': train_dataset.collate_fn if hasattr(train_dataset, 'collate_fn') else None
+            }
+            if router_num_workers > 0:
+                router_loader_kwargs['persistent_workers'] = True
+                if router_prefetch_factor is not None:
+                    router_loader_kwargs['prefetch_factor'] = max(2, int(router_prefetch_factor))
+
+            router_dataloader = DataLoader(**router_loader_kwargs)
             
             # Train the router
             try:
@@ -2728,17 +2749,6 @@ def main():
                 print("\n✓ Router model integration complete")
                 print("  Model will use learned routing decisions during training")
 
-
-        # ============================================================
-        # Step 9.8 - Load Pre-trained Router (AFTER training)
-        # ============================================================
-        if pretrained_router_params['use_pretrained_router']:
-            print_banner("STEP 9.7: LOADING PRE-TRAINED ROUTER MODEL")
-            model = load_pretrained_router(
-                model,
-                pretrained_router_params['router_checkpoint_path']
-            )
-        
         # Step 10: Initialize enhanced training system
         print_banner("STEP 10: INITIALIZING ENHANCED TRAINING SYSTEM")
         
@@ -2782,9 +2792,6 @@ def main():
                 print("\n" + "="*80)
                 print("🔍 TRAINER VERIFICATION")
                 print("="*80)
-
-                # Initialize training system
-                orchestrator.initialize_training()
 
                 # STEP 10.9: TEST ADAPTIVE PIPELINE
                 print_banner("STEP 10.9: TESTING ADAPTIVE PIPELINE")

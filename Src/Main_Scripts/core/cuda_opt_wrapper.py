@@ -12,9 +12,11 @@ import torch.nn.functional as F
 from torch.autograd import Function
 import ctypes
 import math
+import os
+import subprocess
 from pathlib import Path
 import logging
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,111 @@ logger = logging.getLogger(__name__)
 _transformer_ops_loaded = False
 _transformer_ops_lib = None
 TRANSFORMER_OPS_AVAILABLE = False
+
+
+def _normalize_sm_value(value: str) -> str:
+    cleaned = value.strip().lower().replace("sm_", "").replace("compute_", "")
+    cleaned = cleaned.replace(".", "").replace("+ptx", "")
+    return cleaned if cleaned.isdigit() and len(cleaned) >= 2 else ""
+
+
+def _parse_sm_list(raw_value: str) -> List[str]:
+    sms: List[str] = []
+    normalized = raw_value.replace(",", ";").replace(" ", ";")
+    for token in normalized.split(";"):
+        sm = _normalize_sm_value(token)
+        if sm and sm not in sms:
+            sms.append(sm)
+    return sms
+
+
+def _resolve_target_sms() -> List[str]:
+    env_targets = _parse_sm_list(os.environ.get("CUDA_TARGET_SM", ""))
+    if env_targets:
+        return env_targets
+
+    arch_env_targets = _parse_sm_list(os.environ.get("TORCH_CUDA_ARCH_LIST", ""))
+    if arch_env_targets:
+        return arch_env_targets
+
+    if torch.cuda.is_available():
+        detected_sms: List[str] = []
+        for device_idx in range(torch.cuda.device_count()):
+            major, minor = torch.cuda.get_device_capability(device_idx)
+            sm = f"{major}{minor}"
+            if sm not in detected_sms:
+                detected_sms.append(sm)
+        if detected_sms:
+            return detected_sms
+
+    try:
+        torch_arch_list = torch.cuda.get_arch_list()
+    except Exception:
+        torch_arch_list = []
+    parsed_arch_list = _parse_sm_list(";".join(torch_arch_list))
+    if parsed_arch_list:
+        return parsed_arch_list
+
+    return ["75"]
+
+
+def _sms_to_arch_list(sms: List[str]) -> str:
+    arch_entries = [f"{sm[:-1]}.{sm[-1]}" for sm in sms]
+    if arch_entries:
+        arch_entries[-1] = f"{arch_entries[-1]}+PTX"
+    return ";".join(arch_entries)
+
+
+def _sms_signature(sms: List[str]) -> str:
+    return "_".join(f"sm{sm}" for sm in sms)
+
+
+def _core_dir() -> Path:
+    core_path = Path(__file__).parent
+    if core_path.exists():
+        return core_path
+    return Path("/content/LuminaAI/Src/Main_Scripts/core")
+
+
+def _transformer_arch_stamp_path() -> Path:
+    return _core_dir() / ".transformer_ops_arch"
+
+
+def _compile_transformer_ops(target_sms: List[str]) -> bool:
+    core_path = _core_dir()
+    compile_script = core_path / "compile_transformer_ops.sh"
+    if not compile_script.exists():
+        logger.warning("❌ compile_transformer_ops.sh not found at %s", compile_script)
+        return False
+
+    target_desc = ", ".join(f"sm_{sm}" for sm in target_sms)
+    logger.info("🔨 Compiling transformer CUDA ops for %s", target_desc)
+
+    try:
+        compile_script.chmod(0o755)
+        compile_env = os.environ.copy()
+        compile_env.setdefault("CUDA_TARGET_SM", ",".join(target_sms))
+        compile_env.setdefault("TORCH_CUDA_ARCH_LIST", _sms_to_arch_list(target_sms))
+        result = subprocess.run(
+            [str(compile_script)],
+            capture_output=True,
+            text=True,
+            cwd=str(core_path),
+            env=compile_env
+        )
+        if result.returncode != 0:
+            error_output = result.stderr.strip() or result.stdout.strip()
+            logger.error("❌ transformer ops compilation failed:\n%s", error_output)
+            return False
+
+        try:
+            _transformer_arch_stamp_path().write_text(f"{_sms_signature(target_sms)}\n")
+        except Exception as write_err:
+            logger.warning("⚠️  Could not write transformer arch stamp: %s", write_err)
+        return True
+    except Exception as compile_err:
+        logger.error("❌ transformer ops compilation error: %s", compile_err)
+        return False
 
 
 def _find_transformer_so():
@@ -59,12 +166,33 @@ def _load_transformer_ops():
         logger.warning("⚠️  CUDA not available")
         return False
     
+    target_sms = _resolve_target_sms()
+    target_signature = _sms_signature(target_sms)
+    stamp_path = _transformer_arch_stamp_path()
+    current_signature = ""
+    if stamp_path.exists():
+        try:
+            current_signature = stamp_path.read_text().strip()
+        except Exception:
+            current_signature = ""
+
     so_path = _find_transformer_so()
-    
-    if so_path is None:
-        logger.warning("❌ transformer_ops.so not found!")
-        logger.warning("   Run: ./compile_transformer_ops.sh")
-        return False
+
+    needs_rebuild = so_path is None or current_signature != target_signature
+    if needs_rebuild:
+        if so_path is None:
+            logger.info("🔁 transformer_ops.so missing, triggering JIT build")
+        else:
+            logger.info(
+                "🔁 Rebuilding transformer ops for %s (previous build: %s)",
+                ", ".join(f"sm_{sm}" for sm in target_sms),
+                current_signature or "unknown"
+            )
+        if _compile_transformer_ops(target_sms):
+            so_path = _find_transformer_so()
+        elif so_path is None:
+            logger.warning("❌ transformer_ops.so not found and auto-build failed")
+            return False
     
     try:
         _transformer_ops_lib = ctypes.CDLL(str(so_path))
