@@ -223,6 +223,27 @@ TORCH_LIB=$(python3 -c "import torch; import os; print(os.path.join(os.path.dirn
 print_info "PyTorch include: $TORCH_INCLUDE"
 print_info "PyTorch lib: $TORCH_LIB"
 
+# Match libstdc++ ABI with the installed PyTorch build.
+TORCH_CXX11_ABI=$(python3 -c "import torch; print(int(getattr(torch._C, '_GLIBCXX_USE_CXX11_ABI', 1)))")
+print_info "PyTorch CXX11 ABI: $TORCH_CXX11_ABI"
+
+# Detect CUDA runtime library path
+CUDA_HOME=$(python3 - <<'PY'
+import os
+try:
+    from torch.utils.cpp_extension import CUDA_HOME
+except Exception:
+    CUDA_HOME = None
+print(CUDA_HOME or os.environ.get("CUDA_HOME", ""))
+PY
+)
+if [ -n "$CUDA_HOME" ] && [ -d "$CUDA_HOME/lib64" ]; then
+    CUDA_LIB_DIR="$CUDA_HOME/lib64"
+else
+    CUDA_LIB_DIR="/usr/local/cuda/lib64"
+fi
+print_info "CUDA lib: $CUDA_LIB_DIR"
+
 print_info "Output: $OUTPUT_FILE"
 
 ################################################################################
@@ -265,6 +286,7 @@ NVCC_CMD+=" -std=c++17"
 NVCC_CMD+=" --compiler-options '-fPIC'"
 NVCC_CMD+=" -DTORCH_EXTENSION_NAME=moe_cuda_ext"
 NVCC_CMD+=" -DTORCH_API_INCLUDE_EXTENSION_H"
+NVCC_CMD+=" -D_GLIBCXX_USE_CXX11_ABI=${TORCH_CXX11_ABI}"
 
 if [ $DEBUG_MODE -eq 1 ]; then
     print_info "Debug mode enabled"
@@ -346,24 +368,57 @@ LINK_CMD="g++"
 # Shared library flags
 LINK_CMD+=" -shared"
 LINK_CMD+=" -fPIC"
+LINK_CMD+=" -std=c++17"
+
+# Keep unresolved PyTorch symbols visible to the loader and embed runtime paths.
+LINK_CMD+=" -Wl,--no-as-needed"
+LINK_CMD+=" -Wl,-rpath,${TORCH_LIB}"
+if [ -d "${CUDA_LIB_DIR}" ]; then
+    LINK_CMD+=" -Wl,-rpath,${CUDA_LIB_DIR}"
+fi
+
+# Match ABI with PyTorch build.
+LINK_CMD+=" -D_GLIBCXX_USE_CXX11_ABI=${TORCH_CXX11_ABI}"
+
+# IMPORTANT: object file must come before libraries for correct symbol resolution.
+LINK_CMD+=" moe_cuda_ops.o"
 
 # Library paths
 LINK_CMD+=" -L${TORCH_LIB}"
-LINK_CMD+=" -L/usr/local/cuda/lib64"
+if [ -d "${CUDA_LIB_DIR}" ]; then
+    LINK_CMD+=" -L${CUDA_LIB_DIR}"
+fi
 
-# Libraries to link against
-LINK_CMD+=" -ltorch"
-LINK_CMD+=" -lc10"
-LINK_CMD+=" -ltorch_cpu"
-LINK_CMD+=" -ltorch_cuda"
-LINK_CMD+=" -ltorch_python" 
+# PyTorch libraries (conditionally include only what exists in this wheel)
+if [ -f "${TORCH_LIB}/libtorch_python.so" ]; then
+    LINK_CMD+=" -ltorch_python"
+fi
+if [ -f "${TORCH_LIB}/libtorch_cuda.so" ]; then
+    LINK_CMD+=" -ltorch_cuda"
+else
+    if [ -f "${TORCH_LIB}/libtorch_cuda_cpp.so" ]; then
+        LINK_CMD+=" -ltorch_cuda_cpp"
+    fi
+    if [ -f "${TORCH_LIB}/libtorch_cuda_cu.so" ]; then
+        LINK_CMD+=" -ltorch_cuda_cu"
+    fi
+fi
+if [ -f "${TORCH_LIB}/libtorch_cpu.so" ]; then
+    LINK_CMD+=" -ltorch_cpu"
+fi
+if [ -f "${TORCH_LIB}/libtorch.so" ]; then
+    LINK_CMD+=" -ltorch"
+fi
+if [ -f "${TORCH_LIB}/libc10_cuda.so" ]; then
+    LINK_CMD+=" -lc10_cuda"
+fi
+if [ -f "${TORCH_LIB}/libc10.so" ]; then
+    LINK_CMD+=" -lc10"
+fi
 
 # CUDA libraries
 LINK_CMD+=" -lcudart"
 LINK_CMD+=" -lcublas"
-
-# Input and output
-LINK_CMD+=" moe_cuda_ops.o"
 LINK_CMD+=" -o ${OUTPUT_FILE}"
 
 print_info "Linking with g++..."

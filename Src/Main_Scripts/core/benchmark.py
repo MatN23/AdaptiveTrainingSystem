@@ -301,7 +301,7 @@ class MockTransformerLayer(nn.Module):
         normed2 = self.norm(h)
         return self.swiglu(normed2) + h
 
-def benchmark_full_step(batch, seq, hidden):
+def benchmark_dense_full_step(batch, seq, hidden):
     model_pt = MockTransformerLayer(hidden, 32).cuda()
     model_pt.set_cuda(False)
     opt_pt = torch.optim.AdamW(model_pt.parameters())
@@ -327,8 +327,94 @@ def benchmark_full_step(batch, seq, hidden):
         loss.backward()
         opt_cuda.step()
         
-    run_compare("Full Training Step", f"{batch}x{seq}x{hidden}",
+    run_compare("Dense Full Train Step", f"{batch}x{seq}x{hidden}",
                run_pt, run_cuda, TRANSFORMER_AVAILABLE)
+
+
+class MockMoELayer(nn.Module):
+    """
+    MoE-focused training benchmark layer.
+    Includes:
+      - gating
+      - top-k routing
+      - dispatch/combine
+      - lightweight per-expert compute
+      - output projection
+    """
+
+    def __init__(self, hidden_size: int, num_experts: int = 8, top_k: int = 2):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.num_experts = num_experts
+        self.top_k = top_k
+
+        self.gate = nn.Linear(hidden_size, num_experts, bias=False)
+        self.expert_scale = nn.Parameter(torch.ones(num_experts, 1, hidden_size))
+        self.out_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+
+    def _capacity(self, num_tokens: int) -> int:
+        base = (num_tokens * self.top_k + self.num_experts - 1) // self.num_experts
+        return max(1, int(base * 1.25))
+
+    def forward(self, x: torch.Tensor, use_cuda_ops: bool = True) -> torch.Tensor:
+        batch, seq, hidden = x.shape
+        x_flat = x.reshape(batch * seq, hidden)
+        num_tokens = x_flat.size(0)
+
+        gate_logits = self.gate(x_flat)
+        topk_indices, topk_weights = MoECUDAOps.topk_gating(
+            gate_logits, self.top_k, use_cuda=use_cuda_ops
+        )
+
+        capacity = self._capacity(num_tokens)
+        expert_inputs, token_map = MoECUDAOps.dispatch_tokens(
+            x_flat, topk_indices, self.num_experts, capacity, use_cuda=use_cuda_ops
+        )
+
+        # Lightweight expert compute to preserve a realistic autograd training path.
+        expert_outputs = F.silu(expert_inputs) * self.expert_scale
+
+        combined = MoECUDAOps.combine_expert_outputs(
+            expert_outputs, token_map, topk_weights, num_tokens, self.top_k, use_cuda=use_cuda_ops
+        )
+        out = self.out_proj(combined.view(batch, seq, hidden))
+        return out + x
+
+
+def benchmark_moe_full_step(batch, seq, hidden, num_experts=8, top_k=2):
+    model_pt = MockMoELayer(hidden, num_experts=num_experts, top_k=top_k).cuda()
+    model_cuda = MockMoELayer(hidden, num_experts=num_experts, top_k=top_k).cuda()
+
+    # Keep weights aligned for fair comparison.
+    model_cuda.load_state_dict(model_pt.state_dict())
+
+    opt_pt = torch.optim.AdamW(model_pt.parameters(), lr=1e-4)
+    opt_cuda = torch.optim.AdamW(model_cuda.parameters(), lr=1e-4)
+
+    x = torch.randn(batch, seq, hidden, device='cuda')
+    y = torch.randn(batch, seq, hidden, device='cuda')
+
+    def run_pt():
+        opt_pt.zero_grad(set_to_none=True)
+        out = model_pt(x, use_cuda_ops=False)
+        loss = F.mse_loss(out, y)
+        loss.backward()
+        opt_pt.step()
+
+    def run_cuda():
+        opt_cuda.zero_grad(set_to_none=True)
+        out = model_cuda(x, use_cuda_ops=True)
+        loss = F.mse_loss(out, y)
+        loss.backward()
+        opt_cuda.step()
+
+    run_compare(
+        "MoE Full Train Step",
+        f"{batch}x{seq}x{hidden}",
+        run_pt,
+        run_cuda,
+        MOE_AVAILABLE
+    )
 
 
 def print_summary():
@@ -366,7 +452,16 @@ if __name__ == "__main__":
     
 
     
-    # 4. Full Step
-    benchmark_full_step(B, L, H)
+    # 4. Full Steps
+    benchmark_dense_full_step(B, L, H)
+    try:
+        benchmark_moe_full_step(B, L, H, experts, k)
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            print("⚠️  MoE full-step benchmark OOM at full shape, retrying smaller shape...")
+            torch.cuda.empty_cache()
+            benchmark_moe_full_step(max(1, B // 2), max(512, L // 2), max(1024, H // 2), experts, k)
+        else:
+            raise
     
     print_summary()
