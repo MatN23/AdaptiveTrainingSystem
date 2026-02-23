@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 import sys
+import argparse
 from pathlib import Path
 
 # Add parent directory to path to import core
@@ -51,15 +52,143 @@ except ImportError:
 
 RESULTS = []
 
-def benchmark_func(func, name="Op", warmup=10, iters=50):
+PROFILE_CONFIGS = {
+    # Default profile: quick turnaround, aligned with debug-scale dimensions.
+    "quick": {
+        "warmup": 2,
+        "iters": 8,
+        "heavy_warmup": 1,
+        "heavy_iters": 2,
+        "moe_tokens": 512,
+        "moe_hidden": 128,
+        "experts": 32,
+        "top_k": 2,
+        "op_batch": 2,
+        "op_seq": 256,
+        "op_hidden": 128,
+        "op_heads": 2,
+        "full_batch": 2,
+        "full_seq": 256,
+        "full_hidden": 128,
+    },
+    # Matches ConfigPresets.debug scale.
+    "debug": {
+        "warmup": 2,
+        "iters": 8,
+        "heavy_warmup": 1,
+        "heavy_iters": 2,
+        "moe_tokens": 512,
+        "moe_hidden": 128,
+        "experts": 32,
+        "top_k": 2,
+        "op_batch": 2,
+        "op_seq": 256,
+        "op_hidden": 128,
+        "op_heads": 2,
+        "full_batch": 2,
+        "full_seq": 256,
+        "full_hidden": 128,
+    },
+    # Approximates ConfigPresets.b1 width/heads while keeping runtime practical.
+    "b1": {
+        "warmup": 2,
+        "iters": 8,
+        "heavy_warmup": 1,
+        "heavy_iters": 2,
+        "moe_tokens": 2048,
+        "moe_hidden": 1908,
+        "experts": 8,
+        "top_k": 1,
+        "op_batch": 1,
+        "op_seq": 512,
+        "op_hidden": 1908,
+        "op_heads": 12,
+        "full_batch": 1,
+        "full_seq": 512,
+        "full_hidden": 1908,
+    },
+    "standard": {
+        "warmup": 4,
+        "iters": 16,
+        "heavy_warmup": 1,
+        "heavy_iters": 4,
+        "moe_tokens": 4096,
+        "moe_hidden": 3072,
+        "experts": 8,
+        "top_k": 2,
+        "op_batch": 2,
+        "op_seq": 1024,
+        "op_hidden": 3072,
+        "op_heads": 24,
+        "full_batch": 1,
+        "full_seq": 1024,
+        "full_hidden": 2048,
+    },
+    # Closest to prior heavy settings; may be very slow on smaller GPUs.
+    "full": {
+        "warmup": 8,
+        "iters": 32,
+        "heavy_warmup": 2,
+        "heavy_iters": 8,
+        "moe_tokens": 8192,
+        "moe_hidden": 4096,
+        "experts": 8,
+        "top_k": 2,
+        "op_batch": 4,
+        "op_seq": 2048,
+        "op_hidden": 4096,
+        "op_heads": 32,
+        "full_batch": 4,
+        "full_seq": 2048,
+        "full_hidden": 4096,
+    },
+}
+
+BENCH_CONFIG = PROFILE_CONFIGS["quick"].copy()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Benchmark custom CUDA kernels and full-step paths.")
+    parser.add_argument(
+        "--mode",
+        choices=sorted(PROFILE_CONFIGS.keys()),
+        default="quick",
+        help="Benchmark profile: quick (default), debug, b1, standard, full",
+    )
+    parser.add_argument("--warmup", type=int, default=None, help="Override warmup iterations for microbenchmarks")
+    parser.add_argument("--iters", type=int, default=None, help="Override timed iterations for microbenchmarks")
+    parser.add_argument("--heavy-warmup", type=int, default=None, help="Override warmup iterations for full-step benchmarks")
+    parser.add_argument("--heavy-iters", type=int, default=None, help="Override timed iterations for full-step benchmarks")
+    parser.add_argument("--skip-full-step", action="store_true", help="Skip dense+MoE full-step benchmarks")
+    return parser.parse_args()
+
+
+def configure_benchmark(args):
+    global BENCH_CONFIG
+    BENCH_CONFIG = PROFILE_CONFIGS[args.mode].copy()
+    if args.warmup is not None:
+        BENCH_CONFIG["warmup"] = max(0, int(args.warmup))
+    if args.iters is not None:
+        BENCH_CONFIG["iters"] = max(1, int(args.iters))
+    if args.heavy_warmup is not None:
+        BENCH_CONFIG["heavy_warmup"] = max(0, int(args.heavy_warmup))
+    if args.heavy_iters is not None:
+        BENCH_CONFIG["heavy_iters"] = max(1, int(args.heavy_iters))
+
+def benchmark_func(func, name="Op", warmup=None, iters=None):
     """Benchmark a function using CUDA events."""
     if not torch.cuda.is_available():
         return 0.0
+
+    if warmup is None:
+        warmup = BENCH_CONFIG["warmup"]
+    if iters is None:
+        iters = BENCH_CONFIG["iters"]
     
     # Warmup
     try:
         # Warmup loop (Crucial for JIT-compiled kernels like Triton)
-        for _ in range(max(2, warmup)):
+        for _ in range(max(1, warmup)):
             func()
         torch.cuda.synchronize()
         
@@ -73,16 +202,16 @@ def benchmark_func(func, name="Op", warmup=10, iters=50):
         end.record()
         torch.cuda.synchronize()
         
-        return start.elapsed_time(end) / iters
+        return start.elapsed_time(end) / max(1, iters)
     except Exception as e:
         print(f"Error benchmarking {name}: {e}")
         return 0.0
 
-def run_compare(name, shape_str, func_pt, func_cuda, available=True):
+def run_compare(name, shape_str, func_pt, func_cuda, available=True, warmup=None, iters=None):
     print(f"\nRunning {name}...")
     
     # PyTorch
-    pt_time = benchmark_func(func_pt, f"PyTorch {name}")
+    pt_time = benchmark_func(func_pt, f"PyTorch {name}", warmup=warmup, iters=iters)
     print(f"  PyTorch: {pt_time:.4f} ms")
     
     # Custom
@@ -90,7 +219,7 @@ def run_compare(name, shape_str, func_pt, func_cuda, available=True):
     speedup = 0.0
     
     if available:
-        cuda_time = benchmark_func(func_cuda, f"CUDA {name}")
+        cuda_time = benchmark_func(func_cuda, f"CUDA {name}", warmup=warmup, iters=iters)
         print(f"  CUDA:    {cuda_time:.4f} ms")
         
         if cuda_time > 0:
@@ -301,7 +430,7 @@ class MockTransformerLayer(nn.Module):
         normed2 = self.norm(h)
         return self.swiglu(normed2) + h
 
-def benchmark_dense_full_step(batch, seq, hidden):
+def benchmark_dense_full_step(batch, seq, hidden, warmup=None, iters=None):
     model_pt = MockTransformerLayer(hidden, 32).cuda()
     model_pt.set_cuda(False)
     opt_pt = torch.optim.AdamW(model_pt.parameters())
@@ -327,8 +456,15 @@ def benchmark_dense_full_step(batch, seq, hidden):
         loss.backward()
         opt_cuda.step()
         
-    run_compare("Dense Full Train Step", f"{batch}x{seq}x{hidden}",
-               run_pt, run_cuda, TRANSFORMER_AVAILABLE)
+    run_compare(
+        "Dense Full Train Step",
+        f"{batch}x{seq}x{hidden}",
+        run_pt,
+        run_cuda,
+        TRANSFORMER_AVAILABLE,
+        warmup=warmup,
+        iters=iters
+    )
 
 
 class MockMoELayer(nn.Module):
@@ -381,7 +517,7 @@ class MockMoELayer(nn.Module):
         return out + x
 
 
-def benchmark_moe_full_step(batch, seq, hidden, num_experts=8, top_k=2):
+def benchmark_moe_full_step(batch, seq, hidden, num_experts=8, top_k=2, warmup=None, iters=None):
     model_pt = MockMoELayer(hidden, num_experts=num_experts, top_k=top_k).cuda()
     model_cuda = MockMoELayer(hidden, num_experts=num_experts, top_k=top_k).cuda()
 
@@ -413,7 +549,9 @@ def benchmark_moe_full_step(batch, seq, hidden, num_experts=8, top_k=2):
         f"{batch}x{seq}x{hidden}",
         run_pt,
         run_cuda,
-        MOE_AVAILABLE
+        MOE_AVAILABLE,
+        warmup=warmup,
+        iters=iters
     )
 
 
@@ -429,22 +567,35 @@ def print_summary():
     print("="*95 + "\n")
 
 if __name__ == "__main__":
+    args = parse_args()
+    configure_benchmark(args)
+
     if not torch.cuda.is_available():
         print("❌ CUDA not available")
         sys.exit(0)
         
     print(f"Device: {torch.cuda.get_device_name(0)}")
+    print(
+        "Mode:",
+        args.mode,
+        f"(micro warmup/iters={BENCH_CONFIG['warmup']}/{BENCH_CONFIG['iters']}, "
+        f"full-step warmup/iters={BENCH_CONFIG['heavy_warmup']}/{BENCH_CONFIG['heavy_iters']})",
+    )
     
     # 1. MoE
-    # Large scale to see benefits
-    B, hidden, experts, k = 4, 4096, 8, 2
-    total_tokens = B * 2048
+    hidden = BENCH_CONFIG["moe_hidden"]
+    experts = BENCH_CONFIG["experts"]
+    k = BENCH_CONFIG["top_k"]
+    total_tokens = BENCH_CONFIG["moe_tokens"]
     benchmark_moe_gating(total_tokens, experts, k)
     benchmark_moe_dispatch(total_tokens, hidden, experts, k)
     benchmark_moe_combine(total_tokens, hidden, experts, k)
     
     # 2. Transformer
-    B, L, H, Heads = 4, 2048, 4096, 32
+    B = BENCH_CONFIG["op_batch"]
+    L = BENCH_CONFIG["op_seq"]
+    H = BENCH_CONFIG["op_hidden"]
+    Heads = BENCH_CONFIG["op_heads"]
     head_dim = H // Heads
     benchmark_rms_norm(B, L, H)
     benchmark_rope(B, L, Heads, head_dim)
@@ -453,15 +604,37 @@ if __name__ == "__main__":
 
     
     # 4. Full Steps
-    benchmark_dense_full_step(B, L, H)
-    try:
-        benchmark_moe_full_step(B, L, H, experts, k)
-    except RuntimeError as e:
-        if "out of memory" in str(e).lower():
-            print("⚠️  MoE full-step benchmark OOM at full shape, retrying smaller shape...")
-            torch.cuda.empty_cache()
-            benchmark_moe_full_step(max(1, B // 2), max(512, L // 2), max(1024, H // 2), experts, k)
-        else:
-            raise
+    if not args.skip_full_step:
+        FB = BENCH_CONFIG["full_batch"]
+        FL = BENCH_CONFIG["full_seq"]
+        FH = BENCH_CONFIG["full_hidden"]
+        benchmark_dense_full_step(
+            FB, FL, FH,
+            warmup=BENCH_CONFIG["heavy_warmup"],
+            iters=BENCH_CONFIG["heavy_iters"],
+        )
+        try:
+            benchmark_moe_full_step(
+                FB, FL, FH, experts, k,
+                warmup=BENCH_CONFIG["heavy_warmup"],
+                iters=BENCH_CONFIG["heavy_iters"],
+            )
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                print("⚠️  MoE full-step benchmark OOM at full shape, retrying smaller shape...")
+                torch.cuda.empty_cache()
+                benchmark_moe_full_step(
+                    max(1, FB // 2),
+                    max(256, FL // 2),
+                    max(512, FH // 2),
+                    experts,
+                    k,
+                    warmup=BENCH_CONFIG["heavy_warmup"],
+                    iters=BENCH_CONFIG["heavy_iters"],
+                )
+            else:
+                raise
+    else:
+        print("Skipping full-step benchmarks (--skip-full-step)")
     
     print_summary()
