@@ -191,7 +191,11 @@ class PyTorchRMSNorm(nn.Module):
         x = x.to(torch.float32)
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
-        return self.weight * x.to(input_dtype)
+        # ✅ FIX: Clone output to prevent CUDAGraphs buffer overwrite across steps.
+        # When torch.compile uses reduce-overhead/CUDAGraphs mode, tensor outputs
+        # share static memory across replays. Without .clone(), the backward pass
+        # of step N reads memory already overwritten by step N+1's forward pass.
+        return (self.weight * x.to(input_dtype)).clone()
 
 
 class PyTorchRoPE(nn.Module):
