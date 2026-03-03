@@ -25,6 +25,29 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict
 
+def _safe_cuda_is_available() -> bool:
+    """Return CUDA availability without crashing on CPU-only builds."""
+    try:
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+def _safe_mps_is_available() -> bool:
+    """Return MPS availability without crashing on unsupported builds."""
+    try:
+        return bool(hasattr(torch.backends, 'mps') and torch.backends.mps.is_available())
+    except Exception:
+        return False
+
+def _safe_cuda_is_bf16_supported() -> bool:
+    """Return BF16 CUDA support safely on builds without CUDA."""
+    if not _safe_cuda_is_available():
+        return False
+    try:
+        return bool(torch.cuda.is_bf16_supported())
+    except Exception:
+        return False
+
 # Quantization imports with fallbacks
 try:
     import bitsandbytes as bnb
@@ -84,7 +107,7 @@ except ImportError:
     CUSTOM_KERNELS_AVAILABLE = False
     logging.warning("Custom CUDA kernels not available - using PyTorch fallback")
 
-if torch.cuda.is_available():
+if _safe_cuda_is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
@@ -95,7 +118,7 @@ except ImportError:
     from torch.utils.data import DataLoader
     def create_dataloader(dataset, config, shuffle=True):
         num_workers = max(0, int(getattr(config, 'num_workers', 0) or 0))
-        pin_memory = bool(getattr(config, 'pin_memory', torch.cuda.is_available()))
+        pin_memory = bool(getattr(config, 'pin_memory', _safe_cuda_is_available()))
         prefetch_factor = getattr(config, 'prefetch_factor', 4)
 
         dataloader_kwargs = {
@@ -375,7 +398,7 @@ class PrecisionManager:
         
     def _validate_precision_config(self):
         """Validate precision configurations against hardware capabilities."""
-        device_type = 'cuda' if torch.cuda.is_available() else ('mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu')
+        device_type = 'cuda' if _safe_cuda_is_available() else ('mps' if _safe_mps_is_available() else 'cpu')
         
         if self.train_precision not in self.PRECISION_REGISTRY:
             raise ValueError(f"Unknown precision: {self.train_precision}. Available: {list(self.PRECISION_REGISTRY.keys())}")
@@ -408,7 +431,7 @@ class PrecisionManager:
     
     def _setup_device_optimizations(self):
         """Setup device-specific precision optimizations."""
-        if not torch.cuda.is_available():
+        if not _safe_cuda_is_available():
             return
         
         if self.train_precision == 'tf32':
@@ -442,7 +465,7 @@ class PrecisionManager:
         if not spec['requires_amp'] or spec['dtype'] is None:
             return nullcontext()
         
-        device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device_type = 'cuda' if _safe_cuda_is_available() else 'cpu'
         
         if precision == 'tf32':
             return nullcontext()
@@ -506,10 +529,10 @@ class PrecisionManager:
                 'use_case': inference_spec['use_case']
             },
             'hardware': {
-                'cuda_available': torch.cuda.is_available(),
-                'cuda_version': torch.version.cuda if torch.cuda.is_available() else None,
-                'cudnn_version': torch.backends.cudnn.version() if torch.cuda.is_available() else None,
-                'cuda_capability': torch.cuda.get_device_capability() if torch.cuda.is_available() else None
+                'cuda_available': _safe_cuda_is_available(),
+                'cuda_version': torch.version.cuda if _safe_cuda_is_available() else None,
+                'cudnn_version': torch.backends.cudnn.version() if _safe_cuda_is_available() else None,
+                'cuda_capability': torch.cuda.get_device_capability() if _safe_cuda_is_available() else None
             }
         }
     
@@ -519,7 +542,7 @@ class PrecisionManager:
         print("PRECISION RECOMMENDATIONS")
         print("="*80)
         
-        device_type = 'cuda' if torch.cuda.is_available() else ('mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu')
+        device_type = 'cuda' if _safe_cuda_is_available() else ('mps' if _safe_mps_is_available() else 'cpu')
         
         print(f"\nCurrent Device: {device_type}")
         if device_type == 'cuda':
@@ -635,7 +658,7 @@ class QuantizationManager:
                 'load_in_4bit': True,
                 'bnb_4bit_use_double_quant': True,
                 'bnb_4bit_quant_type': 'nf4',
-                'bnb_4bit_compute_dtype': torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+                'bnb_4bit_compute_dtype': torch.bfloat16 if _safe_cuda_is_bf16_supported() else torch.float16
             }
         
         return None
@@ -660,7 +683,7 @@ class QuantizationManager:
                 'load_in_4bit': True,
                 'bnb_4bit_use_double_quant': True,
                 'bnb_4bit_quant_type': 'nf4',
-                'bnb_4bit_compute_dtype': torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+                'bnb_4bit_compute_dtype': torch.bfloat16 if _safe_cuda_is_bf16_supported() else torch.float16
             }
 
         return None
@@ -968,8 +991,6 @@ class MoEOptimizationManager:
             # ✅ NO SYNC: Keep as tensors
             expert_usage = routing_probs.sum(dim=0).detach()
             total_tokens = routing_probs.sum().detach()
-            self._append_bounded('expert_usage_tensors', expert_usage)
-            self._append_bounded('total_tokens_tensors', total_tokens)
             
             # 🔥 SYNC GATED: Only run expensive diagnostics during logging steps
             log_frequency = getattr(self, '_current_log_frequency', 50)
@@ -1088,9 +1109,9 @@ class EnhancedConversationTrainer:
         self.config = config
         self.logger = logger
         
-        if config.use_cuda is True or (config.use_cuda == "auto" and torch.cuda.is_available()):
+        if config.use_cuda is True or (config.use_cuda == "auto" and _safe_cuda_is_available()):
             self.device = torch.device('cuda')
-        elif config.use_cuda == "auto" and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        elif config.use_cuda == "auto" and _safe_mps_is_available():
             self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
@@ -1103,8 +1124,8 @@ class EnhancedConversationTrainer:
         self.moe_optimizer = MoEOptimizationManager(config) if hasattr(config, 'use_moe') and config.use_moe else None
         
         # Initialize custom CUDA kernels
-        self.fused_loss = FusedLoss() if getattr(config, 'use_fused_loss', True) and CUSTOM_KERNELS_AVAILABLE and torch.cuda.is_available() else None
-        self.fused_grad_clip = FusedGradClip() if getattr(config, 'use_fused_grad_clip', True) and CUSTOM_KERNELS_AVAILABLE and torch.cuda.is_available() else None
+        self.fused_loss = FusedLoss() if getattr(config, 'use_fused_loss', True) and CUSTOM_KERNELS_AVAILABLE and _safe_cuda_is_available() else None
+        self.fused_grad_clip = FusedGradClip() if getattr(config, 'use_fused_grad_clip', True) and CUSTOM_KERNELS_AVAILABLE and _safe_cuda_is_available() else None
 
         # Log precision info
         precision_info = self.precision_manager.get_precision_info()
@@ -1120,7 +1141,7 @@ class EnhancedConversationTrainer:
             logging.info(f"Quantization applied: {quant_info}")
         
         # DeepSpeed integration - CRITICAL FIX
-        is_mps = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() and not torch.cuda.is_available()
+        is_mps = _safe_mps_is_available() and not _safe_cuda_is_available()
         if is_mps and getattr(config, 'use_deepspeed', False):
             logging.warning("DeepSpeed is not supported on MPS - disabling")
             config.use_deepspeed = False
@@ -1195,11 +1216,9 @@ class EnhancedConversationTrainer:
         if gradient_accumulation_steps > 1:
             try:
                 # Check if we have any accumulated gradients
-                has_accumulated_grads = False
-                for param in self.model.parameters():
-                    if param.grad is not None and torch.any(param.grad != 0):
-                        has_accumulated_grads = True
-                        break
+                has_accumulated_grads = any(
+                    param.grad is not None for param in self.model.parameters()
+                )
                         
                 if has_accumulated_grads:
                     logging.info(f"Processing partial gradient accumulation at end of epoch")
@@ -1332,14 +1351,14 @@ class EnhancedConversationTrainer:
         memory_stats = {}
         
         try:
-            if torch.cuda.is_available():
+            if _safe_cuda_is_available():
                 memory_stats['gpu_memory_allocated_gb'] = torch.cuda.memory_allocated() / 1e9
                 memory_stats['gpu_memory_reserved_gb'] = torch.cuda.memory_reserved() / 1e9
                 memory_stats['gpu_memory_percent'] = (
                     torch.cuda.memory_allocated() / 
                     torch.cuda.get_device_properties(0).total_memory * 100
                 )
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            elif _safe_mps_is_available():
                 memory_stats['mps_memory_allocated_gb'] = torch.mps.current_allocated_memory() / 1e9
         except Exception as e:
             logging.debug(f"Could not get memory usage: {e}")
@@ -1949,10 +1968,10 @@ class EnhancedConversationTrainer:
                     print(f"{'='*80}")
                     print(f"Error: {str(e)[:200]}")
 
-                    if torch.cuda.is_available():
+                    if _safe_cuda_is_available():
                         torch.cuda.empty_cache()
                         print("Cleared CUDA cache")
-                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    elif _safe_mps_is_available():
                         torch.mps.empty_cache()
                         print("Cleared MPS cache")
 
@@ -2075,7 +2094,7 @@ class EnhancedConversationTrainer:
             self._setup_deepspeed_training()
         else:
             # ✅ OPTIMIZATION: Enable TF32 for significant speedup on Ampere+ GPUs (T4 included)
-            if torch.cuda.is_available():
+            if _safe_cuda_is_available():
                 torch.set_float32_matmul_precision('high')
                 logging.info("✅ TF32 matmul precision enabled ('high')")
 
@@ -2130,7 +2149,7 @@ class EnhancedConversationTrainer:
         print("="*60)
         
         print(f"DeepSpeed available: {DEEPSPEED_AVAILABLE}")
-        print(f"CUDA available: {torch.cuda.is_available()}")
+        print(f"CUDA available: {_safe_cuda_is_available()}")
         print(f"Config use_deepspeed: {getattr(self.config, 'use_deepspeed', False)}")
         print(f"World size: {int(os.environ.get('WORLD_SIZE', 1))}")
         print(f"Local rank: {int(os.environ.get('LOCAL_RANK', 0))}")
@@ -2342,13 +2361,15 @@ class EnhancedConversationTrainer:
         ]
         
         try:
-            return AdamW(
-                param_groups,
-                lr=self.config.learning_rate,
-                betas=(0.9, 0.95),
-                eps=1e-8,
-                fused=torch.cuda.is_available() and not self.quantization_manager.is_quantized
-            )
+            optimizer_kwargs = {
+                'lr': self.config.learning_rate,
+                'betas': (0.9, 0.95),
+                'eps': 1e-8,
+            }
+            if _safe_cuda_is_available() and not self.quantization_manager.is_quantized:
+                optimizer_kwargs['fused'] = True
+
+            return AdamW(param_groups, **optimizer_kwargs)
         except Exception:
             return AdamW(
                 param_groups,
@@ -2776,7 +2797,7 @@ class EnhancedConversationTrainer:
 
         eval_start_time = time.time()
 
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.reset_peak_memory_stats()
 
         for batch_idx, batch in enumerate(eval_dataloader):
@@ -2837,7 +2858,7 @@ class EnhancedConversationTrainer:
                 num_batches += 1
 
         eval_time = time.time() - eval_start_time
-        peak_memory = torch.cuda.max_memory_allocated() / 1e6 if torch.cuda.is_available() else 0
+        peak_memory = torch.cuda.max_memory_allocated() / 1e6 if _safe_cuda_is_available() else 0
 
         if num_batches == 0:
             return {
@@ -3155,6 +3176,10 @@ class EnhancedConversationTrainer:
                     accumulation_start_time = None
                     accumulation_compute_time = 0.0
 
+        # Flush any partial accumulation so stale gradients do not carry
+        # into the next epoch when batches % grad_accum != 0.
+        self._handle_partial_accumulation()
+
         # Calculate epoch summary
         epoch_time = time.time() - epoch_start_time
 
@@ -3248,7 +3273,7 @@ class EnhancedConversationTrainer:
         
         try:
             memory_info = ""
-            if torch.cuda.is_available():
+            if _safe_cuda_is_available():
                 try:
                     memory_allocated = torch.cuda.memory_allocated() / 1e9
                     memory_cached = torch.cuda.memory_reserved() / 1e9
@@ -4003,7 +4028,7 @@ def profile_training_loop_overhead(trainer, train_dataloader, num_batches=10):
         # Data loading (already done by dataloader, just measure transfer)
         to_device_start = time.perf_counter()
         batch = {k: v.to(trainer.device, non_blocking=True) for k, v in batch.items()}
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.synchronize()
         timings['to_device'].append((time.perf_counter() - to_device_start) * 1000)
         
@@ -4013,7 +4038,7 @@ def profile_training_loop_overhead(trainer, train_dataloader, num_batches=10):
         
         # Forward pass
         forward_start = time.perf_counter()
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.synchronize()
         
         output = trainer.model(input_ids, attention_mask)
@@ -4026,31 +4051,31 @@ def profile_training_loop_overhead(trainer, train_dataloader, num_batches=10):
         loss_dict = trainer.compute_loss(logits, labels, None)
         loss = loss_dict['loss']
         
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.synchronize()
         timings['forward'].append((time.perf_counter() - forward_start) * 1000)
         
         # Backward pass
         backward_start = time.perf_counter()
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.synchronize()
         
         loss.backward()
         
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.synchronize()
         timings['backward'].append((time.perf_counter() - backward_start) * 1000)
         
         # Optimizer step
         optimizer_start = time.perf_counter()
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.synchronize()
         
         torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), 1.0)
         trainer.optimizer.step()
         trainer.optimizer.zero_grad(set_to_none=True)
         
-        if torch.cuda.is_available():
+        if _safe_cuda_is_available():
             torch.cuda.synchronize()
         timings['optimizer'].append((time.perf_counter() - optimizer_start) * 1000)
         

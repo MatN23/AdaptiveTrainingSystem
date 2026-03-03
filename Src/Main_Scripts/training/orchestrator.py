@@ -813,7 +813,9 @@ class AdaptiveTrainingOrchestrator:
         self.analytics = RealTimeAnalytics()
         self.production_monitor = ProductionMonitoring()
         
-        # Training state
+        # Training state (bounded to prevent long-run memory growth)
+        self.metrics_history_size = max(1, int(getattr(config, 'metrics_history_size', 5000)))
+        self.decision_history_size = max(1, int(getattr(config, 'decision_history_size', 2000)))
         self.training_metrics_history = []
         self.adaptive_decisions = []
         self.current_metrics = None
@@ -878,6 +880,20 @@ class AdaptiveTrainingOrchestrator:
         self.logger.detail(f"Experiment directory: {self.experiment_dir}")
         self.logger.detail(f"Device: {self.device}")
         self.logger.detail(f"Meta-learner history: {len(self.meta_learner.training_history)} runs")
+
+    def _append_training_metric(self, metrics: TrainingMetrics):
+        """Append metric and trim history to a bounded window."""
+        self.training_metrics_history.append(metrics)
+        trim_trigger = self.metrics_history_size * 2
+        if len(self.training_metrics_history) > trim_trigger:
+            del self.training_metrics_history[:-self.metrics_history_size]
+
+    def _append_adaptive_decision(self, decision: AdaptiveDecision):
+        """Append adaptive decision and trim history to a bounded window."""
+        self.adaptive_decisions.append(decision)
+        trim_trigger = self.decision_history_size * 2
+        if len(self.adaptive_decisions) > trim_trigger:
+            del self.adaptive_decisions[:-self.decision_history_size]
 
     @property
     def use_deepspeed(self) -> bool:
@@ -1098,7 +1114,7 @@ class AdaptiveTrainingOrchestrator:
         # ✅ Sync orchestrator state with incoming metrics
         self.global_step = metrics.step
         self.current_metrics = metrics
-        self.training_metrics_history.append(metrics)
+        self._append_training_metric(metrics)
         self.analytics.metrics_buffer.append(metrics)
         
         # Verbose metric logging
@@ -1208,7 +1224,7 @@ class AdaptiveTrainingOrchestrator:
     
     def _execute_adaptive_decision(self, decision):
         """Execute adaptive decision with verbose logging."""
-        self.adaptive_decisions.append(decision)
+        self._append_adaptive_decision(decision)
         
         # Log decision at appropriate level
         self.logger.decision(
@@ -2452,6 +2468,11 @@ class AdaptiveTrainingOrchestrator:
                 logging.info("Logger closed")
             except Exception as e:
                 logging.error(f"Failed to close logger: {e}")
+
+        # Drop in-memory histories after persisting state.
+        self.training_metrics_history.clear()
+        self.adaptive_decisions.clear()
+        self.current_metrics = None
         
         logging.info("Adaptive training orchestrator cleanup completed")
 
