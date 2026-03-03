@@ -2099,11 +2099,14 @@ class EnhancedConversationTrainer:
                 logging.info("   (Inductor cannot fuse ctypes calls, leading to interpreter overhead per layer)")
             elif getattr(self.config, 'compile', True) and hasattr(torch, 'compile'):
                 try:
-                    logging.info("🚀 Compiling model with torch.compile(mode='default')...")
-                    # ✅ FIX: Use 'default' mode - 'reduce-overhead' enables CUDAGraphs which causes
-                    # 'accessing tensor output overwritten by subsequent run' errors during backward.
-                    # 'default' uses Inductor fusion without static memory capture, safe with AMP.
-                    self.model = torch.compile(self.model, mode="default")
+                    # ✅ FIX: Read compile_mode from config (set by cuda master switch logic in Main.py).
+                    # Default is 'default' — NOT 'reduce-overhead'.
+                    # 'reduce-overhead' enables CUDAGraphs which causes:
+                    #   "accessing tensor output of CUDAGraphs overwritten by subsequent run"
+                    # 'default' uses Inductor fusion without static memory capture; safe with AMP.
+                    compile_mode = getattr(self.config, 'compile_mode', 'default')
+                    logging.info(f"🚀 Compiling model with torch.compile(mode='{compile_mode}')...")
+                    self.model = torch.compile(self.model, mode=compile_mode)
                     logging.info("✅ Model compilation successful")
                 except Exception as e:
                     logging.warning(f"⚠️ torch.compile failed: {e}")

@@ -191,10 +191,10 @@ class PyTorchRMSNorm(nn.Module):
         x = x.to(torch.float32)
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
-        # ✅ FIX: Clone output to prevent CUDAGraphs buffer overwrite across steps.
-        # When torch.compile uses reduce-overhead/CUDAGraphs mode, tensor outputs
-        # share static memory across replays. Without .clone(), the backward pass
-        # of step N reads memory already overwritten by step N+1's forward pass.
+        # ✅ FIX: Clone output to prevent CUDAGraph buffer overwrite.
+        # torch.compile (reduce-overhead/CUDAGraphs) reuses static memory across
+        # replays. Without .clone(), step N+1 forward overwrites step N backward's
+        # input before autograd reads it.
         return (self.weight * x.to(input_dtype)).clone()
 
 

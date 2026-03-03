@@ -2204,6 +2204,76 @@ def main():
         
         print(f"\n✓ Applied {override_count} additional configuration overrides")
         print(f"✓ Total enhanced parameters: {len(all_params)}")
+
+        use_cuda_setting = getattr(config, 'use_cuda', 'auto')
+        cuda_actually_available = torch.cuda.is_available()
+
+        if use_cuda_setting is False:
+            print("\n" + "="*80)
+            print("CUDA MASTER SWITCH: OFF")
+            print("="*80)
+            print("  Disabling all CUDA-specific operations:")
+
+            # 1. Disable every fused / CUDA kernel toggle
+            fused_flags = [
+                'use_fused_rmsnorm',
+                'use_fused_rope',
+                'use_fused_swiglu',
+                'use_fused_moe',
+                'use_fused_loss',
+                'use_fused_grad_clip',
+                'use_cuda_moe',
+                'use_flash_attention',
+            ]
+            for flag in fused_flags:
+                if getattr(config, flag, False):
+                    setattr(config, flag, False)
+                    print(f"    ✗ {flag} → False")
+
+            # 2. Force compile mode to 'default' — never 'reduce-overhead'.
+            #    'reduce-overhead' activates CUDAGraphs which crash without CUDA
+            #    and also cause "tensor overwritten by subsequent run" errors.
+            if getattr(config, 'compile_mode', 'default') != 'default':
+                print(f"    ✗ compile_mode: '{config.compile_mode}' → 'default'")
+                config.compile_mode = 'default'
+            else:
+                # Ensure the attribute exists so trainer can read it safely
+                config.compile_mode = 'default'
+
+            # 3. If no GPU present, disable torch.compile entirely.
+            #    Inductor can still require nvcc/ptxas even for CPU targets.
+            if not cuda_actually_available:
+                if getattr(config, 'compile', True):
+                    print(f"    ✗ compile: True → False  (no CUDA device present)")
+                    config.compile = False
+
+            print(f"  Device will be: {'CPU' if not cuda_actually_available else 'CPU (use_cuda=False)'}")
+            print("="*80 + "\n")
+
+        elif use_cuda_setting == 'auto':
+            if not cuda_actually_available:
+                print("\nCUDA MASTER SWITCH: AUTO → no GPU detected, using CPU/MPS fallback")
+                if getattr(config, 'compile_mode', 'default') == 'reduce-overhead':
+                    config.compile_mode = 'default'
+                    print("  compile_mode: 'reduce-overhead' → 'default' (no CUDA)")
+                else:
+                    config.compile_mode = getattr(config, 'compile_mode', 'default')
+            else:
+                print(f"\nCUDA MASTER SWITCH: AUTO → CUDA detected ({torch.cuda.get_device_name(0)})")
+                # Always enforce 'default' to avoid CUDAGraph buffer-overwrite errors
+                if getattr(config, 'compile_mode', 'default') == 'reduce-overhead':
+                    config.compile_mode = 'default'
+                    print("  compile_mode: 'reduce-overhead' → 'default' (CUDAGraph safety fix)")
+                else:
+                    config.compile_mode = getattr(config, 'compile_mode', 'default')
+
+        else:  # use_cuda=True — keep individual flags but still fix compile mode
+            if getattr(config, 'compile_mode', 'default') == 'reduce-overhead':
+                config.compile_mode = 'default'
+                print("\n  compile_mode: 'reduce-overhead' → 'default' (CUDAGraph overwrite safety fix)")
+            else:
+                config.compile_mode = getattr(config, 'compile_mode', 'default')
+
         
         # Validate MPS compatibility if applicable
         if is_mps:
