@@ -2089,7 +2089,7 @@ class EnhancedConversationTrainer:
             kernels_active = False
             try:
                 import training.cuda_kernels as custom_kernels
-                if custom_kernels.CUSTOM_KERNELS_AVAILABLE:
+                if custom_kernels._CUDA_KERNELS_AVAILABLE:
                     kernels_active = True
             except ImportError:
                 pass
@@ -2994,10 +2994,12 @@ class EnhancedConversationTrainer:
             # ✅ NO SYNC: Skip redundant per-micro-batch valid loss check
             
             # 🔥 ASYNCHRONOUS ACCUMULATION (No .item() here!)
-            accumulation_metrics['loss'] = accumulation_metrics['loss'] + step_metrics['loss']
-            accumulation_metrics['raw_loss'] = accumulation_metrics['raw_loss'] + step_metrics['raw_loss']
-            accumulation_metrics['tokens'] = accumulation_metrics['tokens'] + step_metrics['valid_tokens']
-            accumulation_metrics['accuracy'] = accumulation_metrics['accuracy'] + step_metrics['accuracy']
+            # ✅ FIX: .detach() prevents retaining the backward graph across micro-batches.
+            # Without this, all 8 micro-batch graphs stay alive simultaneously → OOM.
+            accumulation_metrics['loss'] = accumulation_metrics['loss'] + step_metrics['loss'].detach()
+            accumulation_metrics['raw_loss'] = accumulation_metrics['raw_loss'] + step_metrics['raw_loss'].detach()
+            accumulation_metrics['tokens'] = accumulation_metrics['tokens'] + step_metrics['valid_tokens'].detach()
+            accumulation_metrics['accuracy'] = accumulation_metrics['accuracy'] + step_metrics['accuracy'].detach()
             accumulation_metrics['step_count'] += 1
             
             # Take optimizer step after full accumulation
@@ -3134,6 +3136,13 @@ class EnhancedConversationTrainer:
                     # Quantization diagnostics
                     if self.quantization_manager.is_quantized and self.global_step % 100 == 0:
                         self._log_quantization_diagnostics()
+
+                    # 🔥 CRITICAL FIX: PREVENT ASYNC OOM
+                    # Throttle the CPU so it doesn't queue hundreds of micro-batches ahead of the GPU.
+                    # This lightweight sync forces Python to wait for the current GPU step to finish
+                    # before looping, ensuring the caching allocator can free memory back to the pool.
+                    if isinstance(avg_loss, torch.Tensor):
+                        _throttle = avg_loss.item() 
 
                     # 🔥 FIX: RESET for next accumulation cycle
                     accumulation_metrics = {
@@ -3479,6 +3488,7 @@ class EnhancedConversationTrainer:
         
         except KeyboardInterrupt:
             print("Training interrupted by user")
+            raise
         except Exception as e:
             print(f"Training error: {e}")
             if self.quantization_manager.is_quantized:

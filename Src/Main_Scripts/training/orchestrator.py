@@ -1029,7 +1029,10 @@ class AdaptiveTrainingOrchestrator:
         def monitoring_loop():
             consecutive_errors = 0
             max_consecutive_errors = 5
-            while self.is_training and not self.should_stop:
+            # Wait for training to start (thread is created before is_training=True)
+            while not self.is_training and not self.should_stop:
+                time.sleep(0.1)
+            while not self.should_stop:
                 try:
                     # Get latest metrics with timeout to allow checking should_stop
                     try:
@@ -1067,8 +1070,8 @@ class AdaptiveTrainingOrchestrator:
         print("🔍 DEBUG: Starting thread...")
         self.monitoring_thread.start()
         
-        import time
-        time.sleep(0.1)  # Brief pause
+        import time as _time
+        _time.sleep(0.1)  # Brief pause
         
         print(f"🔍 DEBUG: Thread started!")
         print(f"   Thread alive: {self.monitoring_thread.is_alive()}")
@@ -1463,16 +1466,14 @@ class AdaptiveTrainingOrchestrator:
                 logging.info(f"✅ Real trainer initialized: {class_name}")
                 trainer_initialized = True
                 break
-
-                logging.info(f"✅ Real trainer initialized: {class_name}")
-                trainer_initialized = True
-                break
                 
             except (ImportError, AttributeError) as e:
-                logging.debug(f"Could not import {class_name} from {module_name}: {e}")
+                logging.warning(f"Could not import {class_name} from {module_name}: {e}")
+                logging.warning(traceback.format_exc())
                 continue
             except Exception as e:
-                logging.error(f"Unexpected error importing {class_name}: {e}")
+                logging.error(f"Unexpected error initializing {class_name}: {e}")
+                logging.error(traceback.format_exc())
                 continue
         
         # FIX: Use fallback trainer if real one not found
@@ -2271,6 +2272,16 @@ class AdaptiveTrainingOrchestrator:
                 self.should_stop = False
                 self.current_lr = config.learning_rate
                 self.scheduler = None
+
+                # Create optimizer so adjust_learning_rate() doesn't crash
+                self.optimizer = torch.optim.AdamW(
+                    model.parameters(),
+                    lr=config.learning_rate,
+                    weight_decay=getattr(config, 'weight_decay', 0.01)
+                )
+
+                # Monitoring queue placeholder (injected by orchestrator)
+                self._monitoring_queue = None
             
             def _setup_scheduler(self, total_steps):
                 """Setup scheduler (placeholder)."""
@@ -2343,7 +2354,7 @@ class AdaptiveTrainingOrchestrator:
                     timestamp=datetime.now()
                 )
             
-            def adjust_learning_rate(self, new_lr):
+            def adjust_learning_rate(self, new_lr, grace_period=10, emergency=False):
                 """Adjust learning rate and signal to skip scheduler."""
                 self.current_lr = new_lr
                 for param_group in self.optimizer.param_groups:
@@ -2352,6 +2363,8 @@ class AdaptiveTrainingOrchestrator:
                 # ✅ Signal that adaptive has control
                 self._adaptive_lr_override = True
                 self._adaptive_override_steps = 0
+                self._adaptive_override_grace = grace_period
+                self._adaptive_emergency = emergency
 
                 logging.info(f"Learning rate adjusted to {new_lr}")
         

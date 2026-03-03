@@ -490,6 +490,9 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
 
             print("="*80 + "\n")
             
+            # ✅ FIX: Training completed successfully without OOM, exit the retry loop
+            break
+            
         except RuntimeError as e:
             error_msg = str(e).lower()
             is_oom = any(x in error_msg for x in ["out of memory", "oom", "cuda out of memory", "mps out of memory"])
@@ -1670,7 +1673,7 @@ def main():
         'batch_size': 30,
         'gradient_accumulation_steps': 8,
         
-        'precision': "fp32",
+        'precision': "mixed_fp16",
         'inference_precision': "fp16",
         'num_experts': 8,
         'moe_top_k': 2,
@@ -2840,8 +2843,18 @@ def main():
             print("  ✓ Automatic recovery from failures")
             print("  ✓ Performance profiling and analysis")
             
+            # ✅ OPTIMIZATION: Free the duplicate base model from GPU before creating Orchestrator
+            if 'model' in locals():
+                del model
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
             try:
-                orchestrator = AdaptiveTrainingOrchestrator(config)
+                orchestrator = wrap_orchestrator_with_oom_protection(
+                    orchestrator=AdaptiveTrainingOrchestrator(config),
+                    train_dataset=train_dataset,
+                    eval_dataset=eval_dataset
+                )
                 print("DEBUG: Orchestrator created")
                 
                 orchestrator.initialize_training()
