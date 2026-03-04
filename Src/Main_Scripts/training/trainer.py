@@ -100,12 +100,15 @@ except ImportError:
     logging.warning("DeepSpeed not available - falling back to standard training")
     class DeepSpeedEngine:
         pass
-try:
-    from training.cuda_kernels import FusedLoss, FusedGradClip
-    CUSTOM_KERNELS_AVAILABLE = True
-except ImportError:
+if _safe_cuda_is_available():
+    try:
+        from training.cuda_kernels import FusedLoss, FusedGradClip
+        CUSTOM_KERNELS_AVAILABLE = True
+    except Exception as e:
+        CUSTOM_KERNELS_AVAILABLE = False
+        logging.warning(f"Custom CUDA kernels unavailable - using PyTorch fallback: {e}")
+else:
     CUSTOM_KERNELS_AVAILABLE = False
-    logging.warning("Custom CUDA kernels not available - using PyTorch fallback")
 
 if _safe_cuda_is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -2106,12 +2109,13 @@ class EnhancedConversationTrainer:
             # If custom CUDA kernels are used (ctypes based), torch.compile causes graph breaks at every call.
             # We must DISABLE compilation if custom kernels are active to maintain performance.
             kernels_active = False
-            try:
-                import training.cuda_kernels as custom_kernels
-                if custom_kernels._CUDA_KERNELS_AVAILABLE:
-                    kernels_active = True
-            except ImportError:
-                pass
+            if _safe_cuda_is_available():
+                try:
+                    import training.cuda_kernels as custom_kernels
+                    if getattr(custom_kernels, '_CUDA_KERNELS_AVAILABLE', False):
+                        kernels_active = True
+                except Exception:
+                    pass
 
             if kernels_active:
                 logging.warning("🚀 Custom CUDA Kernels detected: Disabling torch.compile to avoid graph breaks.")
