@@ -522,8 +522,6 @@ class FusedRoPE(nn.Module):
                 ctypes.c_float(self.theta),
                 ctypes.c_void_p(stream)
             )
-            
-            torch.cuda.synchronize()
     
     def _precompute_pytorch_cache(self):
         """Precompute cos/sin using PyTorch"""
@@ -716,6 +714,7 @@ class FusedMLPBlock(nn.Module):
         self.cuda_enabled = TRANSFORMER_OPS_AVAILABLE
         self._fused_proj_weight = None # Cache for concatenated weights
         self._fused_proj_dtype = None
+        self._workspace_cache = {}
         
     def fuse_weights(self):
         """Pre-concatenate Gate and Up weights for maximum CUDA performance"""
@@ -748,13 +747,26 @@ class FusedMLPBlock(nn.Module):
             
             dtype_in = x.dtype
             dtype_w = self.gate_proj.weight.dtype
-            
-            workspace = torch.empty(0, device=x.device)
             output = torch.empty_like(x_flat)
             stream = torch.cuda.current_stream().cuda_stream
-            
-            total_scales = 2 * self.intermediate_size + self.hidden_size
-            scales = torch.ones(total_scales, dtype=torch.float32, device=x.device)
+
+            # Reuse workspace to avoid allocator overhead in hot path.
+            if dtype_in == torch.float16 and dtype_w == torch.float16:
+                key = ("fp16", batch_seq, x.device)
+                required_elems = batch_seq * self.hidden_size + (batch_seq * self.intermediate_size * 2)
+                workspace = self._workspace_cache.get(key)
+                if workspace is None or workspace.numel() < required_elems:
+                    workspace = torch.empty(required_elems, dtype=torch.float16, device=x.device)
+                    self._workspace_cache[key] = workspace
+            elif dtype_in == torch.float32 and dtype_w == torch.float32:
+                key = ("fp32", batch_seq, x.device)
+                required_elems = batch_seq * self.hidden_size + (batch_seq * self.intermediate_size * 2)
+                workspace = self._workspace_cache.get(key)
+                if workspace is None or workspace.numel() < required_elems:
+                    workspace = torch.empty(required_elems, dtype=torch.float32, device=x.device)
+                    self._workspace_cache[key] = workspace
+            else:
+                workspace = None
             
             if dtype_in == torch.float16 and dtype_w == torch.float16:
                 _transformer_ops_lib.fused_mlp_cublaslt_launcher_fp16(
@@ -806,7 +818,7 @@ class FusedMLPBlock(nn.Module):
                     ctypes.c_int(self.hidden_size),
                     ctypes.c_int(self.intermediate_size),
                     ctypes.c_float(self.eps),
-                    ctypes.c_void_p(scales.data_ptr()), 
+                    ctypes.c_float(1.0),
                     ctypes.c_void_p(stream)
                 )
             else:

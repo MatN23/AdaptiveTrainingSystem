@@ -11,6 +11,34 @@
 #include <random>
 #include <sstream>
 
+namespace {
+
+inline void tensor_copy(float* dst, const float* src, size_t count) {
+#ifdef USE_CUDA
+  cudaMemcpy(dst, src, count * sizeof(float), cudaMemcpyDeviceToDevice);
+#else
+  std::memcpy(dst, src, count * sizeof(float));
+#endif
+}
+
+inline void tensor_zero(float* dst, size_t count) {
+#ifdef USE_CUDA
+  cudaMemset(dst, 0, count * sizeof(float));
+#else
+  std::memset(dst, 0, count * sizeof(float));
+#endif
+}
+
+inline void tensor_to_host(float* dst_host, const float* src, size_t count) {
+#ifdef USE_CUDA
+  cudaMemcpy(dst_host, src, count * sizeof(float), cudaMemcpyDeviceToHost);
+#else
+  std::memcpy(dst_host, src, count * sizeof(float));
+#endif
+}
+
+} // namespace
+
 // ============================================================================
 // MODEL LOADING
 // ============================================================================
@@ -281,8 +309,7 @@ void InferenceEngine::forward(const int32_t *input_ids, int32_t batch_size,
   // Transformer layers
   for (int32_t i = 0; i < config_.num_layers; ++i) {
     // Save residual
-    std::memcpy(residual.data, x.data,
-                seq_len * config_.hidden_size * sizeof(float));
+    tensor_copy(residual.data, x.data, seq_len * config_.hidden_size);
 
     // Attention
     attention_layer(i, x, attn_out);
@@ -291,8 +318,7 @@ void InferenceEngine::forward(const int32_t *input_ids, int32_t batch_size,
     kernels::add_inplace(x.data, attn_out.data, seq_len * config_.hidden_size);
 
     // Save residual again
-    std::memcpy(residual.data, x.data,
-                seq_len * config_.hidden_size * sizeof(float));
+    tensor_copy(residual.data, x.data, seq_len * config_.hidden_size);
 
     // FFN (MoE or dense with MoD)
     if (weights_.layers[i].is_moe) {
@@ -314,7 +340,7 @@ void InferenceEngine::forward(const int32_t *input_ids, int32_t batch_size,
   linear(x, weights_.lm_head, x);
 
   // Copy logits
-  std::memcpy(logits_out, x.data, seq_len * config_.vocab_size * sizeof(float));
+  tensor_to_host(logits_out, x.data, seq_len * config_.vocab_size);
 }
 
 // ============================================================================
@@ -323,31 +349,15 @@ void InferenceEngine::forward(const int32_t *input_ids, int32_t batch_size,
 
 void InferenceEngine::embedding(const int32_t *ids, int32_t n, Tensor &out) {
 #ifdef USE_CUDA
-  // Copy input IDs to device
-  int32_t *d_ids;
-  cudaMalloc(&d_ids, n * sizeof(int32_t));
-  cudaMemcpy(d_ids, ids, n * sizeof(int32_t), cudaMemcpyHostToDevice);
-
-  // Gather embeddings on GPU (simplified - use a kernel for production)
-  float *h_out = new float[n * config_.hidden_size];
-  float *embed_cpu = new float[weights_.embed_tokens.numel()];
-  cudaMemcpy(embed_cpu, weights_.embed_tokens.data,
-             weights_.embed_tokens.numel() * sizeof(float),
-             cudaMemcpyDeviceToHost);
-
+  // Gather directly on device via row-wise D2D copies.
+  const float *embed = static_cast<const float *>(weights_.embed_tokens.data);
+  float *dst = static_cast<float *>(out.data);
   for (int32_t i = 0; i < n; ++i) {
     int32_t id = ids[i];
-    std::memcpy(h_out + i * config_.hidden_size,
-                embed_cpu + id * config_.hidden_size,
-                config_.hidden_size * sizeof(float));
+    cudaMemcpy(dst + (int64_t)i * config_.hidden_size,
+               embed + (int64_t)id * config_.hidden_size,
+               config_.hidden_size * sizeof(float), cudaMemcpyDeviceToDevice);
   }
-
-  cudaMemcpy(out.data, h_out, n * config_.hidden_size * sizeof(float),
-             cudaMemcpyHostToDevice);
-
-  delete[] h_out;
-  delete[] embed_cpu;
-  cudaFree(d_ids);
 #else
   // CPU/MPS path
   for (int32_t i = 0; i < n; ++i) {
@@ -450,7 +460,7 @@ void InferenceEngine::moe_layer(int32_t layer_idx, const Tensor &x,
                      config_.num_experts, config_.moe_top_k);
 
   // Execute experts
-  std::memset(out.data, 0, seq_len * config_.hidden_size * sizeof(float));
+  tensor_zero(out.data, seq_len * config_.hidden_size);
 
   // Use buffer for expert output
   Tensor &expert_out = buffers_[8];
@@ -499,7 +509,7 @@ void InferenceEngine::mod_layer(int32_t layer_idx, const Tensor &x,
   }
 
   // Execute FFN only on selected tokens
-  std::memset(out.data, 0, seq_len * config_.hidden_size * sizeof(float));
+  tensor_zero(out.data, seq_len * config_.hidden_size);
 
   for (int32_t i = 0; i < num_compute; ++i) {
     int32_t t = compute_mask[i];
@@ -558,10 +568,10 @@ InferenceEngine::generate(const std::vector<int32_t> &prompt,
 void InferenceEngine::reset_cache() {
   cache_pos_ = 0;
   for (auto &cache : kv_cache_k_) {
-    std::memset(cache.data, 0, cache.numel() * sizeof(float));
+    tensor_zero(cache.data, cache.numel());
   }
   for (auto &cache : kv_cache_v_) {
-    std::memset(cache.data, 0, cache.numel() * sizeof(float));
+    tensor_zero(cache.data, cache.numel());
   }
 }
 

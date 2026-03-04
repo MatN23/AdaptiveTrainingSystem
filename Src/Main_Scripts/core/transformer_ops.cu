@@ -441,10 +441,21 @@ __global__ void __launch_bounds__(256)
 // ============================================================================
 
 static cublasLtHandle_t lt_handle = nullptr;
+static cublasLtMatmulDesc_t g_op_desc_fp16 = nullptr;
+static cublasLtMatmulDesc_t g_op_desc_fp32 = nullptr;
 
 extern "C" void init_cublas_handle() {
   if (lt_handle == nullptr) {
     cublasLtCreate(&lt_handle);
+    int trans_op = CUBLAS_OP_T;
+
+    cublasLtMatmulDescCreate(&g_op_desc_fp16, CUBLAS_COMPUTE_32F, CUDA_R_32F);
+    cublasLtMatmulDescSetAttribute(g_op_desc_fp16, CUBLASLT_MATMUL_DESC_TRANSA,
+                                   &trans_op, sizeof(trans_op));
+
+    cublasLtMatmulDescCreate(&g_op_desc_fp32, CUBLAS_COMPUTE_32F, CUDA_R_32F);
+    cublasLtMatmulDescSetAttribute(g_op_desc_fp32, CUBLASLT_MATMUL_DESC_TRANSA,
+                                   &trans_op, sizeof(trans_op));
   }
 }
 
@@ -737,14 +748,8 @@ void fused_mlp_cublaslt_launcher_fp16(const __half *input,
                          eps, stream);
 
   // 2. Setup cuBLASLt descriptors
-  cublasLtMatmulDesc_t opDesc;
+  cublasLtMatmulDesc_t opDesc = g_op_desc_fp16;
   cublasLtMatrixLayout_t A_combined_desc, B_desc, C_combined_desc;
-
-  int trans_op = CUBLAS_OP_T;
-  CUBLAS_CHECK(
-      cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
-  CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(
-      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &trans_op, sizeof(trans_op)));
 
   size_t input_size = (size_t)batch_seq * hidden_size;
   __half *combined_out = input_norm + input_size;
@@ -818,7 +823,6 @@ void fused_mlp_cublaslt_launcher_fp16(const __half *input,
       &beta, output, C_out_desc, output, C_out_desc, NULL, NULL, 0, stream));
 
   // Cleanup
-  cublasLtMatmulDescDestroy(opDesc);
   cublasLtMatrixLayoutDestroy(B_desc);
   cublasLtMatrixLayoutDestroy(A_down_desc);
   cublasLtMatrixLayoutDestroy(B_down_desc);
@@ -846,14 +850,8 @@ extern "C" void fused_mlp_cublaslt_launcher_fp32(
   size_t input_size = (size_t)batch_seq * hidden_size;
   float *combined_out = input_norm + input_size;
 
-  cublasLtMatmulDesc_t opDesc;
+  cublasLtMatmulDesc_t opDesc = g_op_desc_fp32;
   cublasLtMatrixLayout_t A_combined_desc, B_desc, C_combined_desc;
-
-  int trans_op = CUBLAS_OP_T;
-  CUBLAS_CHECK(
-      cublasLtMatmulDescCreate(&opDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
-  CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(
-      opDesc, CUBLASLT_MATMUL_DESC_TRANSA, &trans_op, sizeof(trans_op)));
 
   bool can_fuse = (W_up == (W_gate + (size_t)hidden_size * intermediate_size));
   const float alpha = 1.0f;
@@ -920,7 +918,6 @@ extern "C" void fused_mlp_cublaslt_launcher_fp32(
       &beta, output, C_out_desc, output, C_out_desc, NULL, NULL, 0, stream));
 
   // Cleanup
-  cublasLtMatmulDescDestroy(opDesc);
   cublasLtMatrixLayoutDestroy(B_desc);
   cublasLtMatrixLayoutDestroy(A_down_desc);
   cublasLtMatrixLayoutDestroy(B_down_desc);

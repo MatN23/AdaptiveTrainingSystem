@@ -6,11 +6,17 @@
 #include "../core/kernels.hpp"
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#include <cfloat>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
+#include <vector>
 
 // Global cuBLAS handle
 static cublasHandle_t g_cublas_handle = nullptr;
+static float* g_expert_gate_tmp = nullptr;
+static float* g_expert_up_tmp = nullptr;
+static int g_expert_tmp_capacity = 0;
 
 // Initialize CUDA
 __attribute__((constructor))
@@ -34,6 +40,15 @@ static void cleanup_cuda() {
     if (g_cublas_handle) {
         cublasDestroy(g_cublas_handle);
     }
+    if (g_expert_gate_tmp) {
+        cudaFree(g_expert_gate_tmp);
+        g_expert_gate_tmp = nullptr;
+    }
+    if (g_expert_up_tmp) {
+        cudaFree(g_expert_up_tmp);
+        g_expert_up_tmp = nullptr;
+    }
+    g_expert_tmp_capacity = 0;
 }
 
 // ============================================================================
@@ -165,26 +180,116 @@ __global__ void attention_softmax_kernel(
     int cache_pos
 ) {
     int s = blockIdx.x;
+    int tid = threadIdx.x;
     if (s >= seq_len) return;
-    
+
+    int valid_len = cache_pos + s + 1;
+    if (valid_len > kv_seq_len) valid_len = kv_seq_len;
+
     float* row = scores + s * kv_seq_len;
-    
-    // Find max (for numerical stability)
-    float max_val = -1e9f;
-    for (int t = 0; t <= cache_pos + s; ++t) {
-        max_val = fmaxf(max_val, row[t]);
+
+    __shared__ float smax[256];
+    __shared__ float ssum[256];
+
+    float local_max = -FLT_MAX;
+    for (int t = tid; t < valid_len; t += blockDim.x) {
+        local_max = fmaxf(local_max, row[t]);
     }
-    
-    // Exp and sum
+    smax[tid] = local_max;
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            smax[tid] = fmaxf(smax[tid], smax[tid + stride]);
+        }
+        __syncthreads();
+    }
+    float max_val = smax[0];
+
+    float local_sum = 0.0f;
+    for (int t = tid; t < valid_len; t += blockDim.x) {
+        float ex = expf(row[t] - max_val);
+        row[t] = ex;
+        local_sum += ex;
+    }
+    ssum[tid] = local_sum;
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            ssum[tid] += ssum[tid + stride];
+        }
+        __syncthreads();
+    }
+    float inv_sum = 1.0f / (ssum[0] + 1e-9f);
+
+    for (int t = tid; t < valid_len; t += blockDim.x) {
+        row[t] *= inv_sum;
+    }
+    for (int t = valid_len + tid; t < kv_seq_len; t += blockDim.x) {
+        row[t] = 0.0f;
+    }
+}
+
+__global__ void moe_softmax_topk_kernel(
+    const float* logits,
+    int32_t* expert_ids,
+    float* expert_weights,
+    int seq_len,
+    int num_experts,
+    int top_k
+) {
+    constexpr int MAX_TOP_K = 32;
+    int token_idx = blockIdx.x;
+    if (token_idx >= seq_len || threadIdx.x != 0) return;
+
+    if (top_k > MAX_TOP_K) top_k = MAX_TOP_K;
+    const float* row = logits + token_idx * num_experts;
+
+    float max_val = -FLT_MAX;
+    for (int e = 0; e < num_experts; ++e) {
+        max_val = fmaxf(max_val, row[e]);
+    }
+
     float sum_exp = 0.0f;
-    for (int t = 0; t <= cache_pos + s; ++t) {
-        row[t] = expf(row[t] - max_val);
-        sum_exp += row[t];
+    for (int e = 0; e < num_experts; ++e) {
+        sum_exp += expf(row[e] - max_val);
     }
-    
-    // Normalize
-    for (int t = 0; t <= cache_pos + s; ++t) {
-        row[t] /= sum_exp;
+    float inv_sum = 1.0f / (sum_exp + 1e-9f);
+
+    float top_vals[MAX_TOP_K];
+    int top_idxs[MAX_TOP_K];
+    for (int i = 0; i < top_k; ++i) {
+        top_vals[i] = -1.0f;
+        top_idxs[i] = -1;
+    }
+
+    for (int e = 0; e < num_experts; ++e) {
+        float p = expf(row[e] - max_val) * inv_sum;
+        if (p <= top_vals[top_k - 1]) continue;
+        top_vals[top_k - 1] = p;
+        top_idxs[top_k - 1] = e;
+        for (int i = top_k - 2; i >= 0; --i) {
+            if (top_vals[i + 1] <= top_vals[i]) break;
+            float tmp_v = top_vals[i];
+            int tmp_i = top_idxs[i];
+            top_vals[i] = top_vals[i + 1];
+            top_idxs[i] = top_idxs[i + 1];
+            top_vals[i + 1] = tmp_v;
+            top_idxs[i + 1] = tmp_i;
+        }
+    }
+
+    float sum_top = 0.0f;
+    for (int i = 0; i < top_k; ++i) {
+        sum_top += fmaxf(top_vals[i], 0.0f);
+    }
+    float inv_top = 1.0f / (sum_top + 1e-9f);
+
+    int base = token_idx * top_k;
+    for (int i = 0; i < top_k; ++i) {
+        expert_ids[base + i] = top_idxs[i];
+        expert_weights[base + i] = fmaxf(top_vals[i], 0.0f) * inv_top;
     }
 }
 
@@ -275,7 +380,6 @@ void rms_norm(const float* x, const float* weight, float* out,
     dim3 blocks(n);
     dim3 threads(256);
     rms_norm_kernel<<<blocks, threads>>>(x, weight, out, n, dim, eps);
-    cudaDeviceSynchronize();
 }
 
 void matmul(const float* a, const float* b, float* c,
@@ -298,32 +402,26 @@ void matmul(const float* a, const float* b, float* c,
         &beta,
         c, n            // C matrix
     );
-    
-    cudaDeviceSynchronize();
 }
 
 void silu(const float* x, float* out, int32_t n) {
     int blocks = (n + 255) / 256;
     silu_kernel<<<blocks, 256>>>(x, out, n);
-    cudaDeviceSynchronize();
 }
 
 void mul(const float* a, const float* b, float* out, int32_t n) {
     int blocks = (n + 255) / 256;
     mul_kernel<<<blocks, 256>>>(a, b, out, n);
-    cudaDeviceSynchronize();
 }
 
 void add_inplace(float* dst, const float* src, int32_t n) {
     int blocks = (n + 255) / 256;
     add_inplace_kernel<<<blocks, 256>>>(dst, src, n);
-    cudaDeviceSynchronize();
 }
 
 void add_scaled(float* dst, const float* src, float scale, int32_t n) {
     int blocks = (n + 255) / 256;
     add_scaled_kernel<<<blocks, 256>>>(dst, src, scale, n);
-    cudaDeviceSynchronize();
 }
 
 void apply_rope(float* q, float* k,
@@ -337,8 +435,6 @@ void apply_rope(float* q, float* k,
         q, k, cos_cache, sin_cache,
         seq_len, num_heads, num_kv_heads, head_dim, pos_offset
     );
-    
-    cudaDeviceSynchronize();
 }
 
 void attention(const float* q, const float* k, const float* v, float* out,
@@ -353,30 +449,31 @@ void attention(const float* q, const float* k, const float* v, float* out,
     
     // Update KV cache (memcpy on device)
     for (int h = 0; h < num_kv_heads; ++h) {
-        cudaMemcpy(
+        cudaMemcpyAsync(
             kv_cache_k + (h * kv_seq_len + cache_pos) * head_dim,
             k + h * seq_len * head_dim,
             seq_len * head_dim * sizeof(float),
-            cudaMemcpyDeviceToDevice
+            cudaMemcpyDeviceToDevice,
+            0
         );
-        cudaMemcpy(
+        cudaMemcpyAsync(
             kv_cache_v + (h * kv_seq_len + cache_pos) * head_dim,
             v + h * seq_len * head_dim,
             seq_len * head_dim * sizeof(float),
-            cudaMemcpyDeviceToDevice
+            cudaMemcpyDeviceToDevice,
+            0
         );
     }
     
     // Attention computation (simplified - use cuBLAS for Q @ K^T)
     int heads_per_kv = num_heads / num_kv_heads;
     
+    float* scores = nullptr;
+    cudaMalloc(&scores, seq_len * kv_seq_len * sizeof(float));
+
     for (int h = 0; h < num_heads; ++h) {
         int kv_h = h / heads_per_kv;
-        
-        // Allocate scores
-        float* scores;
-        cudaMalloc(&scores, seq_len * kv_seq_len * sizeof(float));
-        
+
         // Q @ K^T using cuBLAS
         const float alpha = scale;
         const float beta = 0.0f;
@@ -392,10 +489,10 @@ void attention(const float* q, const float* k, const float* v, float* out,
             &beta,
             scores, kv_seq_len
         );
-        
+
         // Softmax
-        attention_softmax_kernel<<<seq_len, 1>>>(scores, seq_len, kv_seq_len, cache_pos);
-        
+        attention_softmax_kernel<<<seq_len, 256>>>(scores, seq_len, kv_seq_len, cache_pos);
+
         // Scores @ V using cuBLAS
         const float one = 1.0f;
         const float zero = 0.0f;
@@ -411,20 +508,27 @@ void attention(const float* q, const float* k, const float* v, float* out,
             &zero,
             out + h * seq_len * head_dim, head_dim
         );
-        
-        cudaFree(scores);
     }
-    
-    cudaDeviceSynchronize();
+
+    cudaFree(scores);
 }
 
 void moe_route(const float* x, const float* gate_weight,
                int32_t* expert_ids, float* expert_weights,
                int32_t seq_len, int32_t hidden_size,
                int32_t num_experts, int32_t top_k) {
+    if (top_k <= 0 || seq_len <= 0) {
+        return;
+    }
+
     // Allocate device memory for logits
     float* d_logits;
     cudaMalloc(&d_logits, seq_len * num_experts * sizeof(float));
+
+    int32_t* d_expert_ids;
+    float* d_expert_weights;
+    cudaMalloc(&d_expert_ids, seq_len * top_k * sizeof(int32_t));
+    cudaMalloc(&d_expert_weights, seq_len * top_k * sizeof(float));
     
     // Compute gating logits
     dim3 blocks(seq_len, num_experts);
@@ -432,61 +536,41 @@ void moe_route(const float* x, const float* gate_weight,
     moe_gating_kernel<<<blocks, threads>>>(
         x, gate_weight, d_logits, seq_len, hidden_size, num_experts
     );
-    
-    // Copy logits back and do top-k selection on CPU
-    // (For production, implement top-k on GPU)
-    float* h_logits = new float[seq_len * num_experts];
-    cudaMemcpy(h_logits, d_logits, seq_len * num_experts * sizeof(float), cudaMemcpyDeviceToHost);
-    
-    for (int t = 0; t < seq_len; ++t) {
-        float* logits = h_logits + t * num_experts;
-        
-        // Softmax
-        float max_logit = *std::max_element(logits, logits + num_experts);
-        float sum_exp = 0.0f;
-        for (int e = 0; e < num_experts; ++e) {
-            logits[e] = expf(logits[e] - max_logit);
-            sum_exp += logits[e];
-        }
-        for (int e = 0; e < num_experts; ++e) {
-            logits[e] /= sum_exp;
-        }
-        
-        // Top-k selection
-        std::vector<int> indices(num_experts);
-        std::iota(indices.begin(), indices.end(), 0);
-        std::partial_sort(indices.begin(), indices.begin() + top_k, indices.end(),
-            [&](int a, int b) { return logits[a] > logits[b]; });
-        
-        // Renormalize
-        float sum_top_k = 0.0f;
-        for (int k = 0; k < top_k; ++k) {
-            sum_top_k += logits[indices[k]];
-        }
-        
-        for (int k = 0; k < top_k; ++k) {
-            expert_ids[t * top_k + k] = indices[k];
-            expert_weights[t * top_k + k] = logits[indices[k]] / sum_top_k;
-        }
-    }
-    
-    delete[] h_logits;
+
+    moe_softmax_topk_kernel<<<seq_len, 1>>>(
+        d_logits, d_expert_ids, d_expert_weights, seq_len, num_experts, top_k
+    );
+
+    cudaMemcpy(expert_ids, d_expert_ids, seq_len * top_k * sizeof(int32_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(expert_weights, d_expert_weights, seq_len * top_k * sizeof(float), cudaMemcpyDeviceToHost);
+
     cudaFree(d_logits);
+    cudaFree(d_expert_ids);
+    cudaFree(d_expert_weights);
 }
 
 void mod_route(const float* x, const float* router_weight,
                float* scores, int32_t seq_len, int32_t hidden_size) {
-    mod_scoring_kernel<<<seq_len, 256>>>(x, router_weight, scores, seq_len, hidden_size);
-    cudaDeviceSynchronize();
+    float* d_scores = nullptr;
+    cudaMalloc(&d_scores, seq_len * sizeof(float));
+    mod_scoring_kernel<<<seq_len, 256>>>(x, router_weight, d_scores, seq_len, hidden_size);
+    cudaMemcpy(scores, d_scores, seq_len * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaFree(d_scores);
 }
 
 void expert_forward(const float* x, float* out,
                     const float* gate_w, const float* up_w, const float* down_w,
                     int32_t hidden_size, int32_t intermediate_size) {
-    // Allocate temporary buffers
-    float *gate_out, *up_out;
-    cudaMalloc(&gate_out, intermediate_size * sizeof(float));
-    cudaMalloc(&up_out, intermediate_size * sizeof(float));
+    if (g_expert_tmp_capacity < intermediate_size) {
+        if (g_expert_gate_tmp) cudaFree(g_expert_gate_tmp);
+        if (g_expert_up_tmp) cudaFree(g_expert_up_tmp);
+        cudaMalloc(&g_expert_gate_tmp, intermediate_size * sizeof(float));
+        cudaMalloc(&g_expert_up_tmp, intermediate_size * sizeof(float));
+        g_expert_tmp_capacity = intermediate_size;
+    }
+
+    float* gate_out = g_expert_gate_tmp;
+    float* up_out = g_expert_up_tmp;
     
     // Gate projection: gate_out = x @ gate_w^T
     const float one = 1.0f;
@@ -510,18 +594,36 @@ void expert_forward(const float* x, float* out,
                 intermediate_size, hidden_size, &one,
                 down_w, intermediate_size, gate_out, 1, &zero, out, 1);
     
-    cudaFree(gate_out);
-    cudaFree(up_out);
-    cudaDeviceSynchronize();
 }
 
 int32_t sample(const float* logits, int32_t vocab_size, float temperature) {
-    // Copy logits to host and sample on CPU
-    float* h_logits = new float[vocab_size];
-    cudaMemcpy(h_logits, logits, vocab_size * sizeof(float), cudaMemcpyDeviceToHost);
-    
+    std::vector<float> h_logits(vocab_size);
+#if CUDART_VERSION >= 10000
+    cudaPointerAttributes attr;
+    cudaError_t attr_status = cudaPointerGetAttributes(&attr, logits);
+    bool is_device_ptr = false;
+    if (attr_status == cudaSuccess) {
+#if CUDART_VERSION >= 11000
+        is_device_ptr = (attr.type == cudaMemoryTypeDevice);
+#else
+        is_device_ptr = (attr.memoryType == cudaMemoryTypeDevice);
+#endif
+    } else {
+        // Clear the sticky error raised by querying a host pointer.
+        (void)cudaGetLastError();
+    }
+#else
+    bool is_device_ptr = true;
+#endif
+
+    if (is_device_ptr) {
+        cudaMemcpy(h_logits.data(), logits, vocab_size * sizeof(float), cudaMemcpyDeviceToHost);
+    } else {
+        std::memcpy(h_logits.data(), logits, vocab_size * sizeof(float));
+    }
+
     // Apply temperature and softmax
-    float max_logit = *std::max_element(h_logits, h_logits + vocab_size);
+    float max_logit = *std::max_element(h_logits.begin(), h_logits.end());
     float sum_exp = 0.0f;
     
     for (int i = 0; i < vocab_size; ++i) {
@@ -540,12 +642,10 @@ int32_t sample(const float* logits, int32_t vocab_size, float temperature) {
     for (int i = 0; i < vocab_size; ++i) {
         cumsum += h_logits[i];
         if (r < cumsum) {
-            delete[] h_logits;
             return i;
         }
     }
-    
-    delete[] h_logits;
+
     return vocab_size - 1;
 }
 

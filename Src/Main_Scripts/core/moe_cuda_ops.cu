@@ -158,7 +158,7 @@ __device__ __forceinline__ void sort_topk(float *vals, int *idxs) {
 template <int K>
 __device__ __forceinline__ void
 warp_topk_tournament(const float *__restrict__ logits, int num_experts,
-                     float *topk_vals, int64_t *topk_idxs, const float inv_temp,
+                     float *topk_vals, int *topk_idxs, const float inv_temp,
                      int actual_k) {
   // Compile-time safety check
   static_assert(K <= MAX_K, "K must be <= MAX_K");
@@ -278,22 +278,14 @@ __global__ void __launch_bounds__(256, 4) // Optimized for T4 (1024 threads/SM)
   const int lane = threadIdx.x & 31;
   const float *token_logits = gate_logits + (int64_t)token_idx * num_experts;
 
-  // Top-K selection (warp-level, no shared memory!)
-  // Perform top-K selection
-  warp_topk_tournament<K>(
-      token_logits, num_experts, top_k_weights + (int64_t)token_idx * actual_k,
-      top_k_indices + (int64_t)token_idx * actual_k, inv_temperature, actual_k);
-
-  // Parallel softmax across warp (all lanes participate!)
-  // Read back the top-K values for softmax calculation
   float topk_vals[MAX_K];
   int topk_idxs[MAX_K];
-#pragma unroll
-  for (int i = 0; i < actual_k; ++i) {
-    topk_vals[i] = top_k_weights[(int64_t)token_idx * actual_k + i];
-    topk_idxs[i] = top_k_indices[(int64_t)token_idx * actual_k + i];
-  }
 
+  // Top-K selection (warp-level, no shared memory!)
+  warp_topk_tournament<K>(token_logits, num_experts, topk_vals, topk_idxs,
+                          inv_temperature, actual_k);
+
+  // Parallel softmax across warp (all lanes participate!)
   float max_val = topk_vals[0];
 
   // Each lane processes some of the K values
@@ -662,6 +654,59 @@ __global__ void dispatch_tokens_kernel_staged(
   }
 }
 
+__global__ void dispatch_tokens_kernel_dynamic(
+    const float *__restrict__ tokens, const int64_t *__restrict__ top_k_indices,
+    int *__restrict__ expert_positions, float *__restrict__ expert_inputs,
+    int64_t *__restrict__ token_map, const int num_tokens,
+    const int num_experts, const int hidden_dim, const int capacity,
+    const int actual_k) {
+
+  const int token_idx = blockIdx.x;
+  if (token_idx >= num_tokens) return;
+
+  const int tid = threadIdx.x;
+  const float *token_data = tokens + (int64_t)token_idx * hidden_dim;
+  const int64_t *token_experts = top_k_indices + (int64_t)token_idx * actual_k;
+
+  __shared__ int shared_pos[MAX_K];
+  __shared__ int shared_expert[MAX_K];
+
+  if (tid < actual_k) {
+    int expert_id = (int)token_experts[tid];
+    shared_expert[tid] = expert_id;
+    if (expert_id >= 0 && expert_id < num_experts) {
+      shared_pos[tid] = atomicAdd(&expert_positions[expert_id], 1);
+    } else {
+      shared_pos[tid] = -1;
+    }
+  }
+  __syncthreads();
+
+  for (int k_idx = 0; k_idx < actual_k; ++k_idx) {
+    int expert_id = shared_expert[k_idx];
+    int pos = shared_pos[k_idx];
+    if (pos < 0 || pos >= capacity) continue;
+
+    if (tid == 0) {
+      token_map[(int64_t)expert_id * capacity + pos] =
+          (int64_t)token_idx * actual_k + k_idx;
+    }
+
+    float *expert_input =
+        expert_inputs + (int64_t)(expert_id * capacity + pos) * hidden_dim;
+    const int num_vec = hidden_dim / 4;
+    const float4 *src_vec = reinterpret_cast<const float4 *>(token_data);
+    float4 *dst_vec = reinterpret_cast<float4 *>(expert_input);
+
+    for (int d = tid; d < num_vec; d += blockDim.x) {
+      dst_vec[d] = __ldg(&src_vec[d]);
+    }
+    for (int d = num_vec * 4 + tid; d < hidden_dim; d += blockDim.x) {
+      expert_input[d] = __ldg(&token_data[d]);
+    }
+  }
+}
+
 // ============================================================================
 // WARP-AGGREGATE ATOMIC: Reduce contention in extract_contributions
 // OPTIMIZATION: Block-level aggregation before global atomic
@@ -735,6 +780,45 @@ __global__ void extract_contributions_warp_agg(
     int pos = block_offset + warp_offsets[warp_id] + lane_offset;
     contribution_tokens[pos] = token_idx;
     contribution_slots[pos] = idx;
+  }
+}
+
+__global__ void combine_from_token_map_kernel(
+    const float *__restrict__ expert_outputs,
+    const int64_t *__restrict__ token_map,
+    const float *__restrict__ top_k_weights,
+    float *__restrict__ combined_output,
+    const int total_slots,
+    const int hidden_dim,
+    const int k,
+    const int num_tokens) {
+  const int slot_idx = blockIdx.x;
+  const int tid = threadIdx.x;
+
+  if (slot_idx >= total_slots) return;
+
+  const int64_t token_weight_idx = token_map[slot_idx];
+  if (token_weight_idx < 0) return;
+
+  const int token_idx = (int)(token_weight_idx / k);
+  if (token_idx < 0 || token_idx >= num_tokens) return;
+
+  const float weight = __ldg(&top_k_weights[token_weight_idx]);
+  const float *expert_out = expert_outputs + (int64_t)slot_idx * hidden_dim;
+  float *dst = combined_output + (int64_t)token_idx * hidden_dim;
+
+  const int num_vec = hidden_dim / 4;
+  const float4 *src_vec = reinterpret_cast<const float4 *>(expert_out);
+  for (int d = tid; d < num_vec; d += blockDim.x) {
+    float4 src = __ldg(&src_vec[d]);
+    atomicAdd(&dst[d * 4], weight * src.x);
+    atomicAdd(&dst[d * 4 + 1], weight * src.y);
+    atomicAdd(&dst[d * 4 + 2], weight * src.z);
+    atomicAdd(&dst[d * 4 + 3], weight * src.w);
+  }
+
+  for (int d = num_vec * 4 + tid; d < hidden_dim; d += blockDim.x) {
+    atomicAdd(&dst[d], weight * __ldg(&expert_out[d]));
   }
 }
 
@@ -982,24 +1066,58 @@ dispatch_tokens_cuda(torch::Tensor tokens, torch::Tensor top_k_indices,
   const int threads = 256;
   const int blocks = (int)num_tokens;
 
-  if (k == 2) {
+  TORCH_CHECK(k > 0 && k <= MAX_K, "k must be in [1, ", MAX_K, "], got ", k);
+
+  switch (k) {
+  case 1:
+    dispatch_tokens_kernel_staged<1><<<blocks, threads, 0, stream>>>(
+        tokens.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
+        expert_positions.data_ptr<int>(), expert_inputs.data_ptr<float>(),
+        token_map.data_ptr<int64_t>(), (int)num_tokens, (int)num_experts,
+        (int)hidden_dim, (int)capacity);
+    break;
+  case 2:
     dispatch_tokens_kernel_staged<2><<<blocks, threads, 0, stream>>>(
         tokens.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
         expert_positions.data_ptr<int>(), expert_inputs.data_ptr<float>(),
         token_map.data_ptr<int64_t>(), (int)num_tokens, (int)num_experts,
         (int)hidden_dim, (int)capacity);
-  } else if (k == 4) {
+    break;
+  case 4:
     dispatch_tokens_kernel_staged<4><<<blocks, threads, 0, stream>>>(
         tokens.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
         expert_positions.data_ptr<int>(), expert_inputs.data_ptr<float>(),
         token_map.data_ptr<int64_t>(), (int)num_tokens, (int)num_experts,
         (int)hidden_dim, (int)capacity);
-  } else {
-    dispatch_tokens_kernel_staged<MAX_K><<<blocks, threads, 0, stream>>>(
+    break;
+  case 8:
+    dispatch_tokens_kernel_staged<8><<<blocks, threads, 0, stream>>>(
         tokens.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
         expert_positions.data_ptr<int>(), expert_inputs.data_ptr<float>(),
         token_map.data_ptr<int64_t>(), (int)num_tokens, (int)num_experts,
         (int)hidden_dim, (int)capacity);
+    break;
+  case 16:
+    dispatch_tokens_kernel_staged<16><<<blocks, threads, 0, stream>>>(
+        tokens.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
+        expert_positions.data_ptr<int>(), expert_inputs.data_ptr<float>(),
+        token_map.data_ptr<int64_t>(), (int)num_tokens, (int)num_experts,
+        (int)hidden_dim, (int)capacity);
+    break;
+  case 32:
+    dispatch_tokens_kernel_staged<32><<<blocks, threads, 0, stream>>>(
+        tokens.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
+        expert_positions.data_ptr<int>(), expert_inputs.data_ptr<float>(),
+        token_map.data_ptr<int64_t>(), (int)num_tokens, (int)num_experts,
+        (int)hidden_dim, (int)capacity);
+    break;
+  default:
+    dispatch_tokens_kernel_dynamic<<<blocks, threads, 0, stream>>>(
+        tokens.data_ptr<float>(), top_k_indices.data_ptr<int64_t>(),
+        expert_positions.data_ptr<int>(), expert_inputs.data_ptr<float>(),
+        token_map.data_ptr<int64_t>(), (int)num_tokens, (int)num_experts,
+        (int)hidden_dim, (int)capacity, (int)k);
+    break;
   }
 
   CUDA_CHECK_KERNEL();
@@ -1031,49 +1149,12 @@ torch::Tensor combine_expert_outputs_cuda(torch::Tensor expert_outputs,
       top_k_weights.dim() == 2 ? top_k_weights.flatten() : top_k_weights;
 
   const int64_t total_slots = num_experts * capacity;
-
-  auto contribution_tokens =
-      torch::empty({total_slots}, token_map.options().dtype(torch::kInt32));
-  auto contribution_slots =
-      torch::empty({total_slots}, token_map.options().dtype(torch::kInt32));
-  auto num_contributions_tensor =
-      torch::zeros({1}, token_map.options().dtype(torch::kInt32));
-
   const int threads = 256;
-  const int blocks = (total_slots + threads - 1) / threads;
-
-  extract_contributions_warp_agg<<<blocks, threads, 0, stream>>>(
-      token_map.data_ptr<int64_t>(), contribution_tokens.data_ptr<int>(),
-      contribution_slots.data_ptr<int>(),
-      num_contributions_tensor.data_ptr<int>(), (int)num_experts, (int)capacity,
-      (int)k);
-
-  cudaStreamSynchronize(stream); // Needed for CPU to read num_contributions
-  int num_contributions = num_contributions_tensor.item<int>();
-
-  if (num_contributions > 0) {
-    contribution_tokens = contribution_tokens.slice(0, 0, num_contributions);
-    contribution_slots = contribution_slots.slice(0, 0, num_contributions);
-
-    // Use PyTorch's optimized sort - uses GPU radix sort internally for CUDA
-    // tensors. For extremely large num_tokens * K * capacity (millions+),
-    // consider:
-    // - CUB DeviceRadixSort for explicit GPU radix sort
-    // - Thrust sort for parallel GPU sorting
-    // Current torch::sort is efficient for typical MoE scales (<100K
-    // contributions)
-    auto sorted_result = torch::sort(contribution_tokens);
-    auto sorted_tokens = std::get<0>(sorted_result);
-    auto sort_indices = std::get<1>(sorted_result);
-    auto sorted_slots = contribution_slots.index_select(0, sort_indices);
-
-    combine_sorted_contributions_optimized<<<num_contributions, 256, 0,
-                                             stream>>>(
-        expert_outputs.data_ptr<float>(), sorted_tokens.data_ptr<int>(),
-        sorted_slots.data_ptr<int>(), token_map.data_ptr<int64_t>(),
-        weights_flat.data_ptr<float>(), combined.data_ptr<float>(),
-        num_contributions, (int)hidden_dim, (int)k);
-  }
+  const int blocks = (int)total_slots;
+  combine_from_token_map_kernel<<<blocks, threads, 0, stream>>>(
+      expert_outputs.data_ptr<float>(), token_map.data_ptr<int64_t>(),
+      weights_flat.data_ptr<float>(), combined.data_ptr<float>(), (int)total_slots,
+      (int)hidden_dim, (int)k, (int)num_tokens);
 
   CUDA_CHECK_KERNEL();
   return combined;

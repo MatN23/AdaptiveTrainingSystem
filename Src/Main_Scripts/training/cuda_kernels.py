@@ -144,11 +144,15 @@ def clip_grad_norm_cuda(
 
     Returns the (pre-clip) gradient norm as a Python float.
     """
+    params = list(parameters)
+    if norm_type != 2.0:
+        return float(torch.nn.utils.clip_grad_norm_(params, max_norm, norm_type=norm_type).item())
+
     # Collect tensors with gradients
     grads = [
-        p.grad.detach().contiguous()
-        for p in parameters
-        if p.grad is not None
+        p.grad
+        for p in params
+        if p.grad is not None and p.grad.is_cuda and p.grad.is_floating_point()
     ]
     if not grads:
         return 0.0
@@ -165,12 +169,16 @@ def clip_grad_norm_cuda(
                 g.mul_(clip_coef)
         return float(total_norm)
 
-    device   = grads[0].device
-    use_fp16 = int(grads[0].dtype == torch.float16)
+    device = grads[0].device
+    dtype = grads[0].dtype
 
-    # Ensure all grads match expected dtype
-    expected_dtype = torch.float16 if use_fp16 else torch.float32
-    grads = [g.to(expected_dtype) for g in grads]
+    # CUDA kernel supports homogeneous fp16/fp32 tensors.
+    if dtype not in (torch.float16, torch.float32):
+        return float(torch.nn.utils.clip_grad_norm_(params, max_norm, norm_type=norm_type).item())
+    if any(g.device != device or g.dtype != dtype or not g.is_contiguous() for g in grads):
+        return float(torch.nn.utils.clip_grad_norm_(params, max_norm, norm_type=norm_type).item())
+
+    use_fp16 = int(dtype == torch.float16)
 
     # Build device-side pointer + size arrays
     ptr_array  = _make_ptr_array(grads)
@@ -181,6 +189,7 @@ def clip_grad_norm_cuda(
     c_max_norm  = ctypes.c_float(max_norm)
     c_fp16      = ctypes.c_int(use_fp16)
 
+    stream = torch.cuda.current_stream(device)
     ret = _lib.fused_grad_clip_launcher(
         ctypes.c_void_p(ptr_array.data_ptr()),
         ctypes.cast(size_array.data_ptr(), ctypes.POINTER(ctypes.c_int)),
@@ -188,7 +197,7 @@ def clip_grad_norm_cuda(
         c_max_norm,
         ctypes.c_void_p(norm_buf.data_ptr()),
         c_fp16,
-        ctypes.c_void_p(0),   # default stream
+        ctypes.c_void_p(stream.cuda_stream),
     )
 
     if ret != 0:
@@ -199,18 +208,8 @@ def clip_grad_norm_cuda(
         ).item()
         return float(total_norm)
 
-    # Sync and read results back
-    torch.cuda.synchronize(device)
-
-    out_norm     = ctypes.c_float(0.0)
-    out_coef     = ctypes.c_float(0.0)
-    _lib.fused_grad_clip_get_results(
-        ctypes.c_void_p(norm_buf.data_ptr()),
-        ctypes.byref(out_norm),
-        ctypes.byref(out_coef),
-    )
-
-    return float(out_norm.value)
+    # Buffer layout: [double norm_sq][float coef][float norm]
+    return float(norm_buf[3].item())
 
 
 def _compute_loss_metrics(
@@ -243,20 +242,8 @@ def _compute_loss_metrics(
         valid_mask = valid_mask & (flat_weights > 0)
 
     valid_token_count = valid_mask.sum()
-    if valid_token_count.item() == 0:
-        zero_loss = torch.zeros(
-            (),
-            device=flat_logits.device,
-            dtype=flat_logits.dtype,
-            requires_grad=True
-        )
-        return {
-            "loss": zero_loss,
-            "raw_loss": zero_loss.detach(),
-            "perplexity": torch.ones((), device=flat_logits.device, dtype=flat_logits.dtype),
-            "valid_tokens": valid_token_count,
-            "accuracy": torch.zeros((), device=flat_logits.device, dtype=flat_logits.dtype),
-        }
+    has_valid = valid_mask.any()
+    denom = valid_token_count.to(flat_logits.dtype).clamp(min=1.0)
 
     safe_labels = flat_labels.clone()
     safe_labels[~valid_mask] = 0
@@ -264,7 +251,7 @@ def _compute_loss_metrics(
     loss_per_token = F.cross_entropy(flat_logits, safe_labels, reduction="none")
     valid_mask_f = valid_mask.to(flat_logits.dtype)
     masked_loss_sum = (loss_per_token * valid_mask_f).sum()
-    raw_loss = masked_loss_sum / valid_token_count.to(flat_logits.dtype)
+    raw_loss = masked_loss_sum / denom
 
     if flat_weights is not None:
         weighted_loss = loss_per_token * valid_mask_f * flat_weights
@@ -276,9 +263,16 @@ def _compute_loss_metrics(
     with torch.no_grad():
         predictions = torch.argmax(flat_logits, dim=-1)
         correct = (predictions == safe_labels).to(flat_logits.dtype) * valid_mask_f
-        accuracy = correct.sum() / valid_token_count.to(flat_logits.dtype)
+        accuracy = correct.sum() / denom
 
-    perplexity = torch.exp(torch.clamp(raw_loss.detach(), min=0.0, max=15.0))
+    loss = torch.where(has_valid, loss, torch.zeros_like(loss, requires_grad=True))
+    raw_loss = torch.where(has_valid, raw_loss, torch.zeros_like(raw_loss))
+    accuracy = torch.where(has_valid, accuracy, torch.zeros_like(accuracy))
+    perplexity = torch.where(
+        has_valid,
+        torch.exp(torch.clamp(raw_loss.detach(), min=0.0, max=15.0)),
+        torch.ones((), device=flat_logits.device, dtype=flat_logits.dtype),
+    )
 
     return {
         "loss": loss,
@@ -305,8 +299,51 @@ class FusedLoss:
         loss_weights: Optional[torch.Tensor] = None,
         pad_token_id: int = 0,
     ) -> Dict[str, torch.Tensor]:
-        # Keep a dedicated method for tests/monkeypatching and future CUDA kernel wiring.
-        return _compute_loss_metrics(logits, labels, loss_weights, pad_token_id)
+        # Fast CUDA path using fused cross-entropy kernels from PyTorch.
+        if logits.dim() == 3:
+            vocab_size = logits.size(-1)
+            flat_logits = logits.reshape(-1, vocab_size)
+            flat_labels = labels.reshape(-1)
+        else:
+            flat_logits = logits
+            flat_labels = labels.reshape(-1)
+            vocab_size = flat_logits.size(-1)
+
+        valid_mask = (
+            (flat_labels != pad_token_id)
+            & (flat_labels >= 0)
+            & (flat_labels < vocab_size)
+        )
+        valid_tokens = valid_mask.sum()
+        denom = valid_tokens.to(flat_logits.dtype).clamp(min=1.0)
+
+        safe_labels = flat_labels.clone()
+        safe_labels[~valid_mask] = 0
+
+        loss_per_token = F.cross_entropy(flat_logits, safe_labels, reduction="none")
+        valid_mask_f = valid_mask.to(flat_logits.dtype)
+        raw_loss = (loss_per_token * valid_mask_f).sum() / denom
+        loss = torch.where(valid_mask.any(), raw_loss, torch.zeros_like(raw_loss, requires_grad=True))
+
+        with torch.no_grad():
+            predictions = torch.argmax(flat_logits, dim=-1)
+            correct = (predictions == safe_labels).to(flat_logits.dtype) * valid_mask_f
+            accuracy = correct.sum() / denom
+            accuracy = torch.where(valid_mask.any(), accuracy, torch.zeros_like(accuracy))
+
+        perplexity = torch.where(
+            valid_mask.any(),
+            torch.exp(torch.clamp(raw_loss.detach(), min=0.0, max=15.0)),
+            torch.ones((), device=flat_logits.device, dtype=flat_logits.dtype),
+        )
+
+        return {
+            "loss": loss,
+            "raw_loss": raw_loss.detach(),
+            "perplexity": perplexity,
+            "valid_tokens": valid_tokens,
+            "accuracy": accuracy,
+        }
 
     def _pytorch_fallback(
         self,
