@@ -3,7 +3,10 @@ import ctypes
 import logging
 import os
 import subprocess
+from typing import Dict, Iterable, Optional
+
 import torch
+import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +130,7 @@ def _make_size_array(tensors: list[torch.Tensor]) -> torch.Tensor:
 # Public API
 # ---------------------------------------------------------------------------
 _CUDA_KERNELS_AVAILABLE = _load_lib()
+CUSTOM_KERNELS_AVAILABLE = _CUDA_KERNELS_AVAILABLE and torch.cuda.is_available()
 
 
 def clip_grad_norm_cuda(
@@ -207,3 +211,160 @@ def clip_grad_norm_cuda(
     )
 
     return float(out_norm.value)
+
+
+def _compute_loss_metrics(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    loss_weights: Optional[torch.Tensor] = None,
+    pad_token_id: int = 0,
+) -> Dict[str, torch.Tensor]:
+    """Compute loss/accuracy metrics with robust masking and zero-valid-token handling."""
+    if logits.dim() == 3:
+        vocab_size = logits.size(-1)
+        flat_logits = logits.reshape(-1, vocab_size)
+        flat_labels = labels.reshape(-1)
+    else:
+        flat_logits = logits
+        flat_labels = labels.reshape(-1)
+        vocab_size = flat_logits.size(-1)
+
+    if loss_weights is not None:
+        flat_weights = loss_weights.reshape(-1).to(flat_logits.dtype)
+    else:
+        flat_weights = None
+
+    valid_mask = (
+        (flat_labels != pad_token_id)
+        & (flat_labels >= 0)
+        & (flat_labels < vocab_size)
+    )
+    if flat_weights is not None:
+        valid_mask = valid_mask & (flat_weights > 0)
+
+    valid_token_count = valid_mask.sum()
+    if valid_token_count.item() == 0:
+        zero_loss = torch.zeros(
+            (),
+            device=flat_logits.device,
+            dtype=flat_logits.dtype,
+            requires_grad=True
+        )
+        return {
+            "loss": zero_loss,
+            "raw_loss": zero_loss.detach(),
+            "perplexity": torch.ones((), device=flat_logits.device, dtype=flat_logits.dtype),
+            "valid_tokens": valid_token_count,
+            "accuracy": torch.zeros((), device=flat_logits.device, dtype=flat_logits.dtype),
+        }
+
+    safe_labels = flat_labels.clone()
+    safe_labels[~valid_mask] = 0
+
+    loss_per_token = F.cross_entropy(flat_logits, safe_labels, reduction="none")
+    valid_mask_f = valid_mask.to(flat_logits.dtype)
+    masked_loss_sum = (loss_per_token * valid_mask_f).sum()
+    raw_loss = masked_loss_sum / valid_token_count.to(flat_logits.dtype)
+
+    if flat_weights is not None:
+        weighted_loss = loss_per_token * valid_mask_f * flat_weights
+        total_weight = (flat_weights * valid_mask_f).sum().clamp(min=1e-8)
+        loss = weighted_loss.sum() / total_weight
+    else:
+        loss = raw_loss
+
+    with torch.no_grad():
+        predictions = torch.argmax(flat_logits, dim=-1)
+        correct = (predictions == safe_labels).to(flat_logits.dtype) * valid_mask_f
+        accuracy = correct.sum() / valid_token_count.to(flat_logits.dtype)
+
+    perplexity = torch.exp(torch.clamp(raw_loss.detach(), min=0.0, max=15.0))
+
+    return {
+        "loss": loss,
+        "raw_loss": raw_loss.detach(),
+        "perplexity": perplexity,
+        "valid_tokens": valid_token_count,
+        "accuracy": accuracy,
+    }
+
+
+class FusedLoss:
+    """
+    Backward-compatible loss wrapper used by trainer and benchmark scripts.
+    The original CUDA fused loss kernel is optional; this wrapper preserves API.
+    """
+
+    def __init__(self):
+        self.enabled = torch.cuda.is_available()
+
+    def _cuda_implementation(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        loss_weights: Optional[torch.Tensor] = None,
+        pad_token_id: int = 0,
+    ) -> Dict[str, torch.Tensor]:
+        # Keep a dedicated method for tests/monkeypatching and future CUDA kernel wiring.
+        return _compute_loss_metrics(logits, labels, loss_weights, pad_token_id)
+
+    def _pytorch_fallback(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        loss_weights: Optional[torch.Tensor] = None,
+        pad_token_id: int = 0,
+    ) -> Dict[str, torch.Tensor]:
+        return _compute_loss_metrics(logits, labels, loss_weights, pad_token_id)
+
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        loss_weights: Optional[torch.Tensor] = None,
+        pad_token_id: int = 0,
+    ) -> Dict[str, torch.Tensor]:
+        # Preserve previous behavior: when explicit weights are provided,
+        # route to fallback implementation.
+        if self.enabled and logits.is_cuda and loss_weights is None:
+            return self._cuda_implementation(logits, labels, loss_weights, pad_token_id)
+        return self._pytorch_fallback(logits, labels, loss_weights, pad_token_id)
+
+
+class FusedGradClip:
+    """Backward-compatible wrapper around fused gradient clipping CUDA kernel."""
+
+    def __init__(self):
+        self.cuda_enabled = bool(CUSTOM_KERNELS_AVAILABLE)
+        self.enabled = self.cuda_enabled
+        self._implementation = "cuda" if self.cuda_enabled else "pytorch"
+
+    def set_implementation(self, implementation: str):
+        impl = str(implementation).strip().lower()
+        if impl not in {"auto", "cuda", "pytorch"}:
+            raise ValueError(f"Unknown implementation '{implementation}'")
+        if impl == "auto":
+            self._implementation = "cuda" if self.cuda_enabled else "pytorch"
+        elif impl == "cuda" and not self.cuda_enabled:
+            self._implementation = "pytorch"
+        else:
+            self._implementation = impl
+
+    def __call__(
+        self,
+        parameters: Iterable[torch.nn.Parameter],
+        max_norm: float = 1.0,
+        norm_type: float = 2.0,
+    ) -> float:
+        params = list(parameters)
+        if self._implementation == "cuda" and self.cuda_enabled:
+            return clip_grad_norm_cuda(params, max_norm=max_norm, norm_type=norm_type)
+        return float(torch.nn.utils.clip_grad_norm_(params, max_norm, norm_type=norm_type).item())
+
+
+__all__ = [
+    "CUSTOM_KERNELS_AVAILABLE",
+    "FusedLoss",
+    "FusedGradClip",
+    "clip_grad_norm_cuda",
+]

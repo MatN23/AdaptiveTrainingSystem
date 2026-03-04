@@ -493,6 +493,11 @@ if DATASETS_AVAILABLE:
                 remove_columns=valid_dataset.column_names
             )
 
+            # Drop conversations that yielded no trainable tokens.
+            tokenized_dataset = tokenized_dataset.filter(
+                lambda x: x.get('valid_token_length', 0) > 1
+            )
+
             return tokenized_dataset
         
         def _compute_statistics(self):

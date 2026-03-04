@@ -102,8 +102,14 @@ except ImportError:
         pass
 if _safe_cuda_is_available():
     try:
-        from training.cuda_kernels import FusedLoss, FusedGradClip
-        CUSTOM_KERNELS_AVAILABLE = True
+        from training.cuda_kernels import (
+            FusedLoss,
+            FusedGradClip,
+            CUSTOM_KERNELS_AVAILABLE as CUDA_KERNELS_READY,
+        )
+        CUSTOM_KERNELS_AVAILABLE = bool(CUDA_KERNELS_READY)
+        if not CUSTOM_KERNELS_AVAILABLE:
+            logging.warning("Custom CUDA kernels module loaded, but kernels are not ready - using PyTorch fallback")
     except Exception as e:
         CUSTOM_KERNELS_AVAILABLE = False
         logging.warning(f"Custom CUDA kernels unavailable - using PyTorch fallback: {e}")
@@ -2945,6 +2951,10 @@ class EnhancedConversationTrainer:
                 accuracy_t = loss_dict['accuracy'].detach()
                 valid_tokens_t = loss_dict['valid_tokens'].detach()
 
+                # Skip batches with no valid targets (all padding/ignored tokens).
+                if valid_tokens_t.item() <= 0:
+                    continue
+
                 if total_loss_t is None:
                     total_loss_t = loss_t
                     total_raw_loss_t = raw_loss_t
@@ -3431,8 +3441,11 @@ class EnhancedConversationTrainer:
             if isinstance(accuracy, torch.Tensor): accuracy = accuracy.item()
             
             # ✅ NEW: Use throughput from metrics if available
-            step_throughput = metrics.get('throughput', tokens_per_sec)
-            if isinstance(step_throughput, torch.Tensor): step_throughput = step_throughput.item()
+            step_throughput = metrics.get('throughput', None)
+            if isinstance(step_throughput, torch.Tensor):
+                step_throughput = step_throughput.item()
+            if step_throughput is None or step_throughput <= 0:
+                step_throughput = tokens_per_sec
             
             compute_time = metrics.get('compute_time_ms', 0.0)
             if isinstance(compute_time, torch.Tensor): compute_time = compute_time.item()
