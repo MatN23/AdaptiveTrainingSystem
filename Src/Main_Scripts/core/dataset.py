@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Iterator, Union
 import torch
-from torch.utils.data import Dataset, DataLoader, IterableDataset
+from torch.utils.data import Dataset, DataLoader, IterableDataset, ConcatDataset
 import random
 
 # High-performance libraries
@@ -178,6 +178,7 @@ if DATASETS_AVAILABLE:
             
             # Create chunks from tokenized data
             current_tokens = []
+            start_idx = 0
             
             for example in tokenized_dataset:
                 tokens = example['tokens']
@@ -190,17 +191,23 @@ if DATASETS_AVAILABLE:
                 current_tokens.extend(tokens)
                 
                 # Create chunks when we have enough tokens
-                while len(current_tokens) >= self.seq_length + 1:
-                    chunk = current_tokens[:self.seq_length + 1]
+                while (len(current_tokens) - start_idx) >= self.seq_length + 1:
+                    chunk = current_tokens[start_idx:start_idx + self.seq_length + 1]
                     chunks.append(chunk)
-                    current_tokens = current_tokens[self.seq_length:]
+                    start_idx += self.seq_length
                     self.stats['total_chunks'] += 1
+                
+                # Periodically compact token buffer to avoid unbounded growth/copies.
+                if start_idx >= 8192:
+                    current_tokens = current_tokens[start_idx:]
+                    start_idx = 0
             
             # Handle remaining tokens
-            if current_tokens:
-                if len(current_tokens) < self.seq_length + 1:
-                    current_tokens.extend([0] * (self.seq_length + 1 - len(current_tokens)))
-                chunks.append(current_tokens[:self.seq_length + 1])
+            remaining_tokens = current_tokens[start_idx:]
+            if remaining_tokens:
+                if len(remaining_tokens) < self.seq_length + 1:
+                    remaining_tokens.extend([0] * (self.seq_length + 1 - len(remaining_tokens)))
+                chunks.append(remaining_tokens[:self.seq_length + 1])
                 self.stats['total_chunks'] += 1
             
             return chunks
@@ -280,6 +287,7 @@ if DATASETS_AVAILABLE:
         def __iter__(self) -> Iterator[Dict[str, torch.Tensor]]:
             """Stream chunks with prefetching."""
             current_tokens = []
+            start_idx = 0
             
             for example in self.dataset:
                 # Extract text - handle different formats
@@ -306,9 +314,9 @@ if DATASETS_AVAILABLE:
                 current_tokens.extend(tokens)
                 
                 # Yield chunks
-                while len(current_tokens) >= self.seq_length + 1:
-                    chunk = current_tokens[:self.seq_length + 1]
-                    current_tokens = current_tokens[self.seq_length:]
+                while (len(current_tokens) - start_idx) >= self.seq_length + 1:
+                    chunk = current_tokens[start_idx:start_idx + self.seq_length + 1]
+                    start_idx += self.seq_length
                     
                     tokens_tensor = torch.tensor(chunk, dtype=torch.long)
                     input_ids = tokens_tensor[:-1]
@@ -328,6 +336,10 @@ if DATASETS_AVAILABLE:
                         'attention_mask': attention_mask,
                         'loss_weights': loss_weights
                     }
+                
+                if start_idx >= 8192:
+                    current_tokens = current_tokens[start_idx:]
+                    start_idx = 0
     
     
     # ============================================================================
@@ -446,17 +458,46 @@ if DATASETS_AVAILABLE:
             
             self.stats['valid_conversations'] = valid_count
             self.stats['invalid_conversations'] = total_count - valid_count
-            
-            # Convert to list for indexing
-            conversations = []
-            for example in valid_dataset:
-                conversations.append(example)
-            
-            return conversations
+
+            # Pre-tokenize once to avoid tokenization in every __getitem__ call.
+            seq_length = int(self.config.seq_length)
+
+            def tokenize_conversation(example):
+                try:
+                    tokens = self.tokenizer.encode_conversation(example)
+                except Exception:
+                    tokens = []
+
+                valid_len = len(tokens)
+                if valid_len < 10:
+                    return {
+                        'tokens': [0] * seq_length,
+                        'valid_token_length': 0
+                    }
+
+                if valid_len > seq_length:
+                    tokens = tokens[-seq_length:]
+                    valid_len = seq_length
+                elif valid_len < seq_length:
+                    tokens = tokens + ([0] * (seq_length - valid_len))
+
+                return {
+                    'tokens': tokens,
+                    'valid_token_length': valid_len
+                }
+
+            # Tokenizer objects are not safely picklable across processes; keep this single-proc.
+            tokenized_dataset = valid_dataset.map(
+                tokenize_conversation,
+                num_proc=1,
+                remove_columns=valid_dataset.column_names
+            )
+
+            return tokenized_dataset
         
         def _compute_statistics(self):
             """Compute token statistics using sampling."""
-            if not self.conversations:
+            if len(self.conversations) == 0:
                 return
             
             sample_size = min(1000, len(self.conversations))
@@ -465,9 +506,9 @@ if DATASETS_AVAILABLE:
             token_lengths = []
             for idx in sample_indices:
                 try:
-                    tokens = self.tokenizer.encode_conversation(self.conversations[idx])
-                    if tokens:
-                        token_lengths.append(len(tokens))
+                    token_len = int(self.conversations[int(idx)].get('valid_token_length', 0))
+                    if token_len > 0:
+                        token_lengths.append(token_len)
                 except Exception:
                     pass
             
@@ -484,18 +525,11 @@ if DATASETS_AVAILABLE:
             conversation = self.conversations[idx]
             
             try:
-                tokens = self.tokenizer.encode_conversation(conversation)
-                
-                if not tokens or len(tokens) < 10:
+                tokens_list = conversation.get('tokens', None)
+                if tokens_list is None:
                     return self._get_empty_sample()
-                
-                if len(tokens) > self.config.seq_length:
-                    tokens = tokens[-self.config.seq_length:]
-                else:
-                    pad_length = self.config.seq_length - len(tokens)
-                    tokens.extend([0] * pad_length)
-                
-                tokens = torch.tensor(tokens, dtype=torch.long)
+
+                tokens = torch.tensor(tokens_list, dtype=torch.long)
                 attention_mask = (tokens != 0).float()
                 labels = tokens.clone()
                 loss_weights = self._create_loss_weights(tokens)
@@ -522,36 +556,40 @@ if DATASETS_AVAILABLE:
         
         def _create_loss_weights(self, tokens: torch.Tensor) -> torch.Tensor:
             """Create loss weights for conversation."""
-            loss_weights = torch.ones_like(tokens, dtype=torch.float)
+            loss_weights = torch.ones_like(tokens, dtype=torch.float32)
             
             im_start_token = self.tokenizer.special_tokens["<|im_start|>"]
             im_end_token = self.tokenizer.special_tokens["<|im_end|>"]
             user_token = self.tokenizer.get_role_token('user')
             assistant_token = self.tokenizer.get_role_token('assistant')
             system_token = self.tokenizer.get_role_token('system')
-            
-            in_content = False
-            current_role_weight = 1.0
-            
-            for i, token_id in enumerate(tokens):
-                if token_id == 0:
-                    loss_weights[i] = 0.0
-                elif token_id == im_start_token:
-                    in_content = False
-                    loss_weights[i] = 0.0
-                elif token_id in [user_token, assistant_token, system_token]:
-                    in_content = False
-                    loss_weights[i] = 0.0
-                    if token_id == assistant_token:
-                        current_role_weight = getattr(self.config, 'assistant_loss_weight', 2.0)
+
+            pad_mask = (tokens == 0)
+            special_mask = (
+                (tokens == im_start_token) |
+                (tokens == im_end_token) |
+                (tokens == user_token) |
+                (tokens == assistant_token) |
+                (tokens == system_token)
+            )
+            loss_weights[pad_mask | special_mask] = 0.0
+
+            assistant_weight = float(getattr(self.config, 'assistant_loss_weight', 2.0))
+            if assistant_weight != 1.0:
+                assistant_positions = (tokens == assistant_token).nonzero(as_tuple=False).flatten()
+                end_positions = (tokens == im_end_token).nonzero(as_tuple=False).flatten()
+                seq_len = int(tokens.size(0))
+                for start in assistant_positions.tolist():
+                    end_candidates = end_positions[end_positions > start]
+                    if end_candidates.numel() > 0:
+                        end = int(end_candidates[0])
                     else:
-                        current_role_weight = 1.0
-                elif token_id == im_end_token:
-                    in_content = False
-                    loss_weights[i] = 0.0
-                else:
-                    in_content = True
-                    loss_weights[i] = current_role_weight
+                        end = seq_len
+                    if end > start + 1:
+                        loss_weights[start + 1:end] = assistant_weight
+
+                # Keep special/pad tokens excluded after section weighting.
+                loss_weights[pad_mask | special_mask] = 0.0
             
             return loss_weights
         
@@ -661,11 +699,12 @@ if DATASETS_AVAILABLE:
                     ds = dataset_class(path, tokenizer, self.config, split_name)
                     datasets_to_concat.append(ds)
             
+            if not datasets_to_concat:
+                raise ValueError(f"No datasets found for split '{split_name}'")
             if len(datasets_to_concat) == 1:
                 return datasets_to_concat[0]
             
-            # Return first dataset (they're already individually optimized)
-            return datasets_to_concat[0]
+            return ConcatDataset(datasets_to_concat)
         
         def _get_base_training_datasets(self, tokenizer):
             """Get base training datasets."""

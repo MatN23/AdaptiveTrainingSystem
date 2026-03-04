@@ -1189,6 +1189,35 @@ class EnhancedConversationTrainer:
         self.throughput_window_size = 10
         self.last_step_time = time.time()
         self.last_step_tokens = 0
+
+        # Runtime performance controls
+        self.metrics_snapshot_interval = max(
+            1, int(getattr(config, 'metrics_snapshot_interval', 10))
+        )
+        self.monitoring_push_interval = max(
+            1, int(getattr(config, 'monitoring_push_interval', self.metrics_snapshot_interval))
+        )
+        self.compute_training_accuracy = bool(
+            getattr(config, 'compute_training_accuracy', True)
+        )
+        self.accuracy_compute_interval = max(
+            1, int(getattr(config, 'accuracy_compute_interval', 10))
+        )
+        self._train_micro_step = 0
+        self.step_log_memory = bool(getattr(config, 'step_log_memory', False))
+        self.quant_diagnostics_interval = max(
+            1, int(getattr(config, 'quant_diagnostics_interval', 1000))
+        )
+        self.quant_grad_sample_params = max(
+            1, int(getattr(config, 'quant_grad_sample_params', 256))
+        )
+        self.gpu_sync_interval_steps = max(
+            0, int(getattr(config, 'gpu_sync_interval_steps', 0))
+        )
+        self._cached_expert_utilization = {}
+        self._cached_memory_usage = {}
+        self._cached_eval_dataset_ref = None
+        self._cached_eval_batch_size = None
         
         # Setup training components
         self._setup_training()
@@ -1293,14 +1322,26 @@ class EnhancedConversationTrainer:
             # Return the tensor as-is and let the orchestrator background thread sync it.
             return val
 
+        if (
+            not self._cached_expert_utilization
+            or self.global_step % self.metrics_snapshot_interval == 0
+        ):
+            self._cached_expert_utilization = self._extract_moe_routing_stats()
+
+        if (
+            not self._cached_memory_usage
+            or self.global_step % self.metrics_snapshot_interval == 0
+        ):
+            self._cached_memory_usage = self._get_memory_usage()
+
         return MetricsClass(
             epoch=self.current_epoch,
             step=self.global_step,
             loss=lazy_tensor(self.metrics.get('train_losses', [0])[-1]) if self.metrics.get('train_losses') else 0.0,
             grad_norm=lazy_tensor(self.metrics.get('gradient_norms', [0])[-1]) if self.metrics.get('gradient_norms') else 0.0,
             learning_rate=lazy_tensor(self.metrics.get('learning_rates', [0])[-1]) if self.metrics.get('learning_rates') else float(self.config.learning_rate),
-            expert_utilization=self._extract_moe_routing_stats(),
-            memory_usage=self._get_memory_usage(),
+            expert_utilization=self._cached_expert_utilization,
+            memory_usage=self._cached_memory_usage,
             throughput=self._calculate_throughput(),
             semantic_coherence=0.0,
             factual_accuracy=0.0,
@@ -2389,7 +2430,15 @@ class EnhancedConversationTrainer:
         
         return self.precision_manager.get_autocast_context(for_inference=for_inference)
     
-    def compute_loss(self, logits, labels, loss_weights):
+    def compute_loss(
+        self,
+        logits,
+        labels,
+        loss_weights,
+        compute_accuracy: Optional[bool] = None
+    ):
+        if compute_accuracy is None:
+            compute_accuracy = self.compute_training_accuracy
         try:
             if self.fused_loss is not None:
                 pad_token_id = getattr(self.tokenizer, 'pad_token_id', 0)
@@ -2415,18 +2464,17 @@ class EnhancedConversationTrainer:
                 'accuracy': torch.tensor(0.0, device=logits.device)
             }
 
-        # ✅ FIXED: ACCURACY CALCULATION
-        with torch.no_grad():
-            predictions = torch.argmax(flat_logits, dim=-1)
-            correct_predictions = (predictions == flat_labels).float()
-            
-            # Apply mask to exclude padding tokens from accuracy
-            masked_correct = correct_predictions * mask
-            accuracy = masked_correct.sum() / valid_token_count
-
-            # ✅ NO SYNC: Remove sanity checks that use .item()
-            # Accuracy is clamped on GPU if needed
-            accuracy = torch.clamp(accuracy, 0.0, 1.0)
+        if compute_accuracy:
+            with torch.no_grad():
+                predictions = torch.argmax(flat_logits, dim=-1)
+                correct_predictions = (predictions == flat_labels).float()
+                
+                # Apply mask to exclude padding tokens from accuracy
+                masked_correct = correct_predictions * mask
+                accuracy = masked_correct.sum() / valid_token_count
+                accuracy = torch.clamp(accuracy, 0.0, 1.0)
+        else:
+            accuracy = logits.new_zeros(())
 
         # ✅ COMPUTE RAW CROSS-ENTROPY LOSS (per token, no reduction)
         loss_per_token = F.cross_entropy(
@@ -2520,7 +2568,17 @@ class EnhancedConversationTrainer:
                     logits, total_aux_loss, aux_losses = output
                 else:
                     logits, total_aux_loss = output
-                loss_dict = self.compute_loss(logits, labels, loss_weights)
+                compute_acc = (
+                    self.compute_training_accuracy and
+                    (self._train_micro_step % self.accuracy_compute_interval == 0)
+                )
+                self._train_micro_step += 1
+                loss_dict = self.compute_loss(
+                    logits,
+                    labels,
+                    loss_weights,
+                    compute_accuracy=compute_acc
+                )
                 loss_dict['loss'] = loss_dict['loss'] + total_aux_loss
                 
                 if aux_losses and self.moe_optimizer:
@@ -2529,7 +2587,17 @@ class EnhancedConversationTrainer:
                     )
             else:
                 logits = output
-                loss_dict = self.compute_loss(logits, labels, loss_weights)
+                compute_acc = (
+                    self.compute_training_accuracy and
+                    (self._train_micro_step % self.accuracy_compute_interval == 0)
+                )
+                self._train_micro_step += 1
+                loss_dict = self.compute_loss(
+                    logits,
+                    labels,
+                    loss_weights,
+                    compute_accuracy=compute_acc
+                )
             
             loss = loss_dict['loss']
             
@@ -2600,7 +2668,17 @@ class EnhancedConversationTrainer:
             
             if isinstance(output, tuple):
                 logits, total_aux_loss, aux_losses = output
-                loss_dict = self.compute_loss(logits, labels, loss_weights)
+                compute_acc = (
+                    self.compute_training_accuracy and
+                    (self._train_micro_step % self.accuracy_compute_interval == 0)
+                )
+                self._train_micro_step += 1
+                loss_dict = self.compute_loss(
+                    logits,
+                    labels,
+                    loss_weights,
+                    compute_accuracy=compute_acc
+                )
                 loss_dict['loss'] = loss_dict['loss'] + total_aux_loss
                 
                 if aux_losses and self.moe_optimizer:
@@ -2609,7 +2687,17 @@ class EnhancedConversationTrainer:
                     )
             else:
                 logits = output
-                loss_dict = self.compute_loss(logits, labels, loss_weights)
+                compute_acc = (
+                    self.compute_training_accuracy and
+                    (self._train_micro_step % self.accuracy_compute_interval == 0)
+                )
+                self._train_micro_step += 1
+                loss_dict = self.compute_loss(
+                    logits,
+                    labels,
+                    loss_weights,
+                    compute_accuracy=compute_acc
+                )
         
         loss = loss_dict['loss']
         
@@ -2708,7 +2796,10 @@ class EnhancedConversationTrainer:
         else:
             self.optimizer.step()
             # 🔥 OPTIMIZATION: Throttle orchestrator updates (every 10 steps)
-            if hasattr(self, '_monitoring_queue') and self.global_step % 10 == 0:
+            if (
+                hasattr(self, '_monitoring_queue')
+                and self.global_step % self.monitoring_push_interval == 0
+            ):
                 try:
                     metrics = self.get_current_metrics()
                     self._monitoring_queue.put(metrics, block=False)
@@ -2786,7 +2877,19 @@ class EnhancedConversationTrainer:
         else:
             self.model.eval()
 
-        eval_dataloader = create_dataloader(eval_dataset, self.config, shuffle=False)
+        if (
+            self.current_eval_dataloader is None
+            or self._cached_eval_dataset_ref is not eval_dataset
+            or self._cached_eval_batch_size != self.config.batch_size
+        ):
+            self.current_eval_dataloader = create_dataloader(
+                eval_dataset,
+                self.config,
+                shuffle=False
+            )
+            self._cached_eval_dataset_ref = eval_dataset
+            self._cached_eval_batch_size = self.config.batch_size
+        eval_dataloader = self.current_eval_dataloader
 
         num_batches = 0
 
@@ -2829,7 +2932,12 @@ class EnhancedConversationTrainer:
             else:
                 logits = output
 
-            loss_dict = self.compute_loss(logits, labels, loss_weights)
+            loss_dict = self.compute_loss(
+                logits,
+                labels,
+                loss_weights,
+                compute_accuracy=True
+            )
 
             if not (torch.isnan(loss_dict['loss']).any() or torch.isinf(loss_dict['loss']).any()):
                 loss_t = loss_dict['loss'].detach()
@@ -3050,10 +3158,10 @@ class EnhancedConversationTrainer:
                     try:
                         # 3 = DETAILED, 4 = DEBUG, 5 = TRACE
                         verbosity = int(self.logger.verbosity)
-                        if verbosity >= 4: # DEBUG or higher
-                            log_frequency = 1
-                        elif verbosity >= 3: # DETAILED
-                            log_frequency = min(log_frequency, 5)
+                        if verbosity >= 4:  # DEBUG/TRACE
+                            log_frequency = max(5, min(log_frequency, 10))
+                        elif verbosity >= 3:  # DETAILED
+                            log_frequency = max(10, min(log_frequency, 20))
                     except (ValueError, TypeError):
                         pass
 
@@ -3159,15 +3267,19 @@ class EnhancedConversationTrainer:
                         self._log_memory_usage(f"Step {self.global_step}")
 
                     # Quantization diagnostics
-                    if self.quantization_manager.is_quantized and self.global_step % 100 == 0:
+                    if (
+                        self.quantization_manager.is_quantized
+                        and self.global_step % self.quant_diagnostics_interval == 0
+                    ):
                         self._log_quantization_diagnostics()
 
-                    # 🔥 CRITICAL FIX: PREVENT ASYNC OOM
-                    # Throttle the CPU so it doesn't queue hundreds of micro-batches ahead of the GPU.
-                    # This lightweight sync forces Python to wait for the current GPU step to finish
-                    # before looping, ensuring the caching allocator can free memory back to the pool.
-                    if isinstance(avg_loss, torch.Tensor):
-                        _throttle = avg_loss.item() 
+                    # Optional GPU sync throttling for unstable environments.
+                    if (
+                        self.gpu_sync_interval_steps > 0
+                        and self.global_step % self.gpu_sync_interval_steps == 0
+                        and isinstance(avg_loss, torch.Tensor)
+                    ):
+                        _ = avg_loss.item()
 
                     # 🔥 FIX: RESET for next accumulation cycle
                     accumulation_metrics = {
@@ -3255,18 +3367,31 @@ class EnhancedConversationTrainer:
             print(f"  Bits: {self.quantization_manager.quantization_info['bits']}")
             print(f"  Current Memory: {current_memory:.1f}MB")
             
-            total_grad_norm = 0.0
+            total_grad_norm = None
             num_params = 0
             for param in self.model.parameters():
                 if param.grad is not None:
-                    # ✅ NO SYNC: Keep on GPU
-                    total_grad_norm += param.grad.norm() ** 2
+                    grad_norm_sq = param.grad.detach().norm() ** 2
+                    if total_grad_norm is None:
+                        total_grad_norm = grad_norm_sq
+                    else:
+                        total_grad_norm = total_grad_norm + grad_norm_sq
                     num_params += 1
+                    if num_params >= self.quant_grad_sample_params:
+                        break
             
-            if num_params > 0:
+            if num_params > 0 and total_grad_norm is not None:
                 avg_grad_norm = (total_grad_norm / num_params) ** 0.5
-                if avg_grad_norm > 100 or avg_grad_norm < 1e-6:
-                    print(f"  WARNING: Unusual gradient norm {avg_grad_norm:.2e} - may indicate quantization issues")
+                avg_grad_norm_val = (
+                    float(avg_grad_norm.detach().cpu().item())
+                    if isinstance(avg_grad_norm, torch.Tensor)
+                    else float(avg_grad_norm)
+                )
+                if avg_grad_norm_val > 100 or avg_grad_norm_val < 1e-6:
+                    print(
+                        f"  WARNING: Unusual gradient norm {avg_grad_norm_val:.2e} "
+                        f"- may indicate quantization issues"
+                    )
                     
         except Exception as e:
             print(f"Error in quantization diagnostics: {e}")
@@ -3277,7 +3402,7 @@ class EnhancedConversationTrainer:
         
         try:
             memory_info = ""
-            if _safe_cuda_is_available():
+            if self.step_log_memory and _safe_cuda_is_available():
                 try:
                     memory_allocated = torch.cuda.memory_allocated() / 1e9
                     memory_cached = torch.cuda.memory_reserved() / 1e9

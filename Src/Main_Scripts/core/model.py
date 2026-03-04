@@ -39,6 +39,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import autocast
 
+# Registry of profiled wrappers to avoid expensive global GC scans.
+_PROFILED_WRAPPERS: List[Callable] = []
+
 # Optional dependencies with graceful degradation
 try:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -197,6 +200,7 @@ def profile_function(func: Callable) -> Callable:
     
     wrapper._profiling_enabled = False
     wrapper._timings = []
+    _PROFILED_WRAPPERS.append(wrapper)
     return wrapper
 
 
@@ -213,31 +217,27 @@ def profiling_context(enabled: bool = True):
     original_states = {}
     
     if enabled:
-        # Enable profiling for all decorated functions
-        import gc
-        for obj in gc.get_objects():
-            if hasattr(obj, '_profiling_enabled'):
-                original_states[id(obj)] = obj._profiling_enabled
-                obj._profiling_enabled = True
+        # Enable profiling for registered decorated functions.
+        for obj in _PROFILED_WRAPPERS:
+            original_states[id(obj)] = getattr(obj, '_profiling_enabled', False)
+            obj._profiling_enabled = True
     
     try:
         yield
     finally:
         # Restore original states
         if enabled:
-            for obj_id, state in original_states.items():
-                import gc
-                for obj in gc.get_objects():
-                    if id(obj) == obj_id and hasattr(obj, '_profiling_enabled'):
-                        obj._profiling_enabled = state
+            for obj in _PROFILED_WRAPPERS:
+                obj_id = id(obj)
+                if obj_id in original_states:
+                    obj._profiling_enabled = original_states[obj_id]
 
 
 def get_profiling_stats() -> Dict[str, Any]:
     """Get profiling statistics from all decorated functions."""
     stats = {}
-    import gc
     
-    for obj in gc.get_objects():
+    for obj in _PROFILED_WRAPPERS:
         if hasattr(obj, '_timings') and obj._timings:
             func_name = getattr(obj, '__name__', str(obj))
             timings = obj._timings
@@ -454,16 +454,24 @@ class RotaryEmbedding(nn.Module):
         self._build_pytorch_cache(seq_len)
         self.max_seq_len = seq_len
     
-    def forward(self, seq_len: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        seq_len: int,
+        device: torch.device,
+        start_pos: int = 0
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get cos and sin embeddings for given sequence length."""
-        
+        start_pos = max(0, int(start_pos))
+        total_seq_len = start_pos + seq_len
+
         # ✅ NEW: Handle cache extension FIRST
-        if seq_len > self.max_seq_len:
-            self._extend_cache(seq_len)
+        if total_seq_len > self.max_seq_len:
+            self._extend_cache(total_seq_len)
             
         # ✅ TRY CUDA/METAL FIRST
         # ONLY if seq_len is within backend's INITIAL capacity
-        if seq_len <= self.backend_max_seq_len:
+        # Cache-offset decoding requires arbitrary slices, so use PyTorch cache path.
+        if start_pos == 0 and seq_len <= self.backend_max_seq_len:
             if USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None:
                 try:
                     return self._impl(seq_len, device)
@@ -490,8 +498,9 @@ class RotaryEmbedding(nn.Module):
         if not hasattr(self, '_cos_cached') or not hasattr(self, '_sin_cached'):
             self._build_pytorch_cache(self.max_seq_len)
         
-        cos = self._cos_cached[:seq_len]
-        sin = self._sin_cached[:seq_len]
+        end_pos = start_pos + seq_len
+        cos = self._cos_cached[start_pos:end_pos]
+        sin = self._sin_cached[start_pos:end_pos]
         
         if cos.device != device:
             cos = cos.to(device)
@@ -726,8 +735,11 @@ class DenseGroupedQueryAttention(nn.Module):
         k = self.k_proj(x).view(B, L, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(B, L, self.num_kv_heads, self.head_dim).transpose(1, 2)
         
-        # Apply RoPE
-        cos, sin = self.rope(L, x.device)
+        # Apply RoPE with cache-aware position offset.
+        past_seq_len = 0
+        if past_key_value is not None:
+            past_seq_len = int(past_key_value[0].size(2))
+        cos, sin = self.rope(L, x.device, start_pos=past_seq_len)
         q, k = apply_rotary_pos_emb(q, k, cos, sin)
         
         # Handle KV cache for inference
@@ -844,17 +856,19 @@ class DenseGroupedQueryAttention(nn.Module):
         Returns:
             Attention output [batch, seq_len, hidden_size]
         """
-        B, H, L, D = q.shape
+        B, H, q_len, D = q.shape
+        kv_len = k.size(-2)
         
         # Compute attention scores with scaling
         scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
         
-        # Apply causal mask efficiently
-        causal_mask = torch.triu(
-            torch.ones(L, L, device=q.device, dtype=torch.bool), 
-            diagonal=1
-        )
-        scores = scores.masked_fill(causal_mask, -1e4)
+        # Apply causal mask with KV-cache support.
+        # For cached decode, q_len can be smaller than kv_len.
+        past_len = max(0, kv_len - q_len)
+        q_positions = torch.arange(q_len, device=q.device) + past_len
+        kv_positions = torch.arange(kv_len, device=q.device)
+        causal_mask = kv_positions.unsqueeze(0) > q_positions.unsqueeze(1)
+        scores = scores.masked_fill(causal_mask.unsqueeze(0).unsqueeze(0), -1e4)
         
         # Apply additional attention mask if provided
         if attention_mask is not None:
@@ -873,7 +887,7 @@ class DenseGroupedQueryAttention(nn.Module):
         
         # Compute output
         attn_output = torch.matmul(attn_weights, v)
-        attn_output = attn_output.transpose(1, 2).reshape(B, L, self.hidden_size)
+        attn_output = attn_output.transpose(1, 2).reshape(B, q_len, self.hidden_size)
         
         return attn_output
     
@@ -915,8 +929,8 @@ class MoDRouter(nn.Module):
         self._routing_stats_step = 0
         self._routing_stats = {
             'total_tokens': 0,
-            'computed_tokens': 0.0,
-            'skipped_tokens': 0.0,
+            'computed_tokens': torch.zeros((), dtype=torch.float32),
+            'skipped_tokens': torch.zeros((), dtype=torch.float32),
         }
 
         nn.init.normal_(self.router.weight, mean=0.0, std=0.02)
@@ -928,8 +942,14 @@ class MoDRouter(nn.Module):
             return
 
         self._routing_stats['total_tokens'] += total_tokens
-        self._routing_stats['computed_tokens'] += float(routing_mask.sum().item())
-        self._routing_stats['skipped_tokens'] += float((1 - routing_mask).sum().item())
+        self._routing_stats['computed_tokens'] = (
+            self._routing_stats['computed_tokens'].to(routing_mask.device) +
+            routing_mask.sum().detach().to(torch.float32)
+        )
+        self._routing_stats['skipped_tokens'] = (
+            self._routing_stats['skipped_tokens'].to(routing_mask.device) +
+            (1 - routing_mask).sum().detach().to(torch.float32)
+        )
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Route tokens with straight-through gradients."""
@@ -967,8 +987,10 @@ class MoDRouter(nn.Module):
         if total <= 0:
             return {'error': 'No routing statistics available'}
 
-        computed = self._routing_stats['computed_tokens']
-        skipped = self._routing_stats['skipped_tokens']
+        computed_t = self._routing_stats['computed_tokens']
+        skipped_t = self._routing_stats['skipped_tokens']
+        computed = float(computed_t.detach().cpu().item())
+        skipped = float(skipped_t.detach().cpu().item())
         return {
             'total_tokens': total,
             'computed_tokens': computed,
@@ -980,8 +1002,8 @@ class MoDRouter(nn.Module):
     def reset_routing_stats(self):
         self._routing_stats = {
             'total_tokens': 0,
-            'computed_tokens': 0.0,
-            'skipped_tokens': 0.0,
+            'computed_tokens': torch.zeros((), dtype=torch.float32),
+            'skipped_tokens': torch.zeros((), dtype=torch.float32),
         }
         self._routing_stats_step = 0
 
@@ -1236,24 +1258,27 @@ class MoEFFNLayer(nn.Module):
         starts = torch.cumsum(counts, dim=0) - counts
 
         used_experts = set()
-        unique_experts_list = unique_experts.tolist()
-        starts_list = starts.tolist()
-        counts_list = counts.tolist()
+        unique_experts_cpu = unique_experts.detach().to('cpu', dtype=torch.long)
+        starts_cpu = starts.detach().to('cpu', dtype=torch.long)
+        counts_cpu = counts.detach().to('cpu', dtype=torch.long)
 
-        for expert_id, start, count in zip(unique_experts_list, starts_list, counts_list):
+        for idx in range(unique_experts_cpu.numel()):
+            expert_id = int(unique_experts_cpu[idx])
+            start = int(starts_cpu[idx])
+            count = int(counts_cpu[idx])
             end = start + count
 
             token_indices = flat_tokens[start:end]
             expert_weights = flat_weights[start:end]
             expert_inputs = x.index_select(0, token_indices)
-            expert_outputs = self.experts[int(expert_id)](expert_inputs)
+            expert_outputs = self.experts[expert_id](expert_inputs)
 
             if expert_outputs.dtype != x.dtype:
                 expert_outputs = expert_outputs.to(x.dtype)
 
             weighted_outputs = expert_outputs * expert_weights.unsqueeze(-1)
             output.index_add_(0, token_indices, weighted_outputs)
-            used_experts.add(int(expert_id))
+            used_experts.add(expert_id)
 
         # Optional dense-grad mode for debugging/tests that require all expert params to have grads.
         # Disabled by default because it is expensive.
@@ -1663,26 +1688,43 @@ class TransformerBlock(nn.Module):
     def forward(
         self, 
         x: torch.Tensor, 
-        attention_mask: Optional[torch.Tensor] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]]]:
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        use_cache: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]], Tuple[torch.Tensor, Optional[torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]]:
         """Forward pass with optional gradient checkpointing."""
         if self.gradient_checkpointing and self.training:
+            # KV cache is inference-only in this block.
+            use_cache = False
+            past_key_value = None
             return torch.utils.checkpoint.checkpoint(
                 self._forward_impl, 
                 x, 
                 attention_mask, 
                 use_reentrant=False
             )
-        return self._forward_impl(x, attention_mask)
+        return self._forward_impl(x, attention_mask, past_key_value, use_cache)
     
     def _forward_impl(
         self, 
         x: torch.Tensor, 
-        attention_mask: Optional[torch.Tensor] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]]]:
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        use_cache: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]], Tuple[torch.Tensor, Optional[torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]]:
         """Actual forward implementation with residual connections."""
         # Self-attention with residual
-        attn_out = self.self_attn(self.input_norm(x), attention_mask)
+        attn_result = self.self_attn(
+            self.input_norm(x),
+            attention_mask,
+            past_key_value=past_key_value,
+            use_cache=use_cache
+        )
+        if use_cache:
+            attn_out, present_key_value = attn_result
+        else:
+            attn_out = attn_result
+            present_key_value = None
         x = x + attn_out
         
         # FFN with residual
@@ -1692,9 +1734,13 @@ class TransformerBlock(nn.Module):
         if isinstance(ffn_result, tuple):
             ffn_out, aux_loss = ffn_result
             x = x + ffn_out  # ✅ Use ffn_out (tensor), NOT ffn_result (tuple)
+            if use_cache:
+                return x, aux_loss, present_key_value
             return x, aux_loss
         else:
             x = x + ffn_result  # ✅ This is fine for non-tuple returns
+            if use_cache:
+                return x, None, present_key_value
             return x, None
 
 
@@ -2018,7 +2064,9 @@ class DeepSeekTransformer(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         return_hidden_states: bool = False,
-        return_aux_loss: bool = True
+        return_aux_loss: bool = True,
+        past_key_values: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = None,
+        use_cache: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
         """
         Forward pass through the transformer.
@@ -2051,17 +2099,30 @@ class DeepSeekTransformer(nn.Module):
         aux_losses = []
         
         # Process through transformer layers
-        for layer in self.layers:
-            result = layer(x, attention_mask)
+        next_past_key_values = [] if use_cache else None
+        for layer_idx, layer in enumerate(self.layers):
+            layer_past = None
+            if past_key_values is not None and layer_idx < len(past_key_values):
+                layer_past = past_key_values[layer_idx]
+
+            result = layer(
+                x,
+                attention_mask,
+                past_key_value=layer_past,
+                use_cache=use_cache
+            )
             
             # Handle outputs (may include auxiliary loss)
             if isinstance(result, tuple):
-                x, aux_loss = result
-                if aux_loss is not None:
+                if use_cache:
+                    x, aux_loss, present_key_value = result
+                    next_past_key_values.append(present_key_value)
+                else:
+                    x, aux_loss = result
+                if aux_loss is not None and return_aux_loss:
                     aux_loss = torch.clamp(aux_loss, max=1.0)
                     total_aux_loss += aux_loss
-                    if return_aux_loss:
-                        aux_losses.append(aux_loss)
+                    aux_losses.append(aux_loss)
             else:
                 x = result
             
@@ -2084,6 +2145,9 @@ class DeepSeekTransformer(nn.Module):
         if (self.use_moe or self.use_mod) and return_aux_loss:
             outputs.append(total_aux_loss)
             outputs.append(aux_losses)
+        
+        if use_cache:
+            outputs.append(next_past_key_values)
         
         return outputs[0] if len(outputs) == 1 else tuple(outputs)
     

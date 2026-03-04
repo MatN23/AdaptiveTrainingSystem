@@ -266,23 +266,63 @@ class ConversationTokenizer:
         """
         import time
         start_time = time.perf_counter()
-        
+
+        # Keep expensive tokenization work outside global lock.
+        return self._encode_conversation_impl(
+            conversation, mode, max_length, truncation_strategy, return_stats, start_time
+        )
+    
+    def _apply_stats_delta(self, deltas: Dict[str, int]) -> None:
+        if not deltas:
+            return
         if self.thread_safe:
             with self._lock:
-                return self._encode_conversation_impl(
-                    conversation, mode, max_length, truncation_strategy, return_stats, start_time
-                )
+                for key, value in deltas.items():
+                    self.stats[key] = self.stats.get(key, 0) + value
         else:
-            return self._encode_conversation_impl(
-                conversation, mode, max_length, truncation_strategy, return_stats, start_time
-            )
+            for key, value in deltas.items():
+                self.stats[key] = self.stats.get(key, 0) + value
+    
+    def _encode_message_tokens(self, message: Dict[str, Any], mode: TokenizationMode) -> List[int]:
+        """Encode a single message into special-token-wrapped token IDs."""
+        if not isinstance(message, dict):
+            return []
+
+        role = str(message.get('role', '')).strip().lower()
+        content = message.get('content', '')
+
+        if not content and self.validation_level == "strict":
+            return []
+
+        if role not in self._role_mapping:
+            role = 'user'
+
+        output_tokens = [
+            self.special_tokens["<|im_start|>"],
+            self._role_mapping[role],
+        ]
+
+        if content:
+            processed_content = self._preprocess_content(str(content), mode)
+            if processed_content:
+                if self.enable_caching:
+                    content_tokens, _ = self._cached_encode(processed_content)
+                else:
+                    content_tokens = self.tokenizer.encode(
+                        processed_content,
+                        allowed_special={'<|endoftext|>'}
+                    )
+                output_tokens.extend(content_tokens)
+
+        output_tokens.append(self.special_tokens["<|im_end|>"])
+        return output_tokens
     
     def _encode_conversation_impl(self, conversation, mode, max_length, truncation_strategy, return_stats, start_time):
         """Internal implementation of conversation encoding."""
         # Validation
         is_valid, warnings = self._validate_conversation(conversation)
         if not is_valid and self.validation_level == "strict":
-            self.stats['validation_errors'] += 1
+            self._apply_stats_delta({'validation_errors': 1})
             if return_stats:
                 stats = TokenizationStats(0, 0, 0, 0, 0.0, 0.0, warnings)
                 return [], stats
@@ -343,7 +383,7 @@ class ConversationTokenizer:
                                 logging.warning(f"Content encoding failed: {e}")
                                 content_token_list = []
                                 encoding_success = False
-                                self.stats['encoding_errors'] += 1
+                                self._apply_stats_delta({'encoding_errors': 1})
                         
                         if content_token_list:
                             tokens.extend(content_token_list)
@@ -361,8 +401,10 @@ class ConversationTokenizer:
                 warnings.append(f"Conversation truncated from {len(tokens)} to {max_len} tokens")
             
             # Update statistics
-            self.stats['total_conversations_processed'] += 1
-            self.stats['total_tokens_generated'] += len(tokens)
+            self._apply_stats_delta({
+                'total_conversations_processed': 1,
+                'total_tokens_generated': len(tokens)
+            })
             
             if return_stats:
                 end_time = time.perf_counter()
@@ -382,7 +424,7 @@ class ConversationTokenizer:
             
         except Exception as e:
             logging.error(f"Conversation encoding failed: {e}")
-            self.stats['encoding_errors'] += 1
+            self._apply_stats_delta({'encoding_errors': 1})
             if return_stats:
                 end_time = time.perf_counter()
                 stats = TokenizationStats(0, 0, 0, 0, 0.0, (end_time - start_time) * 1000, [str(e)])
@@ -541,7 +583,11 @@ class ConversationTokenizer:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get tokenizer usage statistics."""
-        stats = self.stats.copy()
+        if self.thread_safe:
+            with self._lock:
+                stats = self.stats.copy()
+        else:
+            stats = self.stats.copy()
         if self.enable_caching:
             cache_info = self._cached_encode.cache_info()
             stats.update({
@@ -554,7 +600,7 @@ class ConversationTokenizer:
     
     def reset_stats(self):
         """Reset usage statistics."""
-        self.stats = {
+        new_stats = {
             'total_conversations_processed': 0,
             'total_tokens_generated': 0,
             'cache_hits': 0,
@@ -562,6 +608,11 @@ class ConversationTokenizer:
             'validation_errors': 0,
             'encoding_errors': 0,
         }
+        if self.thread_safe:
+            with self._lock:
+                self.stats = new_stats
+        else:
+            self.stats = new_stats
         if self.enable_caching:
             self._cached_encode.cache_clear()
     
@@ -587,22 +638,27 @@ class ConversationTokenizer:
         if not messages:
             return conversation
         
-        # Always preserve the last N messages
+        # Pre-encode each message once and build a suffix that fits the token budget.
         preserve_count = min(preserve_messages, len(messages))
-        preserved_messages = messages[-preserve_count:] if preserve_count > 0 else []
-        candidate_messages = messages[:-preserve_count] if preserve_count < len(messages) else []
-        
-        # Build conversation incrementally from the end
-        result_messages = preserved_messages.copy()
-        
-        for message in reversed(candidate_messages):
-            test_conversation = {'messages': [message] + result_messages}
-            tokens = self.encode_conversation(test_conversation)
-            
-            if len(tokens) <= max_tokens:
-                result_messages.insert(0, message)
+        encoded_messages = [
+            self._encode_message_tokens(message, TokenizationMode.STANDARD)
+            for message in messages
+        ]
+
+        selected_indices = list(range(len(messages) - preserve_count, len(messages)))
+        current_token_count = sum(len(encoded_messages[i]) for i in selected_indices)
+
+        for idx in range(len(messages) - preserve_count - 1, -1, -1):
+            message_len = len(encoded_messages[idx])
+            if message_len == 0:
+                continue
+            if current_token_count + message_len <= max_tokens:
+                selected_indices.insert(0, idx)
+                current_token_count += message_len
             else:
                 break
+
+        result_messages = [messages[i] for i in selected_indices]
         
         # Create result conversation
         result = conversation.copy()

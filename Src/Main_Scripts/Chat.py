@@ -367,24 +367,51 @@ class GenerationEngine:
         start_time = time.time()
         generated_tokens = []
         
-        # Convert to tensor
-        input_ids = torch.tensor([prompt_tokens], dtype=torch.long, device=self.device)
-        
-        # Limit input length
-        max_input_len = HardcodedConfig.CONTEXT_WINDOW - max_new_tokens - 10
-        if input_ids.shape[1] > max_input_len:
-            input_ids = input_ids[:, -max_input_len:]
+        # Limit prompt to fit context window and preallocate generation buffer.
+        max_prompt_len = max(1, HardcodedConfig.CONTEXT_WINDOW - max_new_tokens)
+        if len(prompt_tokens) > max_prompt_len:
+            prompt_tokens = prompt_tokens[-max_prompt_len:]
+
+        total_capacity = min(HardcodedConfig.CONTEXT_WINDOW, len(prompt_tokens) + max_new_tokens)
+        input_buffer = torch.empty((1, total_capacity), dtype=torch.long, device=self.device)
+        if prompt_tokens:
+            input_buffer[0, :len(prompt_tokens)] = torch.tensor(
+                prompt_tokens,
+                dtype=torch.long,
+                device=self.device
+            )
+        cur_len = len(prompt_tokens)
         
         with torch.no_grad():
-            for step in range(max_new_tokens):
-                # Forward pass
-                outputs = self.model(input_ids)
-                
-                if isinstance(outputs, tuple):
-                    logits = outputs[0]
+            if cur_len == 0:
+                return [], {
+                    'tokens_generated': 0,
+                    'generation_time': 0.0,
+                    'tokens_per_second': 0.0
+                }
+
+            special_stop_ids = set()
+            text_stop_markers = []
+            for stop in HardcodedConfig.STOP_TOKENS:
+                if stop in self.tokenizer.special_tokens:
+                    special_stop_ids.add(self.tokenizer.special_tokens[stop])
                 else:
-                    logits = outputs
-                
+                    text_stop_markers.append(stop)
+
+            # Prime KV cache with the full prompt once.
+            outputs = self.model(
+                input_buffer[:, :cur_len],
+                return_aux_loss=False,
+                use_cache=True
+            )
+            if isinstance(outputs, tuple):
+                logits = outputs[0]
+                past_key_values = outputs[-1]
+            else:
+                logits = outputs
+                past_key_values = None
+
+            for step in range(max_new_tokens):
                 # Get next token logits
                 next_token_logits = logits[0, -1, :].float()
                 
@@ -427,13 +454,17 @@ class GenerationEngine:
                 # Check stop conditions
                 if next_token == 0:
                     break
-                
-                try:
-                    decoded = self.tokenizer.decode([next_token])
-                    if any(stop in decoded for stop in HardcodedConfig.STOP_TOKENS):
-                        break
-                except:
-                    pass
+
+                if next_token in special_stop_ids:
+                    break
+
+                if text_stop_markers:
+                    try:
+                        decoded = self.tokenizer.decode([next_token])
+                        if any(stop in decoded for stop in text_stop_markers):
+                            break
+                    except:
+                        pass
                 
                 generated_tokens.append(next_token)
                 
@@ -445,14 +476,26 @@ class GenerationEngine:
                     except:
                         pass
                 
-                # Update input
-                input_ids = torch.cat([
-                    input_ids,
-                    torch.tensor([[next_token]], dtype=torch.long, device=self.device)
-                ], dim=1)
-                
-                if input_ids.shape[1] >= HardcodedConfig.CONTEXT_WINDOW:
+                if cur_len >= total_capacity:
                     break
+
+                # Append token to preallocated buffer.
+                input_buffer[0, cur_len] = next_token
+                cur_len += 1
+
+                # Decode one token at a time with KV cache.
+                outputs = self.model(
+                    input_buffer[:, cur_len - 1:cur_len],
+                    return_aux_loss=False,
+                    past_key_values=past_key_values,
+                    use_cache=True
+                )
+                if isinstance(outputs, tuple):
+                    logits = outputs[0]
+                    past_key_values = outputs[-1]
+                else:
+                    logits = outputs
+                    past_key_values = None
         
         generation_time = time.time() - start_time
         

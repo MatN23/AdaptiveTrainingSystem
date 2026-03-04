@@ -1500,6 +1500,9 @@ class AdaptiveTrainingOrchestrator:
     
     def _enhance_trainer_with_adaptive_features(self):
         """Add adaptive features to existing trainer - COMPLETE VERSION."""
+        if getattr(self.trainer, '_adaptive_enhancements_applied', False):
+            logging.info("Adaptive enhancements already applied - skipping duplicate wrapping")
+            return
         
         logging.info("Enhancing trainer with adaptive monitoring capabilities...")
         
@@ -1508,6 +1511,16 @@ class AdaptiveTrainingOrchestrator:
         self.trainer._orchestrator = self  # Give trainer access to orchestrator
         
         logging.info(f"✅ Injected monitoring queue (ID: {id(self.monitoring_queue)})")
+
+        # If trainer already supports native queue publishing, avoid extra wrapper layers.
+        if hasattr(self.trainer, 'monitoring_push_interval'):
+            self.trainer.monitoring_push_interval = max(
+                int(getattr(self.trainer, 'monitoring_push_interval', 1)),
+                int(getattr(self.config, 'monitoring_push_interval', 10))
+            )
+            self.trainer._adaptive_enhancements_applied = True
+            logging.info("✅ Using trainer-native monitoring hooks (no extra wrapper chain)")
+            return
         
         # 🔥 Step 2: Wrap the optimizer step to capture metrics automatically
         original_optimizer_step = self.trainer.optimizer_step
@@ -1690,6 +1703,7 @@ class AdaptiveTrainingOrchestrator:
         logging.info("  ✅ LR tracking (adaptive vs scheduler)")
         logging.info("  ✅ Direct communication channel to orchestrator")
         logging.info("="*80 + "\n")
+        self.trainer._adaptive_enhancements_applied = True
     
     def run_adaptive_training(self):
         """Run training with full verbose logging."""

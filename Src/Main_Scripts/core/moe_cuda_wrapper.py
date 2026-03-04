@@ -380,16 +380,55 @@ class MoECUDAOps:
             dtype=torch.int64,
             device=tokens.device
         )
-        positions = torch.zeros(num_experts, dtype=torch.int32, device=tokens.device)
-        
-        for i in range(num_tokens):
-            for j in range(k):
-                expert_id = indices[i, j].item()
-                pos = positions[expert_id].item()
-                if pos < capacity and expert_id >= 0:
-                    expert_inputs[expert_id, pos] = tokens[i]
-                    token_map[expert_id, pos] = i * k + j
-                    positions[expert_id] += 1
+        if num_tokens == 0 or k == 0 or num_experts <= 0 or capacity <= 0:
+            return expert_inputs, token_map
+
+        flat_experts = indices.reshape(-1).to(torch.long)
+        flat_tokens = (
+            torch.arange(num_tokens, device=tokens.device, dtype=torch.long)
+            .unsqueeze(1)
+            .expand(-1, k)
+            .reshape(-1)
+        )
+        flat_slots = (
+            torch.arange(k, device=tokens.device, dtype=torch.long)
+            .unsqueeze(0)
+            .expand(num_tokens, -1)
+            .reshape(-1)
+        )
+
+        valid = (flat_experts >= 0) & (flat_experts < num_experts)
+        if not valid.any():
+            return expert_inputs, token_map
+
+        flat_experts = flat_experts[valid]
+        flat_tokens = flat_tokens[valid]
+        flat_assignment = flat_tokens * k + flat_slots[valid]
+
+        order = torch.argsort(flat_experts)
+        sorted_experts = flat_experts[order]
+        counts = torch.bincount(sorted_experts, minlength=num_experts)
+        starts = torch.cumsum(counts, dim=0) - counts
+        sorted_positions = torch.arange(
+            sorted_experts.numel(),
+            device=tokens.device,
+            dtype=torch.long
+        ) - starts[sorted_experts]
+
+        positions = torch.empty_like(sorted_positions)
+        positions[order] = sorted_positions
+
+        keep = positions < capacity
+        if not keep.any():
+            return expert_inputs, token_map
+
+        kept_experts = flat_experts[keep]
+        kept_positions = positions[keep]
+        kept_tokens = flat_tokens[keep]
+        kept_assignments = flat_assignment[keep]
+
+        expert_inputs[kept_experts, kept_positions] = tokens.index_select(0, kept_tokens)
+        token_map[kept_experts, kept_positions] = kept_assignments
         
         return expert_inputs, token_map
     
@@ -453,15 +492,27 @@ class MoECUDAOps:
             dtype=expert_outputs.dtype,
             device=expert_outputs.device
         )
-        
-        for expert_id in range(num_experts):
-            for pos in range(capacity):
-                idx = token_map[expert_id, pos].item()
-                if idx >= 0:
-                    token_idx = idx // k
-                    if token_idx < num_tokens:
-                        weight = weights.flatten()[idx]
-                        combined[token_idx] += weight * expert_outputs[expert_id, pos]
+        if num_tokens == 0 or k <= 0:
+            return combined
+
+        flat_map = token_map.reshape(-1).to(torch.long)
+        flat_outputs = expert_outputs.reshape(-1, hidden_dim)
+        flat_weights = weights.reshape(-1)
+
+        valid = (
+            (flat_map >= 0) &
+            (flat_map < flat_weights.numel()) &
+            ((flat_map // k) < num_tokens)
+        )
+        if not valid.any():
+            return combined
+
+        assignment_idx = flat_map[valid]
+        token_idx = assignment_idx // k
+        selected_outputs = flat_outputs[valid]
+        selected_weights = flat_weights[assignment_idx].to(expert_outputs.dtype)
+
+        combined.index_add_(0, token_idx, selected_outputs * selected_weights.unsqueeze(-1))
         
         return combined
 
