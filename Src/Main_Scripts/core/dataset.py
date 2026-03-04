@@ -463,8 +463,47 @@ if DATASETS_AVAILABLE:
             seq_length = int(self.config.seq_length)
 
             def tokenize_conversation(example):
+                # Normalize HF row objects into a plain conversation dict so
+                # tokenizer strict validation doesn't reject non-dict row types.
+                raw_messages = None
+                if isinstance(example, dict):
+                    raw_messages = example.get('messages')
+                else:
+                    try:
+                        raw_messages = example['messages']
+                    except Exception:
+                        raw_messages = getattr(example, 'messages', None)
+
+                normalized_messages = []
+                if isinstance(raw_messages, list):
+                    for msg in raw_messages:
+                        role = ''
+                        content = ''
+                        if isinstance(msg, dict):
+                            role = msg.get('role', '')
+                            content = msg.get('content', '')
+                        else:
+                            try:
+                                role = msg.get('role', '')
+                                content = msg.get('content', '')
+                            except Exception:
+                                role = getattr(msg, 'role', '')
+                                content = getattr(msg, 'content', '')
+
+                        if content is None:
+                            content = ''
+                        if role is None:
+                            role = ''
+
+                        normalized_messages.append({
+                            'role': str(role),
+                            'content': str(content),
+                        })
+
+                conversation_payload = {'messages': normalized_messages}
+
                 try:
-                    tokens = self.tokenizer.encode_conversation(example)
+                    tokens = self.tokenizer.encode_conversation(conversation_payload)
                 except Exception:
                     tokens = []
 
