@@ -3090,6 +3090,7 @@ class EnhancedConversationTrainer:
             'raw_loss': 0.0,
             'tokens': 0,
             'accuracy': 0.0,
+            'accuracy_count': 0,
             'step_count': 0  # 🔥 NEW: Track how many steps accumulated
         }
 
