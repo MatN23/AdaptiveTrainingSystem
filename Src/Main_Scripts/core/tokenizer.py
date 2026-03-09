@@ -46,8 +46,8 @@ class ConversationTokenizer:
     _ROLE_PATTERN = re.compile(r'^(user|prompter|assistant|system|human|ai|bot)$', re.IGNORECASE)
     
     def __init__(self, 
-                 model_name: str = "gpt-4",  # Changed default from gpt2 to gpt-4
-                 max_context_length: int = 8192,  # Updated for GPT-4 context length
+                 model_name: str = "gpt2",
+                 max_context_length: int = 8192,
                  enable_caching: bool = True,
                  thread_safe: bool = True,
                  validation_level: str = "strict"):

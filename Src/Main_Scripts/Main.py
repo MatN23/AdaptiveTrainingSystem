@@ -702,7 +702,7 @@ def config_to_deepseek_config(config: Config):
         DeepSeekConfig object
     """
     return DeepSeekConfig(
-        vocab_size=getattr(config, 'vocab_size', 50257),
+        vocab_size=getattr(config, 'vocab_size', 50304),
         hidden_size=getattr(config, 'hidden_size', 768),
         num_layers=getattr(config, 'num_layers', 12),
         num_heads=getattr(config, 'num_heads', 12),

@@ -779,7 +779,6 @@ class ConfigPresets:
         """Minimal config for debugging and testing."""
         return Config(
             # Tiny model for fast iteration
-            vocab_size=1024,
             hidden_size=128,
             num_layers=2,
             num_heads=2,
@@ -839,7 +838,6 @@ class ConfigPresets:
         """Minimal config for debugging and testing."""
         return Config(
             # Tiny model for fast iteration
-            vocab_size=1024,
             hidden_size=786,
             num_layers=6,
             num_heads=4,
@@ -900,7 +898,6 @@ class ConfigPresets:
         """Config designed specifically to benchmark MoE CUDA vs PyTorch routing."""
         return Config(
             # Bigger than debug, but nowhere near full model scale
-            vocab_size=4096,
             hidden_size=768,              # routing starts to matter here
             num_layers=6,                 # gives depth + stable timing
             num_heads=8,
@@ -962,7 +959,6 @@ class ConfigPresets:
         """~200M hybrid MoE model tuned for T4 GPUs."""
         return Config(
             # Model size
-            vocab_size=1024,
             hidden_size=640,
             num_layers=12,
             num_heads=8,

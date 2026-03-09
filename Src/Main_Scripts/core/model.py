@@ -2499,7 +2499,7 @@ class DeepSeekConfig:
     """
     
     # Architecture
-    vocab_size: int = 50257
+    vocab_size: int = 50304
     hidden_size: int = 768
     num_layers: int = 12
     num_heads: int = 12
