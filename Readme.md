@@ -346,20 +346,19 @@ Each preset specifies architecture dimensions, MoE/MoD parameters, hardware targ
 
 | Config | Active Params | Total Params | Hidden | Layers | Heads | KV Heads | Experts | Top-K | Hardware | Memory (FP16) | Throughput | CUDA Speedup |
 |--------|--------------|--------------|--------|--------|-------|----------|---------|-------|----------|---------------|------------|--------------|
-| `debug` | 500K | 4M | 128 | 2 | 2 | 2 | 8 | 2 | Any | 50 MB | Testing | 2.1x |
-| `debug_200m` | 200M | 6B | 768 | 12 | 12 | 12 | 32 MoD | - | T4/MPS | 2 GB | Testing | 2.8x |
-| `b1` | 1B | 8B | 1024 | 24 | 16 | 4 | 8 | 2 | RTX 3090, M1 Max | 8 GB | 1400 tok/s | 3.2x |
-| `b7` | 7B | 56B | 4096 | 32 | 32 | 8 | 8 | 2 | A100 40GB | 28 GB | 680 tok/s | 3.5x |
-| `b14` | 14B | 112B | 5120 | 40 | 40 | 10 | 8 | 2 | A100 80GB | 56 GB | 340 tok/s | 3.8x |
-| `b30` | 30B | 240B | 8192 | 48 | 64 | 16 | 8 | 2 | 4× A100 80GB | 120 GB | 135 tok/s | 4.1x |
-| `b50` | 50B | 400B | 10240 | 56 | 80 | 20 | 8 | 2 | 4× H100 | 200 GB | 68 tok/s | 4.5x |
-| `b100` | 100B | 800B | 12288 | 80 | 96 | 24 | 8 | 2 | 8× H100 | 400 GB | 68 tok/s | 4.8x |
-| `b200` | 200B | 1.6T | 16384 | 100 | 128 | 32 | 8 | 2 | 16× H200 | 800 GB | 41 tok/s | 5.2x |
-| `b300` | 300B | 2.4T | 20480 | 120 | 160 | 40 | 8 | 2 | 32× H200 | 1.2 TB | 27 tok/s | 5.5x |
-| `custom` | - | - | - | - | - | - | - | - | T4/MPS | - | Results Vary | See Note |
+| `debug` | 500K | 4M | 128 | 2 | 2 | 2 | 8 | 2 | T4 | 50 MB | Verified | 2.1x |
+| `debug_200m` | 200M | 6B | 768 | 12 | 12 | 12 | 32 MoD | - | T4 | 2 GB | Verified | 2.8x |
+| `b1` | 1B | 8B | 1024 | 24 | 16 | 4 | 8 | 2 | T4 (Projected) | 8 GB | ~1400 tok/s* | 3.2x* |
+| `b7` | 7B | 56B | 4096 | 32 | 32 | 8 | 8 | 2 | Untested | 28 GB | Projected | Theoretical |
+| `b14` | 14B | 112B | 5120 | 40 | 40 | 10 | 8 | 2 | Untested | 56 GB | Projected | Theoretical |
+| `b30` | 30B | 240B | 8192 | 48 | 64 | 16 | 8 | 2 | Untested | 120 GB | Projected | Theoretical |
+| `b50` | 50B | 400B | 10240 | 56 | 80 | 20 | 8 | 2 | Untested | 200 GB | Projected | Theoretical |
+| `b100` | 100B | 800B | 12288 | 80 | 96 | 24 | 8 | 2 | Untested | 400 GB | Projected | Theoretical |
+| `b200` | 200B | 1.6T | 16384 | 100 | 128 | 32 | 8 | 2 | Untested | 800 GB | Projected | Theoretical |
+| `b300` | 300B | 2.4T | 20480 | 120 | 160 | 40 | 8 | 2 | Untested | 1.2 TB | Projected | Theoretical |
 
 > [!IMPORTANT]
-> A T4 GPU was used for testing; results will vary based on hardware configuration.
+> **Performance Disclaimer:** All benchmarks and throughput estimates provided are either verified on an **NVIDIA T4 GPU** or calculated as theoretical projections. Results on other hardware or larger scales are untested and listed for architectural reference only. Performance **will vary** based on your specific environment.
 
 **Memory estimates:** Include model weights, optimizer states (Adam: 8 bytes/param), gradients, and activation memory at batch_size=1, mixed precision training. Actual memory scales with batch size and sequence length.
 

@@ -1,4 +1,8 @@
 # Adaptive Orchestrator Performance Overhead Guide
+
+> [!NOTE]
+> The metrics below for medium to enterprise scale setups are based on architectural projections and established industry patterns. Local verification was performed on an **NVIDIA T4** setup (Small Scale).
+
 ## Performance Impact by Setup Scale
 ### Small Scale (1–7B models, 1–2 GPUs)
 #### Overhead: 3–8% slowdown

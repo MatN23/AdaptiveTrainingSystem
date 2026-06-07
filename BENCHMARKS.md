@@ -6,17 +6,13 @@
 - Dataset: C4 (cleaned Common Crawl)
 - Training Regime: 3 epochs on appropriately-sized subsets
 - Sequence Length: 2048 tokens
-- Hardware: Budget cloud instances (RunPod, Vast.ai, Lambda Labs)
-- Precision: Mixed BF16 unless specified
+- Hardware: **NVIDIA T4 GPU** (16GB VRAM)
+- Precision: Mixed FP16 (Standard for T4)
 - Optimizer: AdamW (β₁=0.9, β₂=0.95, ε=1e-8)
-- Batch Size: Optimized per model/hardware
+- Batch Size: Optimized for T4 memory constraints
 
-**Cost Calculations (Budget Cloud Providers):**
-- RTX 4090 24GB: $0.34/hour (Vast.ai spot pricing)
-- RTX 3090 24GB: $0.28/hour (Vast.ai spot pricing)
-- A100 40GB: $1.10/hour (RunPod on-demand)
-- A100 80GB: $1.89/hour (RunPod on-demand)
-- 2x A100 80GB: $3.78/hour (multi-GPU instance)
+> [!IMPORTANT]
+> **Benchmarking Disclaimer:** All performance data in this document was either measured on an NVIDIA T4 or represents a theoretical projection based on T4 performance. Metrics for multi-GPU or high-tier hardware (A100/H100) are **unverified** and should be treated as architectural estimates only.
 
 ---
 
@@ -35,7 +31,7 @@
 | **Peak VRAM** | 1.6 GB | Fits on any GPU |
 | **Tokens/sec** | ~104,000 | CPU bottleneck likely |
 | **Cost (any GPU)** | $0.04 | Essentially free |
-| **Hardware** | CPU/Any GPU | Development testing |
+| **Hardware** | T4 GPU | Development testing |
 
 #### MoE Configuration (8 experts, top-2)
 | Metric | Value | Notes |
@@ -61,8 +57,8 @@
 | **Training Time** | 1.4 hours | Quick experiments |
 | **Peak VRAM** | 6.8 GB | Fits 8GB+ cards |
 | **Tokens/sec** | ~119,000 | Good small model speed |
-| **Cost (RTX 3090)** | $0.39 | Very cheap |
-| **Hardware** | RTX 3060 Ti+ | Budget friendly |
+| **Cost (T4)** | ~ $0.40* | Estimated |
+| **Hardware** | NVIDIA T4 | Verified |
 
 #### MoD Configuration (capacity=0.5)
 | Metric | Value | Notes |
@@ -72,7 +68,7 @@
 | **Training Time** | 58 minutes | -31% faster |
 | **Peak VRAM** | 6.6 GB | Minimal memory savings |
 | **Tokens/sec** | ~172,000 | +44% throughput |
-| **Cost (RTX 3090)** | $0.27 | 31% savings |
+| **Cost (T4)** | ~ $0.30* | Estimated |
 | **Skip Rate** | 48% | Good efficiency |
 | **FLOPs Reduction** | 43% | Major compute savings |
 
@@ -84,7 +80,7 @@
 | **Training Time** | 1.2 hours | Balanced |
 | **Peak VRAM** | 10.2 GB | Fits 12GB+ cards |
 | **Tokens/sec** | ~139,000 | Good throughput |
-| **Cost (RTX 3090)** | $0.34 | Great value |
+| **Cost (T4)** | ~ $0.35* | Estimated |
 
 ---
 
@@ -102,8 +98,8 @@
 | **Training Time** | 5.8 hours | Under a day |
 | **Peak VRAM** | 17.2 GB | Fits 24GB cards barely |
 | **Tokens/sec** | ~96,000 | Single GPU throughput |
-| **Cost (RTX 4090)** | $1.97 | Under $2! |
-| **Hardware** | RTX 3090/4090 | Consumer accessible |
+| **Cost (T4)** | Projected | - |
+| **Hardware** | T4 (Projected) | - |
 | **Batch Size** | 4 (grad accum 32) | 512K tokens effective |
 
 #### MoE Configuration (8 experts, top-2)
@@ -114,7 +110,7 @@
 | **Training Time** | 7.6 hours | +31% time |
 | **Peak VRAM** | 29.4 GB | Needs 32GB+ |
 | **Tokens/sec** | ~73,000 | Routing overhead |
-| **Cost (A100 40GB)** | $8.36 | Single A100 needed |
+| **Cost (T4)** | N/A | Exceeds VRAM |
 | **Expert Util** | 80% avg | Good distribution |
 | **Load Balance** | 0.88 | Healthy |
 | **Batch Size** | 2 (grad accum 64) | 512K tokens effective |
@@ -127,7 +123,7 @@
 | **Training Time** | 4.2 hours | -28% faster |
 | **Peak VRAM** | 16.8 GB | Fits 24GB comfortably |
 | **Tokens/sec** | ~132,000 | +38% throughput |
-| **Cost (RTX 4090)** | $1.43 | Great savings |
+| **Cost (T4)** | Projected | - |
 | **Skip Rate** | 38% | Moderate efficiency |
 | **Batch Size** | 4 (grad accum 32) | 512K tokens effective |
 
@@ -139,7 +135,7 @@
 | **Training Time** | 6.1 hours | Balanced |
 | **Peak VRAM** | 28.2 GB | Needs 32GB |
 | **Tokens/sec** | ~91,000 | Good throughput |
-| **Cost (A100 40GB)** | $6.71 | Best quality/$ |
+| **Cost (T4)** | N/A | Exceeds VRAM |
 | **Batch Size** | 2 (grad accum 64) | 512K tokens effective |
 
 ---
@@ -158,8 +154,8 @@
 | **Training Time** | 52 hours (2.2 days) | Weekend project |
 | **Peak VRAM** | 52.8 GB | Needs A100 80GB |
 | **Tokens/sec** | ~74,500 | Memory bandwidth limited |
-| **Cost (A100 80GB)** | $98.28 | Under $100! |
-| **Hardware** | A100 80GB | Single GPU |
+| **Cost (T4)** | N/A | Projected |
+| **Hardware** | Untested / Projection | - |
 | **Batch Size** | 1 (grad accum 128) | 1M tokens effective |
 
 #### MoE Configuration (8 experts, top-2)
@@ -168,9 +164,7 @@
 | **Final Loss** | 2.11 | -8.7% improvement |
 | **Final PPL** | 8.3 | Excellent quality |
 | **Training Time** | 72 hours (3 days) | Long weekend |
-| **Peak VRAM** | 138.6 GB (69.3GB/GPU) | 2x A100 80GB |
-| **Tokens/sec** | ~54,000 | Cross-GPU routing |
-| **Cost (2x A100 80GB)** | $272.16 | Multi-GPU needed |
+| **Cost** | N/A | Untested |
 | **Expert Util** | 83% avg | Very good |
 | **Load Balance** | 0.85 | Good balance |
 | **Batch Size** | 1/GPU (grad accum 128) | 1M tokens effective |
@@ -182,8 +176,7 @@
 | **Final PPL** | 10.9 | Acceptable quality |
 | **Training Time** | 35 hours (1.5 days) | -33% faster |
 | **Peak VRAM** | 51.4 GB | Fits A100 80GB |
-| **Tokens/sec** | ~110,800 | +49% throughput |
-| **Cost (A100 80GB)** | $66.15 | 33% savings |
+| **Cost** | N/A | Untested |
 | **Skip Rate** | 51% | Aggressive |
 | **FLOPs Reduction** | 47% | Major efficiency |
 | **Batch Size** | 1 (grad accum 128) | 1M tokens effective |
@@ -194,9 +187,7 @@
 | **Final Loss** | 2.06 | Best performance |
 | **Final PPL** | 7.8 | Top quality |
 | **Training Time** | 57 hours (2.4 days) | Balanced |
-| **Peak VRAM** | 134.2 GB (67.1GB/GPU) | 2x A100 80GB |
-| **Tokens/sec** | ~68,000 | Good for hybrid |
-| **Cost (2x A100 80GB)** | $215.46 | Premium value |
+| **Cost** | N/A | Untested |
 | **Batch Size** | 1/GPU (grad accum 128) | 1M tokens effective |
 
 ---
@@ -241,21 +232,13 @@
 - Hardware: Single RTX 3090/4090 (rent for $0.28-0.34/hr)
 - Use Case: Learning, prototyping, small-scale fine-tuning
 
-### Mid Tier ($5-50)
-**Best Choice: B1 Hybrid on A100 40GB**
-- Training Cost: $6.71
-- Time: 6.1 hours
-- Quality: 2.93 loss
-- Hardware: Single A100 40GB (rent for $1.10/hr)
-- Use Case: Serious experiments, small production models
+### Mid Tier
+**B1 models on T4**
+- Use Case: Verified prototyping
 
-### Production Tier ($50-300)
-**Best Choice: B7 MoD or Hybrid on A100 80GB**
-- Training Cost: $66.15-215.46
-- Time: 1.5-2.4 days
-- Quality: 2.06-2.39 loss
-- Hardware: 1-2x A100 80GB (rent for $1.89-3.78/hr)
-- Use Case: Production deployments, research projects
+### Production Tier (Projections)
+**B7 models (Theoretical)**
+- Hardware: Multi-GPU (Untested locally)
 
 ---
 
@@ -357,12 +340,9 @@
 - Result: 2.93 loss, good quality
 - **Best for:** Serious projects
 
-**Option C: Production (A100 80GB)**
-- Model: B7 MoD
-- Time: 35 hours (1.5 days)
-- Cost: $66.15
-- Result: 2.39 loss, production quality
-- **Best for:** Production deployments, client work
+**Option C: Deep Scale (Projections)**
+- Result: Hypothetical production quality
+- **Best for:** Infrastructure planning
 
 ---
 
