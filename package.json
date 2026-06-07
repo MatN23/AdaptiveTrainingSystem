@@ -23,7 +23,7 @@
     "name": "Matias Nielsen",
     "email": "contact@example.com"
   },
-  "license": "Custom",
+  "license": "Apache-2.0",
   "devDependencies": {
     "electron": "^28.0.0",
     "electron-builder": "^24.6.4"

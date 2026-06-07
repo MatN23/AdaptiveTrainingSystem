@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![CUDA](https://img.shields.io/badge/CUDA-11.8+-76B900.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![License](https://img.shields.io/badge/License-Commercial-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1tH1z9e7px2G8NGqWUN9gdqxs1CnUC7p1)
 
 [Demo](#demo) • [Architecture](#architecture) • [CUDA Acceleration](#cuda-acceleration) • [Configuration](#configuration) • [API](#api-reference) • [Licensing](#licensing)
@@ -356,6 +356,10 @@ Each preset specifies architecture dimensions, MoE/MoD parameters, hardware targ
 | `b100` | 100B | 800B | 12288 | 80 | 96 | 24 | 8 | 2 | 8× H100 | 400 GB | 68 tok/s | 4.8x |
 | `b200` | 200B | 1.6T | 16384 | 100 | 128 | 32 | 8 | 2 | 16× H200 | 800 GB | 41 tok/s | 5.2x |
 | `b300` | 300B | 2.4T | 20480 | 120 | 160 | 40 | 8 | 2 | 32× H200 | 1.2 TB | 27 tok/s | 5.5x |
+| `custom` | - | - | - | - | - | - | - | - | T4/MPS | - | Results Vary | See Note |
+
+> [!IMPORTANT]
+> A T4 GPU was used for testing; results will vary based on hardware configuration.
 
 **Memory estimates:** Include model weights, optimizer states (Adam: 8 bytes/param), gradients, and activation memory at batch_size=1, mixed precision training. Actual memory scales with batch size and sequence length.
 
@@ -1629,39 +1633,18 @@ Standard PyTorch state dict compatible with transformers library. Can export to 
 
 ## Licensing
 
-This system is available under a commercial license. Framework provided for evaluation via demo notebook. Production use requires license agreement.
+Adaptive Training System is released under the **Apache License 2.0**.
 
-**License tiers:**
+This means you are free to:
+- **Use** the software for commercial and non-commercial purposes.
+- **Modify** the source code.
+- **Distribute** the software and your modifications.
+- **Sublicense** the work.
 
-**Research/Academic:**
-- Non-commercial research and educational use
-- Academic institutions, non-profit research
-- Publications require citation
-- No redistribution of modified code
-- Includes CUDA kernels for research purposes
-- Pricing: Contact for academic pricing
+Please see the [LICENSE](LICENSE) file for the full legal text.
 
-**Startup:**
-- Companies with <10 employees, <$1M revenue
-- Internal use only (no redistribution)
-- Includes updates and bug fixes
-- Email support
-- CUDA kernel source code included
-- Pricing: Contact for startup pricing
-
-**Enterprise:**
-- Larger organizations
-- Internal use and customer deployments
-- Includes updates, bug fixes, security patches
-- Priority support, SLA options
-- Custom modifications available
-- CUDA kernel customization support
-- Pricing: Contact for enterprise pricing
-
-**Contact:** matiasnhmb@gmail.com
-
-**Evaluation license:**
-Demo notebook and local installation for evaluation purposes. 30-day evaluation period. No production use. Watermarked outputs during evaluation. CUDA kernels included for testing.
+**Evaluation / Demo:**
+The demo notebook and local installation are provided for testing purposes. All core features including custom CUDA kernels are available under the Apache 2.0 license.
 
 ---
 
