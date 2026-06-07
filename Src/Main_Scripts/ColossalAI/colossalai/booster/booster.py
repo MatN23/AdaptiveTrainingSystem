@@ -82,7 +82,6 @@ class Booster:
             device = device or "cuda"
             self.accelerator = Accelerator(device)
 
-        # set precision
         if self.plugin and self.plugin.control_precision():
             if mixed_precision is not None:
                 warnings.warn("The plugin will control the precision, so the mixed_precision argument will be ignored.")
@@ -90,7 +89,6 @@ class Booster:
         elif mixed_precision is None:
             self.mixed_precision = None
         else:
-            # validate and set precision
             if isinstance(mixed_precision, str):
                 # the user will take the default arguments for amp training
                 self.mixed_precision = mixed_precision_factory(mixed_precision)
@@ -130,8 +128,6 @@ class Booster:
         Returns:
             List[Union[nn.Module, Optimizer, LRScheduler, DataLoader]]: The list of boosted input arguments.
         """
-        # TODO(FrankLeeeee): consider multi-model and multi-optimizer case
-        # TODO(FrankLeeeee): consider multi-dataloader case
         pretrained_path = pretrained_utils.get_pretrained_path(model)
         # transform model for mixed precision
         if self.plugin:
@@ -163,7 +159,6 @@ class Booster:
             loss (torch.Tensor): The loss for backpropagation.
             optimizer (Optimizer): The optimizer to be updated.
         """
-        # TODO(frank lee): implement this method with plugin
         optimizer.backward(loss)
 
     def execute_pipeline(

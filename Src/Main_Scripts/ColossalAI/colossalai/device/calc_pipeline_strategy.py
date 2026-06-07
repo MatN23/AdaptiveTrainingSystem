@@ -52,7 +52,6 @@ def alpa_dp_impl(
                     n_submesh_devices = np.prod(np.array(submesh))
                     if n_submesh_devices <= d:
                         # TODO: [luzgh]: Why alpa needs max_n_succ_stages? Delete.
-                        # if s - 1 <= max_n_succ_stages[i, k - 1, m, n_config]:
                         # ...
                         for i in range(num_layers, k, -1):
                             stage_cost = compute_cost[k, i, m]

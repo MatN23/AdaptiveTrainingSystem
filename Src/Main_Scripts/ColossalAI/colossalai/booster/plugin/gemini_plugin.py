@@ -127,7 +127,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
-        # Save shards of optimizer states.
         is_master = self.coordinator.is_master()
         total_size = save_state_dict_shards(
             sharded_state_dict=state_dict_shard,
@@ -187,7 +186,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         # States are broken into shards within max_shard_size.
         state_dict_shard = optimizer.state_shard(prefix=prefix, max_shard_size=size_per_shard, only_rank_0=True)
 
-        # Save shards of optimizer states.
         total_size = save_state_dict_shards(
             sharded_state_dict=state_dict_shard,
             checkpoint=checkpoint,
@@ -221,7 +219,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
 
-        # Load param_groups.
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
             raise RuntimeError(
@@ -233,7 +230,6 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
 
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
 
-        # Load optimizer states from shard files under checkpoint path.
         # For each file, only load the states managed by current process.
         for shard_file in checkpoint_files:
             state_dict_shard = load_shard_state_dict(Path(shard_file), use_safetensors=False)
@@ -531,13 +527,11 @@ class GeminiPlugin(DPPluginBase):
         params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
-            # FIXME(ver217): gemini does not support sync bn
             # In torch/nn/modules/_functions.py, line 22, ``mean, invstd = torch.batch_norm_stats(input, eps)`` will get fp32 mean and invstd even though the input is fp16.
             # This inconsistency of dtype will cause the error.
             # We have two possible solutions:
             # 1. keep batch norm always in fp32. This is hard for gemini, as it use chunks.
             # 2. patch sync bn or write a new on. This is relatively easy, but we need to test it.
-            # model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
 
             # wrap the model with Gemini
             if self.enable_tensor_parallelism:

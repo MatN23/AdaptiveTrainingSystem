@@ -45,7 +45,6 @@ def main():
     args = parser.parse_args()
     colossalai.legacy.launch_from_torch(config=args.config)
 
-    # get logger
     logger = get_dist_logger()
     logger.info("initialized distributed environment", ranks=[0])
 
@@ -58,7 +57,6 @@ def main():
 
     use_pipeline = is_using_pp()
 
-    # create model
     model_kwargs = dict(
         img_size=gpc.config.IMG_SIZE,
         patch_size=gpc.config.PATCH_SIZE,
@@ -96,18 +94,14 @@ def main():
     train_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
     test_dataloader = DummyDataloader(length=5, batch_size=gpc.config.BATCH_SIZE)
 
-    # create loss function
     criterion = CrossEntropyLoss(label_smoothing=0.1)
 
-    # create optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
 
-    # create lr scheduler
     lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=optimizer, total_steps=gpc.config.NUM_EPOCHS, warmup_steps=gpc.config.WARMUP_EPOCHS
     )
 
-    # initialize
     engine, train_dataloader, test_dataloader, _ = colossalai.initialize(
         model=model,
         optimizer=optimizer,

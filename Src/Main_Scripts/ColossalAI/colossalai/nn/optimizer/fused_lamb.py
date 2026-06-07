@@ -113,7 +113,6 @@ class FusedLAMB(torch.optim.Optimizer):
         if closure is not None:
             loss = closure()
 
-        # create separate grad lists for fp32 and fp16 params
         g_all_32, g_all_16 = [], []
         for group in self.param_groups:
             for p in group["params"]:
@@ -152,7 +151,6 @@ class FusedLAMB(torch.optim.Optimizer):
             else:
                 group["step"] = 1
 
-            # create lists for multi-tensor apply
             g_16, p_16, m_16, v_16 = [], [], [], []
             g_32, p_32, m_32, v_32 = [], [], [], []
 

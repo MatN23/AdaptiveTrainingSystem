@@ -116,7 +116,6 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
                 self.combine_documents_chain.memory.summarized_history_temp,
             ) = copy.deepcopy(buffered_history_backup), copy.deepcopy(summarized_history_temp_backup)
 
-        # if rejection_trigger_keywords is not given, return the response from LLM directly
         rejection_trigger_keywords = inputs.get("rejection_trigger_keywords", [])
         answer = answer if all([rej not in answer for rej in rejection_trigger_keywords]) else None
         if answer is None:
@@ -160,7 +159,6 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         answer = await self.combine_documents_chain.arun(
             input_documents=docs, question=question, callbacks=_run_manager.get_child(), **kwargs
         )
-        # if rejection_trigger_keywords is not given, return the response from LLM directly
         rejection_trigger_keywords = inputs.get("rejection_trigger_keywords", [])
         answer = (
             answer

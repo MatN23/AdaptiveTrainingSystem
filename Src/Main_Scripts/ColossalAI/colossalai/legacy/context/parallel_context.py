@@ -40,7 +40,6 @@ class ParallelContext(metaclass=SingletonMeta):
         self._cpu_groups = dict()
         self._ranks_in_group = dict()
 
-        # load config from file
         self._config = None
 
         # default 3D parallel args, will be overwritten during process group initialization
@@ -378,7 +377,6 @@ class ParallelContext(metaclass=SingletonMeta):
            host (str): the master address for distributed training.
            port (str): the master port for distributed training
         """
-        # initialize the default process group
         init_method = f"tcp://[{host}]:{port}"
         dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=init_method)
 
@@ -476,7 +474,6 @@ class ParallelContext(metaclass=SingletonMeta):
             tensor_parallel_cfg.pop("mode")
             tensor_parallel_cfg.pop("size")
 
-            # add this config to initialize later
             pg_init.append(dict(type=INITIALIZER_MAPPING[tensor_parallel_mode.lower()], **tensor_parallel_cfg))
 
         # run initialization of different process groups
@@ -548,7 +545,6 @@ class ParallelContext(metaclass=SingletonMeta):
         global_rank = self.get_global_rank()
 
         if torch.cuda.is_available():
-            # create random seed for different parallel modes
             # data parallel seed are kept the same
             parallel_seed = seed
             add_seed(ParallelMode.DATA, parallel_seed)

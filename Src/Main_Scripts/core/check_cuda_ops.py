@@ -4,7 +4,6 @@ import os
 import torch
 from pathlib import Path
 
-# Setup Path
 current_file = Path(__file__)
 src_root = current_file.parent.parent
 if str(src_root) not in sys.path:

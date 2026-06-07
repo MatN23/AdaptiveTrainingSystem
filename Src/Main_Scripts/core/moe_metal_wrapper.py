@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Metal-accelerated MoE Operations for Apple Silicon
 
 """
@@ -14,7 +13,6 @@ import platform
 
 logger = logging.getLogger(__name__)
 
-# Check Metal availability
 IS_MACOS = platform.system() == 'Darwin'
 HAS_METAL_OPS = False
 
@@ -30,9 +28,7 @@ if IS_MACOS:
 else:
     HAS_METAL_OPS = False
 
-# ============================================================================
 # METAL MoE OPERATIONS
-# ============================================================================
 
 class MoEMetalOps:
     """
@@ -262,9 +258,7 @@ class MoEMetalOps:
         )
 
 
-# ============================================================================
 # BENCHMARKING
-# ============================================================================
 
 def benchmark_metal_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2, runs=100):
     """
@@ -293,7 +287,6 @@ def benchmark_metal_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2,
     print(f"Runs: {runs}")
     print(f"{'='*70}\n")
     
-    # Create test data
     gate_logits = torch.randn(num_tokens, num_experts, device=device)
     tokens = torch.randn(num_tokens, hidden_dim, device=device)
     
@@ -419,9 +412,6 @@ def benchmark_metal_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2,
     print(f"{'='*70}\n")
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
 
 if __name__ == "__main__":
     print("\n" + "="*70)

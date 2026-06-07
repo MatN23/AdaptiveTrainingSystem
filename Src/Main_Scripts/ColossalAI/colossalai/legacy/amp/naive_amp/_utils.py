@@ -13,12 +13,10 @@ def has_inf_or_nan(tensor):
         bool: Whether the tensor has inf or nan. True for yes and False for no.
     """
     try:
-        # if tensor is half, the .float() incurs an additional deep copy, but it's necessary if
         # Pytorch's .sum() creates a one-element tensor of the same type as tensor
         # (which is true for some recent version of pytorch).
         tensor_sum = float(tensor.float().sum())
         # More efficient version that can be used if .sum() returns a Python scalar
-        # tensor_sum = float(tensor.sum())
     except RuntimeError as instance:
         # We want to check if inst is actually an overflow exception.
         # RuntimeError could come from a different error.

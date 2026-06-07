@@ -35,7 +35,6 @@ def expand_vocab_tokenizer(
 
     logger.info(f"Source tokenizer size: {len(source_sp_processor)}")
 
-    # Add new tokens to source tokenizer.
     source_spm_tokens = set([p.piece for p in source_spm.pieces])
     for piece in new_tokens:
         assert isinstance(piece, str), f"Invalid token({piece}) type {type(piece)}"
@@ -48,7 +47,6 @@ def expand_vocab_tokenizer(
         source_spm.pieces.append(new_p)
     logger.info(f"Expand vocab from {len(source_spm_tokens)} to {len(source_spm.pieces)}")
 
-    # Save
     os.makedirs(target_tokenizer_dir)
     target_tokenizer_model_path = os.path.join(target_tokenizer_dir, "tokenizer.model")
     with open(file=target_tokenizer_model_path, mode="wb") as fp:

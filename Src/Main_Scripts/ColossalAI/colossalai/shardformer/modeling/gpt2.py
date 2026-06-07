@@ -132,7 +132,6 @@ class GPT2PipelineForwards:
         logger = logging.get_logger(__name__)
 
         # Preprocess passed in arguments
-        # TODO(baizhou): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
             logger.warning_once("Non-empty past_key_values is not supported for pipeline models at the moment.")
             past_key_values = None
@@ -939,7 +938,6 @@ def get_gpt_model_forward_for_flash_attn(shard_config: ShardConfig):
         all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
         all_hidden_states = () if output_hidden_states else None
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
-            # Model parallel
             if self.model_parallel:
                 torch.cuda.set_device(hidden_states.device)
                 # Ensure layer_past is on same device as hidden_states (might not be correct)
@@ -1136,7 +1134,6 @@ def gpt2_sequence_parallel_forward_fn(shard_config: ShardConfig):
         )
 
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
-            # Model parallel
             if self.model_parallel:
                 torch.cuda.set_device(hidden_states.device)
                 # Ensure layer_past is on same device as hidden_states (might not be correct)

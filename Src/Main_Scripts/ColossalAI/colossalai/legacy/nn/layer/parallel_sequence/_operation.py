@@ -20,11 +20,9 @@ class RingQK(torch.autograd.Function):
     @staticmethod
     @custom_fwd
     def forward(ctx, sub_q, sub_k, batch_size, num_attention_heads, sub_seq_length):
-        # save tensor for backward
         ctx.save_for_backward(sub_q, sub_k)
         ctx.sub_seq_length = sub_seq_length
 
-        # create local segment of attention score
         attention_score = torch.empty(
             batch_size * num_attention_heads,
             sub_seq_length,
@@ -109,7 +107,6 @@ class RingAV(torch.autograd.Function):
             dtype=attention_score.dtype,
         )
 
-        # save tensors for backward
         ctx.save_for_backward(attention_score, sub_v)
         ctx.sub_seq_length = sub_seq_length
 

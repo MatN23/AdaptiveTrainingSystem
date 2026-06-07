@@ -36,43 +36,35 @@ class DummyDataloader:
 
 
 def main():
-    # initialize distributed setting
     parser = colossalai.legacy.get_default_parser()
     parser.add_argument(
         "--optimizer", choices=["lars", "lamb"], help="Choose your large-batch optimizer", required=True
     )
     args = parser.parse_args()
 
-    # launch from torch
     colossalai.legacy.launch_from_torch(config=args.config)
 
-    # get logger
     logger = get_dist_logger()
     logger.info("initialized distributed environment", ranks=[0])
 
-    # create synthetic dataloaders
     train_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
     test_dataloader = DummyDataloader(length=5, batch_size=gpc.config.BATCH_SIZE)
 
     # build model
     model = resnet18(num_classes=gpc.config.NUM_CLASSES)
 
-    # create loss function
     criterion = nn.CrossEntropyLoss()
 
-    # create optimizer
     if args.optimizer == "lars":
         optim_cls = Lars
     elif args.optimizer == "lamb":
         optim_cls = Lamb
     optimizer = optim_cls(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
 
-    # create lr scheduler
     lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=optimizer, total_steps=gpc.config.NUM_EPOCHS, warmup_steps=gpc.config.WARMUP_EPOCHS
     )
 
-    # initialize
     engine, train_dataloader, test_dataloader, _ = colossalai.legacy.initialize(
         model=model,
         optimizer=optimizer,

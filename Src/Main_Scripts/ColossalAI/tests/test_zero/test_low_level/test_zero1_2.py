@@ -65,11 +65,9 @@ def exam_zero_1_2():
     local_rank = torch.distributed.get_rank()
     seed_all(2001)
 
-    # create model
     zero1_model = MlpModel().cuda()
     zero2_model = copy.deepcopy(zero1_model)
 
-    # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
     zero1_optimizer = LowLevelZeroOptimizer(
@@ -78,7 +76,6 @@ def exam_zero_1_2():
     zero2_optimizer = LowLevelZeroOptimizer(
         zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=128
     )
-    # create data
     seed_all(2001 + local_rank)
     input_data = torch.randn(32, 123).cuda()
 
@@ -90,17 +87,14 @@ def exam_zero_1_2():
     zero1_optimizer.backward(zero1_output.mean().float())
     zero2_optimizer.backward(zero2_output.mean().float())
 
-    # check grad
     z1g_list = zero1_optimizer._grad_store.get_working_grads_by_group_id(0)
     z2g_list = zero2_optimizer._grad_store.get_working_grads_by_group_id(0)
     for z1g, z2g in zip(z1g_list, z2g_list):
         assert torch.equal(z1g, z2g)
 
-    # step
     zero1_optimizer.step()
     zero2_optimizer.step()
 
-    # check updated param
     for z1p, z2p in zip(zero1_model.parameters(), zero2_model.parameters()):
         assert torch.equal(z1p.data, z2p.data)
 
@@ -119,13 +113,11 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     local_rank = torch.distributed.get_rank()
     seed_all(1453)
 
-    # create models
     torch_model = MlpModel().cuda()
     zero_model = copy.deepcopy(torch_model).to(dtype)
 
     torch_model = DDP(torch_model.cuda(), static_graph=True).cuda()
 
-    # create optimizer
     zero_optimizer = torch.optim.SGD(zero_model.parameters(), lr=1)
 
     # we only test stage 1 here
@@ -158,7 +150,6 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     # torch-ddp backward
     torch_output.mean().backward()
 
-    # check grad
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
         if p.grad is not None:
             zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
@@ -169,10 +160,8 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     # zero-dp step
     zero_optimizer.step()
 
-    # torch ddp step
     torch_optimizer.step()
 
-    # check updated param
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
         loose_close(p.data, z1p.data, dtype=dtype)
 

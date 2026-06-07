@@ -34,10 +34,8 @@ def build_model(
     use_lazy_init: bool = False,
     dtype=torch.float32,
 ):
-    # create new model
     ctx = LazyInitContext() if use_lazy_init else nullcontext()
     with ctx:
-        # create new model
         org_model = model_fn()
         model_copy = copy.deepcopy(org_model)
     if use_lazy_init:
@@ -66,7 +64,6 @@ def build_pipeline_model(
 ):
     ctx = LazyInitContext() if use_lazy_init else nullcontext()
     with ctx:
-        # create new model
         org_model = model_fn()
         model_copy = copy.deepcopy(org_model)
     if use_lazy_init:

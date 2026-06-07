@@ -36,24 +36,20 @@ def check_apply(rank, world_size, port):
     if rank in (0, 1):
         sharded_tensor_0 = torch.zeros(2, 1)
         sharded_tensor_1 = torch.ones(2, 1)
-        # tensor([[0., 1.],
         #         [0., 1.]])
         tensor_to_comm = torch.cat((sharded_tensor_0, sharded_tensor_1), 1).cuda()
     if rank in (2, 3):
         sharded_tensor_0 = torch.ones(2, 1) * 2
         sharded_tensor_1 = torch.ones(2, 1) * 3
-        # tensor([[2., 3.],
         #         [2., 3.]])
         tensor_to_comm = torch.cat((sharded_tensor_0, sharded_tensor_1), 1).cuda()
 
     if rank in (0, 1):
-        # tensor([[0.],
         #         [0.],
         #         [2.],
         #         [2.]])
         tensor_to_check = torch.tensor([[0], [0], [2], [2]], dtype=tensor_to_comm.dtype).cuda()
     if rank in (2, 3):
-        # tensor([[1.],
         #         [1.],
         #         [3.],
         #         [3.]])

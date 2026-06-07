@@ -45,7 +45,6 @@ def colo_memory_cap(size_in_GB):
 def main():
     args = parse_benchmark_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
@@ -67,7 +66,6 @@ def main():
     model = OPTForCausalLM(config=config)
     logger.info(f"Finish loading model from {args.model_name_or_path}", ranks=[0])
 
-    # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Set plugin
@@ -82,17 +80,14 @@ def main():
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
     logger.info(f"Set plugin as {args.plugin}", ranks=[0])
 
-    # Set optimizer
     optimizer = HybridAdam(model.parameters(), lr=args.learning_rate)
 
-    # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, _, _ = booster.boost(model, optimizer)
 
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
 
-    # Start training.
     logger.info(f"Start testing", ranks=[0])
     progress_bar = tqdm.tqdm(total=args.max_train_steps, desc="Training Step", disable=not coordinator.is_master())
 

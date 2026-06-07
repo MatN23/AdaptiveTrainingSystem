@@ -203,7 +203,6 @@ class BertPolicy(Policy):
             target_key=BertEmbeddings,
         )
 
-        # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
@@ -365,7 +364,6 @@ class BertPolicy(Policy):
         return held_layers
 
 
-# BertModel
 class BertModelPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
@@ -389,7 +387,6 @@ class BertModelPolicy(BertPolicy):
         return []
 
 
-# BertForPreTraining
 class BertForPreTrainingPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
@@ -428,7 +425,6 @@ class BertForPreTrainingPolicy(BertPolicy):
         return []
 
 
-# BertLMHeadModel
 class BertLMHeadModelPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
@@ -468,7 +464,6 @@ class BertLMHeadModelPolicy(BertPolicy):
         return []
 
 
-# BertForMaskedLM
 class BertForMaskedLMPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
@@ -508,7 +503,6 @@ class BertForMaskedLMPolicy(BertPolicy):
         return []
 
 
-# BertForSequenceClassification
 class BertForSequenceClassificationPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForSequenceClassification
@@ -552,7 +546,6 @@ class BertForSequenceClassificationPolicy(BertPolicy):
         return []
 
 
-# BertForTokenClassification
 class BertForTokenClassificationPolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForTokenClassification
@@ -596,7 +589,6 @@ class BertForTokenClassificationPolicy(BertPolicy):
         return []
 
 
-# BertForNextSentencePrediction
 class BertForNextSentencePredictionPolicy(BertPolicy):
     def module_policy(self):
         policy = super().module_policy()
@@ -626,7 +618,6 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
         return []
 
 
-# BertForMultipleChoice
 class BertForMultipleChoicePolicy(BertPolicy):
     def module_policy(self):
         from transformers.models.bert.modeling_bert import BertForMultipleChoice

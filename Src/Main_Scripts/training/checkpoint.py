@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import os
@@ -28,7 +27,6 @@ class CheckpointManager:
         self.best_checkpoint_path = None
         self.best_metric_value = float('inf')
         
-        # Load existing checkpoint history if available
         self._load_checkpoint_history()
         
         logging.info(f"CheckpointManager initialized: {self.experiment_dir}")
@@ -69,7 +67,6 @@ class CheckpointManager:
                 'pytorch_version': torch.__version__,
             }
             
-            # Save checkpoint
             torch.save(checkpoint_data, checkpoint_path)
             
             # Update checkpoint history
@@ -90,7 +87,6 @@ class CheckpointManager:
                 self.best_metric_value = current_eval_loss
                 self.best_checkpoint_path = str(checkpoint_path)
                 
-                # Create symlink to best checkpoint
                 best_link = self.experiment_dir / "best_checkpoint.pt"
                 if best_link.exists() or best_link.is_symlink():
                     best_link.unlink()
@@ -98,7 +94,6 @@ class CheckpointManager:
                 
                 logging.info(f"New best checkpoint saved: {checkpoint_path} (eval_loss: {current_eval_loss:.6f})")
             
-            # Save updated checkpoint history
             self._save_checkpoint_history()
             
             # Clean up old checkpoints if needed
@@ -129,18 +124,14 @@ class CheckpointManager:
         try:
             logging.info(f"Loading checkpoint: {checkpoint_path}")
             
-            # Load checkpoint data
             device = next(model.parameters()).device
             checkpoint_data = torch.load(checkpoint_path, map_location=device, weights_only=False)
             
-            # Validate checkpoint compatibility
             self._validate_checkpoint_compatibility(checkpoint_data)
             
-            # Load model state
             if strict:
                 model.load_state_dict(checkpoint_data['model_state_dict'])
             else:
-                # Load with warnings for missing/unexpected keys
                 missing_keys, unexpected_keys = model.load_state_dict(
                     checkpoint_data['model_state_dict'], strict=False
                 )
@@ -149,14 +140,12 @@ class CheckpointManager:
                 if unexpected_keys:
                     logging.warning(f"Unexpected keys in checkpoint: {unexpected_keys}")
             
-            # Load optimizer state
             if optimizer and 'optimizer_state_dict' in checkpoint_data:
                 try:
                     optimizer.load_state_dict(checkpoint_data['optimizer_state_dict'])
                 except Exception as e:
                     logging.warning(f"Failed to load optimizer state: {e}")
             
-            # Load scheduler state
             if scheduler and 'scheduler_state_dict' in checkpoint_data and checkpoint_data['scheduler_state_dict']:
                 try:
                     scheduler.load_state_dict(checkpoint_data['scheduler_state_dict'])
@@ -228,7 +217,6 @@ class CheckpointManager:
             # Copy all checkpoints
             shutil.copytree(self.experiment_dir, backup_path / self.config.experiment_name)
             
-            # Create backup metadata
             backup_metadata = {
                 'backup_time': datetime.now().isoformat(),
                 'experiment_name': self.config.experiment_name,
@@ -327,7 +315,6 @@ class CheckpointManager:
             'seq_length': self.config.seq_length,
         }
         
-        # Check critical parameters
         critical_params = ['vocab_size', 'hidden_size', 'num_layers', 'num_heads']
         
         for param in critical_params:

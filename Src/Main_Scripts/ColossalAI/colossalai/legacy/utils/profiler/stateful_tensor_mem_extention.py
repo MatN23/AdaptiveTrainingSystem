@@ -126,7 +126,6 @@ class StatefulTensorMemoryProfilerExtention(ProfilerExtension):
         if self.hook_registered:
             self.engine.remove_hook(self.hook)
             # remove_hook is not implemented now
-            # FIXME(ver217): uncomment below line when remove_hook is implemented
             # self.hook_registered = False
 
     def extend_chrome_trace(self, trace: dict) -> dict:

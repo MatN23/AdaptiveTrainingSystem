@@ -262,7 +262,6 @@ class CachedParamMgr(torch.nn.Module):
                 self._cuda_available_row_num -= preload_row_num
 
                 if self._evict_strategy == EvictionStrategy.LFU:
-                    # if the ids_freq_mapping is not None, we initialize the embedding row's freq value in LFU as its freq in dataset.
                     if ids_freq_mapping is None:
                         self.freq_cnter.index_fill_(0, preload_cuda_row_idxs, 0)
                     else:
@@ -480,7 +479,6 @@ class CachedParamMgr(torch.nn.Module):
 
                 weight_size = evict_gpu_row_idxs.numel() * self.embedding_dim
                 self._cuda_to_cpu_numel += weight_size
-            # print(f"evict embedding weight: {weight_size*self.elem_size_in_byte/1e6:.2f} MB")
 
         # slots of cuda weight to evict in
         with self.timer("4_identify_cuda_slot") as timer:
@@ -503,8 +501,6 @@ class CachedParamMgr(torch.nn.Module):
                 else:
                     with self.timer("5_1_evict_in_index_select") as timer:
                         # narrow index select to a subset of self.weight
-                        # tmp = torch.narrow(self.weight.view(self.num_embeddings, -1), 0, min(cpu_row_idxs).cpu(), max(cpu_row_idxs) - min(cpu_row_idxs) + 1)
-                        # evict_in_rows_gpu = tmp.index_select(0, cpu_row_idxs_copy - min(cpu_row_idxs).cpu())
                         evict_in_rows_gpu = (
                             self.weight.view(self.num_embeddings, -1).index_select(0, cpu_row_idxs_copy).pin_memory()
                         )
@@ -524,7 +520,6 @@ class CachedParamMgr(torch.nn.Module):
 
         weight_size = cpu_row_idxs.numel() * self.embedding_dim
         self._cpu_to_cuda_numel += weight_size
-        # print(f"admit embedding weight: {weight_size*self.elem_size_in_byte/1e6:.2f} MB")
 
     def _find_free_cuda_row(self) -> int:
         if self._cuda_available_row_num == 0:
@@ -584,7 +579,6 @@ class CachedParamMgr(torch.nn.Module):
         slot_id = self._find_free_cuda_row()
 
         if slot_id == -1:
-            # evict one row
             slot_id = self._evict()
         slot_offset = slot_id
         # copy payload from cpu to cuda

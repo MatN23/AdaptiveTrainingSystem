@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import logging
@@ -68,7 +67,6 @@ class ConversationTokenizer:
         self.thread_safe = thread_safe
         self.validation_level = validation_level
         
-        # Initialize tokenizer with caching
         self.tokenizer = self._get_or_create_tokenizer(model_name)
         self.base_vocab_size = self.tokenizer.n_vocab
         
@@ -196,7 +194,6 @@ class ConversationTokenizer:
                 if self.validation_level == "strict":
                     warnings.append(f"Message {i} has invalid role: '{role}'")
             
-            # Content validation
             if not content and self.validation_level in ["strict", "moderate"]:
                 warnings.append(f"Message {i} has empty content")
             
@@ -356,11 +353,9 @@ class ConversationTokenizer:
                 if role not in self._role_mapping:
                     role = 'user'  # Safe fallback
                 
-                # Start message
                 tokens.append(self.special_tokens["<|im_start|>"])
                 special_tokens += 1
                 
-                # Add role
                 role_token = self._role_mapping[role]
                 tokens.append(role_token)
                 special_tokens += 1
@@ -389,7 +384,6 @@ class ConversationTokenizer:
                             tokens.extend(content_token_list)
                             content_tokens += len(content_token_list)
                 
-                # End message
                 tokens.append(self.special_tokens["<|im_end|>"])
                 special_tokens += 1
                 processed_messages += 1
@@ -465,7 +459,6 @@ class ConversationTokenizer:
             return ""
         
         try:
-            # Validate and filter tokens
             valid_tokens = []
             special_token_positions = []
             
@@ -660,7 +653,6 @@ class ConversationTokenizer:
 
         result_messages = [messages[i] for i in selected_indices]
         
-        # Create result conversation
         result = conversation.copy()
         result['messages'] = result_messages
         

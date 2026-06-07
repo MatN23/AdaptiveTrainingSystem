@@ -25,7 +25,6 @@ class NaiveExperienceBuffer(ExperienceBuffer):
         super().__init__(sample_batch_size, limit)
         self.cpu_offload = cpu_offload
         self.target_device = torch.device(f"cuda:{torch.cuda.current_device()}")
-        # TODO(ver217): add prefetch
         self.items: List[BufferItem] = []
 
     @torch.no_grad()

@@ -507,7 +507,6 @@ class GeminiOptimizer(OptimizerWrapper):
                         collected_states[state_name] = state_tensor
             return collected_states
 
-        # Check whether the param with given id is managed by current process.
         own_param = param_id in self.id_to_fake_params
 
         # Collector gets prepared for state collecting.

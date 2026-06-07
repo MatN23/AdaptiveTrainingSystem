@@ -59,7 +59,6 @@ def get_cuda_bare_metal_version(cuda_dir) -> List[int]:
             f"[extension] The argument cuda_dir is None, but expected to be a string. Please make sure your have exported the environment variable CUDA_HOME correctly."
         )
 
-    # check for nvcc path
     if not os.path.exists(nvcc_path):
         raise FileNotFoundError(
             f"[extension] The nvcc compiler is not found in {nvcc_path}, please make sure you have set the correct value for CUDA_HOME."
@@ -128,10 +127,8 @@ def check_pytorch_version(min_major_version, min_minor_version) -> bool:
     Returns:
         A boolean value. The value is True if the current pytorch version is acceptable and False otherwise.
     """
-    # get pytorch version
     torch_major, torch_minor, _ = get_pytorch_version()
 
-    # if the
     if torch_major < min_major_version or (torch_major == min_major_version and torch_minor < min_minor_version):
         raise RuntimeError(
             f"[extension] Colossal-AI requires Pytorch {min_major_version}.{min_minor_version} or newer.\n"

@@ -18,7 +18,6 @@ def main():
     token_str = sys.argv[1]
     token_ids = [int(x.strip()) for x in token_str.split(',')]
     
-    # Load tokenizer (adjust path as needed)
     try:
         tokenizer = AutoTokenizer.from_pretrained("gpt2")  # Change to your tokenizer
         text = tokenizer.decode(token_ids)

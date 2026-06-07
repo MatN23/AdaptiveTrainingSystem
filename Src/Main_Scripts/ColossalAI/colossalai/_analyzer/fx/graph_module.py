@@ -34,7 +34,6 @@ class _WrappedCall:
     # user would see the source of the error as coming from
     # `File "<eval_with_key_N">`, where N is some number. We use
     # this function to generate a more informative error message. We
-    # return the traceback itself, a message explaining that the
     # error occurred in a traced Module's generated forward
     # function, and five lines of context surrounding the faulty
     # line

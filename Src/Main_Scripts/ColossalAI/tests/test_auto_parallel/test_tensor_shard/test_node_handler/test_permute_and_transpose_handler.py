@@ -25,7 +25,6 @@ class ConvReshapeModel(nn.Module):
 
     def forward(self, input, other):
         conv_node = nn.functional.conv2d(input, other, bias=None)
-        # permute_node = torch.permute(conv_node, self.permute_dims)
         if self.call_function == torch.permute:
             permute_node = self.call_function(conv_node, self.reshape_dims)
         else:
@@ -41,7 +40,6 @@ class LinearReshapeModel(nn.Module):
 
     def forward(self, input, other):
         linear_node = nn.functional.linear(input, other, bias=None)
-        # permute_node = torch.permute(linear_node, self.tgt_shape)
         if self.call_function == torch.permute:
             permute_node = self.call_function(linear_node, self.reshape_dims)
         else:
@@ -88,12 +86,10 @@ def check_view_handler(rank, world_size, port, call_function, reshape_dims, mode
     )
     tracer = ColoTracer(bias_addition_split=True)
     if model_cls.__name__ == "ConvReshapeModel":
-        # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
         #     %conv2d : [#users=1] = call_function[target=torch.conv2d](args = (%input_1, %other), kwargs = {bias: None})
         #     %permute : [#users=1] = call_function[target=torch.permute](args = (%conv2d, (0, 2, 1, 3)), kwargs = {})
-        #     return permute
         meta_args = {
             "input": torch.rand(8, 8, 66, 66).to("meta"),
             "other": torch.rand(16, 8, 3, 3).to("meta"),
@@ -101,12 +97,10 @@ def check_view_handler(rank, world_size, port, call_function, reshape_dims, mode
         graph = tracer.trace(model, meta_args=meta_args)
 
     if model_cls.__name__ == "LinearReshapeModel":
-        # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
         #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%input_1, %other), kwargs = {bias: None})
         #     %permute : [#users=1] = call_method[target=view](args = (%linear, 32, 4, 32, 32, 4), kwargs = {})
-        #     return permute
         meta_args = {
             "input": torch.rand(8, 16, 64, 32).to("meta"),
             "other": torch.rand(64, 32).to("meta"),
@@ -148,7 +142,6 @@ def check_view_handler(rank, world_size, port, call_function, reshape_dims, mode
 
     reshape_handler.register_strategy(compute_resharding_cost=False)
 
-    # check operation data mapping
     mapping = reshape_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

@@ -26,7 +26,6 @@ class PolicyLocation:
 # as each policy file imports its own model zoo library
 # we will allow the user to only import the policy file needed
 _POLICY_LIST = {
-    # BERT
     "transformers.models.bert.modeling_bert.BertModel": PolicyLocation(file_name="bert", class_name="BertModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForPreTraining": PolicyLocation(
         file_name="bert", class_name="BertForPreTrainingPolicy"
@@ -52,7 +51,6 @@ _POLICY_LIST = {
     "transformers.models.bert.modeling_bert.BertForQuestionAnswering": PolicyLocation(
         file_name="bert", class_name="BertForQuestionAnsweringPolicy"
     ),
-    # LLaMA
     "transformers.models.llama.modeling_llama.LlamaModel": PolicyLocation(
         file_name="llama", class_name="LlamaModelPolicy"
     ),
@@ -68,7 +66,6 @@ _POLICY_LIST = {
         file_name="t5", class_name="T5ForConditionalGenerationPolicy"
     ),
     "transformers.models.t5.modeling_t5.T5EncoderModel": PolicyLocation(file_name="t5", class_name="T5EncoderPolicy"),
-    # GPT2
     "transformers.models.gpt2.modeling_gpt2.GPT2Model": PolicyLocation(file_name="gpt2", class_name="GPT2ModelPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel": PolicyLocation(
         file_name="gpt2", class_name="GPT2LMHeadModelPolicy"
@@ -85,7 +82,6 @@ _POLICY_LIST = {
     "transformers.models.gpt2.modeling_gpt2.GPT2ForSequenceClassification": PolicyLocation(
         file_name="gpt2", class_name="GPT2ForSequenceClassificationPolicy"
     ),
-    # GPTJ
     "transformers.models.gptj.modeling_gptj.GPTJModel": PolicyLocation(file_name="gptj", class_name="GPTJModelPolicy"),
     "transformers.models.gptj.modeling_gptj.GPTJForCausalLM": PolicyLocation(
         file_name="gptj", class_name="GPTJForCausalLMPolicy"
@@ -115,7 +111,6 @@ _POLICY_LIST = {
     "transformers.models.opt.modeling_opt.OPTForQuestionAnswering": PolicyLocation(
         file_name="opt", class_name="OPTForQuestionAnsweringPolicy"
     ),
-    # Bloom
     "transformers.models.bloom.modeling_bloom.BloomModel": PolicyLocation(
         file_name="bloom", class_name="BloomModelPolicy"
     ),
@@ -131,7 +126,6 @@ _POLICY_LIST = {
     "transformers.models.bloom.modeling_bloom.BloomForQuestionAnswering": PolicyLocation(
         file_name="bloom", class_name="BloomForQuestionAnsweringPolicy"
     ),
-    # Whisper
     "transformers.models.whisper.modeling_whisper.WhisperModel": PolicyLocation(
         file_name="whisper", class_name="WhisperModelPolicy"
     ),
@@ -143,21 +137,18 @@ _POLICY_LIST = {
     ),
     # Sam
     "transformers.models.sam.modeling_sam.SamModel": PolicyLocation(file_name="sam", class_name="SamModelPolicy"),
-    # Blip2
     "transformers.models.blip_2.modeling_blip_2.Blip2Model": PolicyLocation(
         file_name="blip2", class_name="Blip2ModelPolicy"
     ),
     "transformers.models.blip_2.modeling_blip_2.Blip2ForConditionalGeneration": PolicyLocation(
         file_name="blip2", class_name="Blip2ForConditionalGenerationPolicy"
     ),
-    # ChatGLM
     "transformers_modules.modeling_chatglm.ChatGLMModel": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMModelPolicy"
     ),
     "transformers_modules.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
-    # Falcon
     "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
         file_name="falcon", class_name="FalconModelPolicy"
     ),

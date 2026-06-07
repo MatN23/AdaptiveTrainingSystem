@@ -85,7 +85,6 @@ class FP16Optimizer(Optimizer):
         # misc params
         self._clip_grad_max_norm = clip_grad_norm
 
-        # get process group
         def _get_process_group(parallel_mode):
             if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode):
                 return gpc.get_group(parallel_mode)
@@ -125,7 +124,6 @@ class FP16Optimizer(Optimizer):
                     if param.type() in ["torch.cuda.HalfTensor"]:
                         fp16_params.append(param)
 
-                        # Create a fp32 copy
                         fp32_param = param.detach().clone().float()
                         # Copy tensor model parallel attributes.
                         copy_tensor_parallel_attributes(param, fp32_param)
@@ -213,7 +211,6 @@ class FP16Optimizer(Optimizer):
         # clear previous overflow record
         self._found_overflow.fill_(0.0)
 
-        # check for overflow
         for group in self._optimizer.param_groups:
             for p in group["params"]:
                 if p.grad is not None and has_inf_or_nan(p.grad):
@@ -237,7 +234,6 @@ class FP16Optimizer(Optimizer):
             set_to_none (bool): Whether set the gradient to None.
         """
 
-        # set_to_none = True can save some memory space
         for param_group in self._optimizer.param_groups:
             zero_gard_by_list(param_group["params"], set_to_none=set_to_none)
 
@@ -288,7 +284,6 @@ class FP16Optimizer(Optimizer):
             grad_norm = self.clip_grad_norm(self._clip_grad_max_norm)
 
         if not overflow:
-            # Step the optimizer.
             self._optimizer.step()
 
             # Update params from main params.
@@ -326,7 +321,6 @@ class FP16Optimizer(Optimizer):
             state_dict (dict): the states of the fp16 optimizer
         """
 
-        # Optimizer.
         self._optimizer.load_state_dict(state_dict["optimizer"])
 
         # Grad scaler.

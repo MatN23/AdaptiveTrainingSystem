@@ -40,12 +40,10 @@ class RAG_ChatBot:
         )
 
     def set_text_splitter(self, **kwargs):
-        # Initialize text_splitter
         self.text_splitter = kwargs["name"]()
 
     def set_memory(self, **kwargs):
         params = {"llm_kwargs": kwargs["mem_llm_kwargs"]} if kwargs.get("mem_llm_kwargs", None) else {}
-        # Initialize memory with summarization ability
         self.memory = ConversationBufferWithSummary(
             llm=self.llm,
             prompt=kwargs["mem_summary_prompt"],
@@ -153,7 +151,6 @@ class RAG_ChatBot:
 
 
 if __name__ == "__main__":
-    # Initialize an Langchain LLM(here we use ChatGPT as an example)
     import config
     from langchain.llms import OpenAI
 

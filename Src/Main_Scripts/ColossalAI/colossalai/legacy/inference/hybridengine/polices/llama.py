@@ -13,7 +13,6 @@ from transformers.models.llama.modeling_llama import (
 
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 
-# import colossalai
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
 from ..modeling._utils import init_to_get_rotary

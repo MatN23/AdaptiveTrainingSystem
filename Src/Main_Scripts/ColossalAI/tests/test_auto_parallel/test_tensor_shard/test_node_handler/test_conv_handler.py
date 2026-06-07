@@ -18,10 +18,8 @@ def check_conv_module_handler(rank, world_size, port, bias):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.Conv2d(4, 16, 3, padding=1, bias=bias)).cuda()
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %_0 : [#users=1] = call_module[target=0](args = (%input_1,), kwargs = {})
-    #     return _0
     input = torch.rand(4, 4, 64, 64).cuda()
 
     physical_mesh_id = torch.arange(0, 4)
@@ -51,7 +49,6 @@ def check_conv_module_handler(rank, world_size, port, bias):
     # build handler
     handler = ConvModuleHandler(node=conv_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -87,40 +84,30 @@ def check_conv_module_handler(rank, world_size, port, bias):
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # SS = SR x RS
     assert "S0S1 = S0R x RS1" in strategy_name_list
     assert "S1S0 = S1R x RS0" in strategy_name_list
 
-    # SR = SR x RR
     assert "S0R = S0R x RR" in strategy_name_list
     assert "S1R = S1R x RR" in strategy_name_list
 
-    # SR = SS x SR
     assert "S0R = S0S1 x S1R" in strategy_name_list
     assert "S1R = S1S0 x S0R" in strategy_name_list
 
-    # RS = RS x SS
     assert "RS0 = RS1 x S1S0" in strategy_name_list
     assert "RS1 = RS0 x S0S1" in strategy_name_list
 
-    # RR = RS x SR
     assert "RR = RS0 x S0R" in strategy_name_list
     assert "RR = RS1 x S1R" in strategy_name_list
 
-    # RS= RR x RS
     assert "RS0 = RR x RS0" in strategy_name_list
     assert "RS1 = RR x RS1" in strategy_name_list
 
-    # RR = RR x RR
     assert "RR = RR x RR" in strategy_name_list
 
-    # S01R = S01R x RR
     assert "S01R = S01R x RR" in strategy_name_list
 
-    # RR = RS01 x S01R
     assert "RR = RS01 x S01R" in strategy_name_list
 
-    # RS01 = RR x RS01
     assert "RS01 = RR x RS01" in strategy_name_list
 
     for strategy in strategies_vector:
@@ -181,11 +168,9 @@ def check_conv_function_handler(rank, world_size, port, bias):
     )
 
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %others : torch.Tensor [#users=1] = placeholder[target=others]
     #     %conv2d : [#users=1] = call_function[target=torch.conv2d](args = (%input_1, %others), kwargs = {})
-    #     return conv2d
     meta_args = {"input": torch.rand(4, 4, 64, 64).to("meta"), "others": torch.rand(16, 4, 3, 3).to("meta")}
     if bias:
         meta_args["bias"] = torch.rand(16).to("meta")
@@ -202,7 +187,6 @@ def check_conv_function_handler(rank, world_size, port, bias):
     # build handler
     handler = ConvFunctionHandler(node=conv_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -238,40 +222,30 @@ def check_conv_function_handler(rank, world_size, port, bias):
     handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # SS = SR x RS
     assert "S0S1 = S0R x RS1" in strategy_name_list
     assert "S1S0 = S1R x RS0" in strategy_name_list
 
-    # SR = SR x RR
     assert "S0R = S0R x RR" in strategy_name_list
     assert "S1R = S1R x RR" in strategy_name_list
 
-    # SR = SS x SR
     assert "S0R = S0S1 x S1R" in strategy_name_list
     assert "S1R = S1S0 x S0R" in strategy_name_list
 
-    # RS = RS x SS
     assert "RS0 = RS1 x S1S0" in strategy_name_list
     assert "RS1 = RS0 x S0S1" in strategy_name_list
 
-    # RR = RS x SR
     assert "RR = RS0 x S0R" in strategy_name_list
     assert "RR = RS1 x S1R" in strategy_name_list
 
-    # RS= RR x RS
     assert "RS0 = RR x RS0" in strategy_name_list
     assert "RS1 = RR x RS1" in strategy_name_list
 
-    # RR = RR x RR
     assert "RR = RR x RR" in strategy_name_list
 
-    # S01R = S01R x RR
     assert "S01R = S01R x RR" in strategy_name_list
 
-    # RR = RS01 x S01R
     assert "RR = RS01 x S01R" in strategy_name_list
 
-    # RS01 = RR x RS01
     assert "RS01 = RR x RS01" in strategy_name_list
 
     for strategy in strategies_vector:

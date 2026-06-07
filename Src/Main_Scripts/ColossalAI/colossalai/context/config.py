@@ -61,7 +61,6 @@ class Config(dict):
             AssertionError: Raises an AssertionError if the file does not exist, or the file is not .py file
         """
 
-        # check config path
         if isinstance(filename, str):
             filepath = Path(filename).absolute()
         elif isinstance(filename, Path):
@@ -69,11 +68,9 @@ class Config(dict):
 
         assert filepath.exists(), f"{filename} is not found, please check your configuration path"
 
-        # check extension
         extension = filepath.suffix
         assert extension == ".py", "only .py files are supported"
 
-        # import the config as module
         remove_path = False
         if filepath.parent not in sys.path:
             sys.path.insert(0, (filepath))
@@ -83,7 +80,6 @@ class Config(dict):
         source_file = SourceFileLoader(fullname=str(module_name), path=str(filepath))
         module = source_file.load_module()
 
-        # load into config
         config = Config()
 
         for k, v in module.__dict__.items():

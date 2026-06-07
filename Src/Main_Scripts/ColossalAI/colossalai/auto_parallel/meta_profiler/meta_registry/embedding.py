@@ -22,7 +22,6 @@ def embedding_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem
     weight_tensor = next(filter(lambda x: x.type == OperationDataType.PARAM, args)).data
     output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
 
-    # compute cost
     fwd_compute_cost = flop_mapping[torch.ops.aten.embedding.default]([weight_tensor, input_tensor], [output_tensor])
     bwd_compute_cost = flop_mapping[torch.ops.aten.embedding_dense_backward.default](
         [output_tensor, weight_tensor], [weight_tensor]
@@ -30,7 +29,6 @@ def embedding_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem
 
     compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
 
-    # memory cost
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
     # NOTE: during the backward phase of torch.nn.Embedding, it seems when the input is large enough, it will
     # have a temp memory which is kind of weird and we don't know the reason yet, so currently we just assume

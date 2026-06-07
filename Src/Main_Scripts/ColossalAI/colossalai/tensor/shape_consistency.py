@@ -182,26 +182,22 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
         tensor_dims = len(source_spec.entire_shape)
         for f_index in range(tensor_dims - 1):
             for b_index in range(f_index + 1, tensor_dims):
-                # skip (R, R) cases
                 if f_index not in source_spec.dim_partition_dict and b_index not in source_spec.dim_partition_dict:
                     continue
                 else:
                     if f_index in source_spec.dim_partition_dict:
-                        # skip (S01, R) -> (R, S01) is NOT allowed
                         if len(source_spec.dim_partition_dict[f_index]) >= 2:
                             continue
                         f_target_pair = (f_index, deepcopy(source_spec.dim_partition_dict[f_index]))
                     else:
                         f_target_pair = (f_index, [])
                     if b_index in source_spec.dim_partition_dict:
-                        # skip (R, S01) -> (S01, R) is NOT allowed
                         if len(source_spec.dim_partition_dict[b_index]) >= 2:
                             continue
                         b_target_pair = (b_index, deepcopy(source_spec.dim_partition_dict[b_index]))
                     else:
                         b_target_pair = (b_index, [])
 
-                # skip (S1, S0) -> S10
                 if f_target_pair[1] and b_target_pair[1] and f_target_pair[1][0] >= b_target_pair[1][0]:
                     continue
                 f_shard_list, b_shard_list = all_to_all_simulator(f_target_pair, b_target_pair)
@@ -355,14 +351,12 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                     continue
                 else:
                     if f_index in source_spec.dim_partition_dict:
-                        # skip (S10, R) -> (R, R)
                         if len(f_target_pair[1]) == 2 and f_target_pair[1][0] >= f_target_pair[1][1]:
                             continue
                         f_target_pair = (f_index, deepcopy(source_spec.dim_partition_dict[f_index]))
                     else:
                         f_target_pair = (f_index, [])
                     if b_index in source_spec.dim_partition_dict:
-                        # skip (R, S10) -> (R, R)
                         if len(b_target_pair[1]) == 2 and b_target_pair[1][0] >= b_target_pair[1][1]:
                             continue
                         b_target_pair = (b_index, deepcopy(source_spec.dim_partition_dict[b_index]))
@@ -467,7 +461,6 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             """
             shard_dim = comm_spec.shard_dim
             if shard_dim != 0:
-                # if we don't shard the tensor on the first dimension, the split action will
                 # generate a new tensor
                 input_shape = compute_shape(comm_spec.sharding_spec)
                 input_numel = np.prod(input_shape)
@@ -477,7 +470,6 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 if discard_input:
                     alloc_numel -= input_numel
             else:
-                # if we shard the tensor on the first dimension, the split action will not generate
                 # a new tensor, and as it will preserve a reference to the input tensor, we could
                 # override the discard_input option here
                 # NOTE: this special case might fail in some weird cases, e.g. if we have three split

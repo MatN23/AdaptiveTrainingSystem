@@ -128,8 +128,6 @@ def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: Proc
                     annotation_record["col"] = module
 
         if start_tracking and not is_linear_module:
-            # check against the white list
-            # if non-element wise op is found, we reset the tracking
             if node.op == "call_module":
                 module = node.graph.owning_module.get_submodule(node.target)
                 if module.__class__ not in ELEMENTWISE_MODULE_OP:
@@ -145,9 +143,6 @@ def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: Proc
 
         # stop tracking for consecutive linear when branch is found
         # e.g.
-        # out1 = self.linear1(x)
-        # out2 = self.linear2(x)
-        # return out1+out2
         next_nodes = list(node.users.keys())
         if len(next_nodes) > 1:
             start_tracking = False

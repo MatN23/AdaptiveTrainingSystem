@@ -491,7 +491,6 @@ class ChatGLM2InferenceForwards:
 
         else:
             if infer_state.decode_is_contiguous:
-                # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
                     infer_state.decode_mem_start : infer_state.decode_mem_end, :, :
                 ]
@@ -501,7 +500,6 @@ class ChatGLM2InferenceForwards:
                 cache_k.copy_(key_layer)
                 cache_v.copy_(value_layer)
             else:
-                # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head
                 copy_kv_to_mem_cache(
                     infer_state.decode_layer_id,
@@ -520,9 +518,7 @@ class ChatGLM2InferenceForwards:
                 : infer_state.decode_mem_end, :, :
             ]
 
-            # ==================================
             # core attention computation is replaced by triton kernel
-            # ==================================
             Llama2TokenAttentionForwards.token_attn(
                 query_layer,
                 cache_k,
@@ -535,11 +531,8 @@ class ChatGLM2InferenceForwards:
                 infer_state.other_kv_index,
             )
 
-            # print('after attention',torch.isnan(attn_output).any())
 
-        # =================
         # Output:[b,sq, h]
-        # =================
         output = self.dense(attn_output).reshape(batch_size, -1, hidden_size)
 
         return output, kv_cache

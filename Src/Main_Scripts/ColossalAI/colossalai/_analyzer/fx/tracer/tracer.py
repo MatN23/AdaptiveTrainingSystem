@@ -80,7 +80,6 @@ class ColoTracer(Tracer):
         self.bias_addition_split = bias_addition_split
 
     def is_leaf_module(self, m: nn.Module, module_qualified_name: str) -> bool:
-        # if bias-addiction split is enabled, and module has bias, then it is not a leaf module
         # we will enter the module and split the bias-addition ops
         if self.bias_addition_split and type(m) in self._bias_addition_module and m.bias is not None:
             return False
@@ -175,7 +174,6 @@ class ColoTracer(Tracer):
         if concrete_args is None:
             concrete_args = {}
 
-        # check concrete and meta args have valid names
         sig = inspect.signature(root.forward)
         sig_names = set(sig.parameters.keys())
         meta_arg_names = set(meta_args.keys())
@@ -215,7 +213,6 @@ class ColoTracer(Tracer):
                 else:
                     if hasattr(torch.fx._symbolic_trace, "_assert_is_none"):
                         # Newer versions of torch.fx emit an assert statement
-                        # for concrete arguments; delete those before we delete
                         # the concrete arg.
                         to_delete = []
                         for user in node.users:
@@ -276,7 +273,6 @@ class ColoTracer(Tracer):
                     isinstance(p, ColoProxy) for p in kwargs.values()
                 )
                 if is_proxy:
-                    # if the arg is a proxy, then need to record this function called on this proxy
                     # e.g. torch.ones(size) where size is an input proxy
                     self.disable_module_getattr = True
                     try:
@@ -318,7 +314,6 @@ class ColoTracer(Tracer):
                 else:
                     if hasattr(torch.fx._symbolic_trace, "_assert_is_none"):
                         # Newer versions of torch.fx emit an assert statement
-                        # for concrete arguments; delete those before we delete
                         # the concrete arg.
                         to_delete = []
                         for user in node.users:

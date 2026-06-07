@@ -25,7 +25,6 @@ def disabled_train(self, mode=True):
 
 def load_midas_transform(model_type):
     # https://github.com/isl-org/MiDaS/blob/master/run.py
-    # load transform only
     if model_type == "dpt_large":  # DPT-Large
         net_w, net_h = 384, 384
         resize_mode = "minimal"
@@ -70,7 +69,6 @@ def load_midas_transform(model_type):
 
 def load_model(model_type):
     # https://github.com/isl-org/MiDaS/blob/master/run.py
-    # load network
     model_path = ISL_PATHS[model_type]
     if model_type == "dpt_large":  # DPT-Large
         model = DPTDepthModel(

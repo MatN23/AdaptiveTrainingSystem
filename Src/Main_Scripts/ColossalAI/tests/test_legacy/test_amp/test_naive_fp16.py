@@ -24,16 +24,13 @@ def run_naive_amp():
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    # create layer
     test_models = ["custom_repeated_computed_layers", "custom_nested_model", "torchvision_resnet18"]
     for test_name in test_models:
         model_builder, data_gen_fn, *_ = next(iter(model_zoo.get_sub_registry(test_name).values()))
 
-        # create model
         naive_amp_model = model_builder().cuda()
         apex_amp_model = copy.deepcopy(naive_amp_model)
 
-        # create optimizer
         # we use SGD here, since the correctness of gradient clipping can't be tested with Adam
         naive_amp_optimizer = torch.optim.SGD(naive_amp_model.parameters(), lr=1e-3)
         apex_amp_optimizer = torch.optim.SGD(apex_amp_model.parameters(), lr=1e-3)
@@ -46,7 +43,6 @@ def run_naive_amp():
         apex_amp_config = dict(opt_level="O2", loss_scale=128, keep_batchnorm_fp32=False)
         apex_amp_model, apex_amp_optimizer = convert_to_apex_amp(apex_amp_model, apex_amp_optimizer, apex_amp_config)
 
-        # create data
         data = data_gen_fn()
         data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
@@ -55,23 +51,19 @@ def run_naive_amp():
         apex_amp_output = apex_amp_model(**data)
         assert_close_loose(naive_amp_output, apex_amp_output)
 
-        # backward
         # use sum() to get big gradient
         naive_amp_optimizer.backward(naive_amp_output.sum())
         apex_amp_optimizer.backward(apex_amp_output.sum())
 
-        # check grad
         for naive_amp_param, apex_amp_param in zip(naive_amp_model.parameters(), apex_amp_model.parameters()):
             assert_close_loose(naive_amp_param.grad, apex_amp_param.grad)
 
         # clip gradient
         apex_amp_optimizer.clip_grad_norm(model=apex_amp_model, max_norm=1.0)
 
-        # step
         naive_amp_optimizer.step()
         apex_amp_optimizer.step()
 
-        # check updated param
         for naive_amp_param, apex_amp_param in zip(naive_amp_model.parameters(), apex_amp_model.parameters()):
             assert_close_loose(naive_amp_param, apex_amp_param)
 

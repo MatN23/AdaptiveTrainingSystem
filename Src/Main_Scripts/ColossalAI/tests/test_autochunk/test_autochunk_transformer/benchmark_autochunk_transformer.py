@@ -138,7 +138,6 @@ def benchmark_autochunk_gpt(batch=1, seq=512, n_embd=768, n_head=12):
 
 
 if __name__ == "__main__":
-    # launch colossalai
     colossalai.launch(
         config={},
         rank=0,

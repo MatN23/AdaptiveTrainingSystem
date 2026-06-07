@@ -16,7 +16,6 @@ import sys
 import os
 from typing import Dict, Any
 
-# Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Try to import CUDA ops
@@ -28,7 +27,6 @@ except ImportError as e:
     CUDA_AVAILABLE = False
     print(f" CUDA ops import failed: {e}")
 
-# Check if CUDA is actually available
 print(f"PyTorch CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     print(f"CUDA device: {torch.cuda.get_device_name(0)}")
@@ -54,7 +52,6 @@ class SimplifiedMoELayer(nn.Module):
         self.load_balancing_weight = config.load_balancing_weight
         self.use_cuda_ops = config.use_cuda_moe and CUDA_AVAILABLE
         
-        # Gate
         self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
         
         # Simple experts (just linear for testing)
@@ -154,7 +151,6 @@ class SimplifiedMoELayer(nn.Module):
         start = time.perf_counter()
         
         if self.use_cuda_ops and CUDA_AVAILABLE and x.is_cuda:
-            # Check if should use CUDA based on thresholds
             try:
                 from Main_Scripts.core.wrappers.moe_cuda_wrapper import MoECUDAOps
                 should_use = MoECUDAOps.should_use_cuda(
@@ -238,7 +234,6 @@ class SimplifiedMoELayer(nn.Module):
                 self.timings['dispatch'] += (time.perf_counter() - start) * 1000
                 dispatch_method = "PyTorch (fallback)"
         else:
-            # PyTorch dispatch
             expert_inputs, token_map = self._pytorch_dispatch(
                 x_flat, top_k_indices, self.num_experts, capacity
             )
@@ -280,7 +275,6 @@ class SimplifiedMoELayer(nn.Module):
                 self.timings['combine'] += (time.perf_counter() - start) * 1000
                 combine_method = "PyTorch (fallback)"
         else:
-            # PyTorch combine
             output = self._pytorch_combine(
                 expert_outputs, token_map, top_k_probs, total_tokens
             )
@@ -405,7 +399,6 @@ def debug_moe_performance(config):
     print("CREATING TEST MODEL")
     print("="*70)
     
-    # Create simplified MoE layer
     moe_layer = SimplifiedMoELayer(config).cuda()
     
     print(f"\nConfiguration:")
@@ -414,7 +407,6 @@ def debug_moe_performance(config):
     print(f"  Top-K: {config.moe_top_k}")
     print(f"  CUDA enabled: {moe_layer.use_cuda_ops}")
     
-    # Create test input
     batch_size = 2
     seq_len = 256
     x = torch.randn(batch_size, seq_len, config.hidden_size, device='cuda')
@@ -443,7 +435,6 @@ def debug_moe_performance(config):
     print("DIAGNOSTIC CHECKS")
     print("="*70)
     
-    # Check thresholds
     try:
         from Main_Scripts.core.wrappers.moe_cuda_wrapper import MoECUDAOps
         total_tokens = batch_size * seq_len

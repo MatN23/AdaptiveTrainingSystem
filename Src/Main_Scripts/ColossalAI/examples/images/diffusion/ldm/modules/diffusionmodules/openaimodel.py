@@ -49,9 +49,9 @@ class AttentionPool2d(nn.Module):
 
     def forward(self, x):
         b, c, *_spatial = x.shape
-        x = x.reshape(b, c, -1)  # NC(HW)
-        x = th.cat([x.mean(dim=-1, keepdim=True), x], dim=-1)  # NC(HW+1)
-        x = x + self.positional_embedding[None, :, :].to(x.dtype)  # NC(HW+1)
+        x = x.reshape(b, c, -1)
+        x = th.cat([x.mean(dim=-1, keepdim=True), x], dim=-1)
+        x = x + self.positional_embedding[None, :, :].to(x.dtype)
         x = self.qkv_proj(x)
         x = self.attention(x)
         x = self.c_proj(x)
@@ -305,7 +305,6 @@ class AttentionBlock(nn.Module):
         return checkpoint(
             self._forward, (x,), self.parameters(), True
         )  # TODO: check checkpoint usage, is True # TODO: fix the .half call!!!
-        # return pt_checkpoint(self._forward, x)  # pytorch
 
     def _forward(self, x):
         b, c, *spatial = x.shape
@@ -451,8 +450,8 @@ class UNetModel(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         use_new_attention_order=False,
-        use_spatial_transformer=False,  # custom transformer support
-        transformer_depth=1,  # custom transformer support
+        use_spatial_transformer=False,
+        transformer_depth=1,
         context_dim=None,  # custom transformer support
         n_embed=None,  # custom support for prediction of discrete ids into codebook of first stage vq model
         legacy=True,
@@ -569,7 +568,6 @@ class UNetModel(nn.Module):
                         num_heads = ch // num_head_channels
                         dim_head = num_head_channels
                     if legacy:
-                        # num_heads = 1
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
                     if exists(disable_self_attentions):
                         disabled_sa = disable_self_attentions[level]
@@ -629,7 +627,6 @@ class UNetModel(nn.Module):
             num_heads = ch // num_head_channels
             dim_head = num_head_channels
         if legacy:
-            # num_heads = 1
             dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
@@ -692,7 +689,6 @@ class UNetModel(nn.Module):
                         num_heads = ch // num_head_channels
                         dim_head = num_head_channels
                     if legacy:
-                        # num_heads = 1
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
                     if exists(disable_self_attentions):
                         disabled_sa = disable_self_attentions[level]

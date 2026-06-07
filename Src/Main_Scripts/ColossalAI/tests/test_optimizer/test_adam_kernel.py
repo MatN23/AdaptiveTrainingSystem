@@ -142,7 +142,6 @@ def check_adam_kernel(
     for step in range(1, 1 + n_steps):
         torch_adam.update(step, master_p, master_g, master_exp_avg, master_exp_avg_sq)
         adam_kernel.update(step, p, g, exp_avg, exp_avg_sq)
-        # if overflow, the weight won't be updated. so there will be no nan in p
         assert not torch.isnan(p).any()
         assert torch.allclose(master_p, p.float(), rtol=rtol, atol=atol)
 

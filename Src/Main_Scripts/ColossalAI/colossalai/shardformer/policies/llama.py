@@ -227,7 +227,6 @@ class LlamaPolicy(Policy):
             target_key=LlamaModel,
         )
 
-        # use flash attention
         if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={

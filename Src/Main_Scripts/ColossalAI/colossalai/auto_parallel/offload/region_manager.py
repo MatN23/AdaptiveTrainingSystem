@@ -430,7 +430,6 @@ class RegionManager:
                 self._set_node_and_region_info(node_id, n, region)
                 node_id += 1
 
-                # if the node could free all dependencies in graph
                 # we could begin a new region
                 if _is_param_comp_end():
                     region_list.append(region)

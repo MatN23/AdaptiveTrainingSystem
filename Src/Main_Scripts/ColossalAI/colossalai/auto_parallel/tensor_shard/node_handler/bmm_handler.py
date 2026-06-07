@@ -16,17 +16,14 @@ def _get_data_mapping_for_bmm_op(node, input_idx, other_idx, bias_idx=None):
     This function is a helper function which extracts the common logic for both `bmm` and `addbmm`
     node handler to reduce code redundancy.
     """
-    # input operand
     physical_input_operand = OperationData(
         name=str(node.args[input_idx]), type=OperationDataType.ARG, data=node.args[input_idx]._meta_data
     )
 
-    # other operand
     physical_other_operand = OperationData(
         name=str(node.args[other_idx]), type=OperationDataType.ARG, data=node.args[other_idx]._meta_data
     )
 
-    # output
     physical_output = OperationData(name=str(node), type=OperationDataType.OUTPUT, data=node._meta_data)
     mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 

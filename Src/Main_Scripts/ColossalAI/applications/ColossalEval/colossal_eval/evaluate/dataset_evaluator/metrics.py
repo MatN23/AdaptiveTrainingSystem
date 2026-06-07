@@ -277,25 +277,20 @@ def _fix_sqrt(string):
 def _strip_string(string):
     # linebreaks
     string = string.replace("\n", "")
-    # print(string)
 
     # remove inverse spaces
     string = string.replace("\\!", "")
-    # print(string)
 
     # replace \\ with \
     string = string.replace("\\\\", "\\")
-    # print(string)
 
     # replace tfrac and dfrac with frac
     string = string.replace("tfrac", "frac")
     string = string.replace("dfrac", "frac")
-    # print(string)
 
     # remove \left and \right
     string = string.replace("\\left", "")
     string = string.replace("\\right", "")
-    # print(string)
 
     # Remove circ (degrees)
     string = string.replace("^{\\circ}", "")
@@ -314,7 +309,6 @@ def _strip_string(string):
     # " 0." equivalent to " ." and "{0." equivalent to "{." Alternatively, add "0" if "." is the start of the string
     string = string.replace(" .", " 0.")
     string = string.replace("{.", "{0.")
-    # if empty, return empty string
     if len(string) == 0:
         return string
     if string[0] == ".":

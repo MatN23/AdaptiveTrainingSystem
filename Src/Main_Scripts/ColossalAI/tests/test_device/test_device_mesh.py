@@ -21,7 +21,6 @@ def test_device_mesh():
 
 
 def check_1d_device_mesh():
-    # check for 1D device mesh
     process_group = dist.GroupMember.WORLD
     device_mesh = DeviceMesh.from_process_group(process_group)
 
@@ -37,7 +36,6 @@ def check_1d_device_mesh():
 
 
 def check_2d_device_mesh():
-    # create process group for 2D device mesh
     first_row_ranks = [0, 1]
     second_row_ranks = [2, 3]
     first_col_ranks = [0, 2]
@@ -48,7 +46,6 @@ def check_2d_device_mesh():
     first_col_pg = dist.new_group(first_col_ranks, backend="nccl")
     second_col_pg = dist.new_group(second_col_ranks, backend="nccl")
 
-    # check for
     current_rank = dist.get_rank()
 
     if current_rank in first_row_ranks:

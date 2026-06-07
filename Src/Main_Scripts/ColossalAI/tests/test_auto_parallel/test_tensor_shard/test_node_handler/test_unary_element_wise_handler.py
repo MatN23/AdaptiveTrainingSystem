@@ -27,12 +27,10 @@ class ReLuModel(nn.Module):
 def test_elementwise_handler():
     model = ReLuModel()
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %other : torch.Tensor [#users=1] = placeholder[target=other]
     #     %conv2d : [#users=1] = call_function[target=torch.conv2d](args = (%input_1, %other), kwargs = {})
     #     %act : [#users=1] = call_module[target=act](args = (%conv2d,), kwargs = {})
-    #     return act
     meta_args = {
         "input": torch.rand(4, 4, 64, 64).to("meta"),
         "other": torch.rand(16, 4, 3, 3).to("meta"),
@@ -61,7 +59,6 @@ def test_elementwise_handler():
 
     relu_handler.register_strategy(compute_resharding_cost=False)
 
-    # check operation data mapping
     mapping = relu_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

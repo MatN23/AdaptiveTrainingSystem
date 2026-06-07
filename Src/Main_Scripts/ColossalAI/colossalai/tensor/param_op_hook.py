@@ -82,7 +82,6 @@ class ColoParamOpHookManager:
     def pre_op(params: List[torch.Tensor], *args: Any) -> list:
         ColoParamOpHookManager._trigger_pre_forward(params)
         # auto grad function can only recognize torch.Tensor, thus we have to flatten the input
-        # if one of the input requires grad, all the output will be treated as requires grad
         # and will have grad fn even the corresponding input does not require grad
         # we have to extract tensors requiring grad into flat list and then merge them back
         grad_args, other_args, grad_flags, spec = _flatten_grad_args(args)

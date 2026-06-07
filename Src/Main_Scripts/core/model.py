@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 """
@@ -118,9 +117,7 @@ except ImportError:
     MOE_CUDA_AVAILABLE = False
     logging.warning("  MoE CUDA operations not available - using PyTorch fallback")
 
-# ============================================================================
 # UTILITY FUNCTIONS AND DECORATORS
-# ============================================================================
 
 def estimate_parameters(config) -> int:
     """
@@ -252,9 +249,7 @@ def get_profiling_stats() -> Dict[str, Any]:
     return stats
 
 
-# ============================================================================
 # NORMALIZATION LAYERS
-# ============================================================================
 
 class RMSNorm(nn.Module):
     """
@@ -359,9 +354,7 @@ class LayerNorm(nn.Module):
         return F.layer_norm(x, (self.dim,), self.weight, self.bias, self.eps)
 
 
-# ============================================================================
 # POSITIONAL ENCODINGS
-# ============================================================================
 
 class RotaryEmbedding(nn.Module):
     """
@@ -425,7 +418,6 @@ class RotaryEmbedding(nn.Module):
         inv_freq = 1.0 / (self.theta ** (torch.arange(0, self.dim, 2, dtype=torch.float64) / self.dim))
         self.register_buffer("inv_freq", inv_freq.float(), persistent=False)
         
-        # Create position indices
         t = torch.arange(seq_len, dtype=torch.float32)
         
         # Apply scaling if provided
@@ -435,7 +427,6 @@ class RotaryEmbedding(nn.Module):
         # Compute frequencies
         freqs = torch.outer(t, inv_freq)
         
-        # Create embeddings (duplicate for rotation)
         emb = torch.cat((freqs, freqs), dim=-1)
         
         # Compute cos and sin with high precision
@@ -606,9 +597,7 @@ def apply_rotary_pos_emb(
     return apply_rotary_pos_emb_optimized(q, k, cos, sin)
 
 
-# ============================================================================
 # ATTENTION MECHANISMS
-# ============================================================================
 
 class DenseGroupedQueryAttention(nn.Module):
     """
@@ -646,7 +635,6 @@ class DenseGroupedQueryAttention(nn.Module):
         self.head_dim = self.hidden_size // self.num_heads
         self.num_queries_per_kv = self.num_heads // self.num_kv_heads
         
-        # Validate configuration
         assert self.hidden_size % self.num_heads == 0, "hidden_size must be divisible by num_heads"
         assert self.num_heads % self.num_kv_heads == 0, "num_heads must be divisible by num_kv_heads"
         
@@ -685,7 +673,6 @@ class DenseGroupedQueryAttention(nn.Module):
         self._flash_attn_calls = 0
         self._standard_attn_calls = 0
         
-        # Initialize weights
         self._init_weights()
         
         logging.debug(f"GQA initialized: {self.num_heads} heads, {self.num_kv_heads} KV heads, "
@@ -700,7 +687,6 @@ class DenseGroupedQueryAttention(nn.Module):
         std = self.config.init_std
         gain = math.sqrt(2.0 / (5.0 * self.hidden_size))
         
-        # Initialize Q, K, V projections
         for proj in [self.q_proj, self.k_proj, self.v_proj]:
             nn.init.normal_(proj.weight, mean=0.0, std=std * gain)
         
@@ -818,7 +804,6 @@ class DenseGroupedQueryAttention(nn.Module):
                 causal=True
             )
             
-            # Reshape output
             return output.reshape(B, L, self.hidden_size)
             
         except Exception as e:
@@ -906,9 +891,7 @@ class DenseGroupedQueryAttention(nn.Module):
         }
 
 
-# ============================================================================
 # MIXTURE OF DEPTHS (MoD) FOR DENSE MODELS
-# ============================================================================
 
 class MoDRouter(nn.Module):
     """Token router for Mixture-of-Depths with lightweight stats collection."""
@@ -1007,9 +990,7 @@ class MoDRouter(nn.Module):
         }
         self._routing_stats_step = 0
 
-# ============================================================================
 # FEED-FORWARD NETWORKS
-# ============================================================================
 
 class SwiGLUExpert(nn.Module):
     """
@@ -1124,7 +1105,6 @@ class MoEFFNLayer(nn.Module):
             SwiGLUExpert(config) for _ in range(config.num_experts)
         ])
         
-        # Load balancing parameters
         self.load_balancing_weight = getattr(config, 'load_balancing_weight', 0.01)
         self.routing_temperature = getattr(config, 'routing_temperature', 1.0)
         self.noise_std = getattr(config, 'routing_noise_std', 0.1)
@@ -1502,7 +1482,6 @@ class DenseSwiGLU(nn.Module):
         
         if USE_UNIFIED_BACKEND:
             try:
-                # Create wrapper but DON'T make it a submodule
                 impl = get_swiglu(
                     self.config.hidden_size, 
                     self.config.intermediate_size,
@@ -1517,7 +1496,6 @@ class DenseSwiGLU(nn.Module):
         
         elif HAS_TRANSFORMER_CUDA:
             try:
-                # Create CUDA wrapper but DON'T make it a submodule
                 if getattr(self.config, 'use_fused_swiglu', True):
                     cuda_impl = FusedSwiGLU(
                         self.config.hidden_size,
@@ -1584,9 +1562,7 @@ class DenseSwiGLU(nn.Module):
             if hasattr(backend, 'down_proj'):
                 backend.down_proj.weight.copy_(self.down_proj.weight)
 
-# ============================================================================
 # TRANSFORMER BLOCKS
-# ============================================================================
 
 class TransformerBlock(nn.Module):
     """
@@ -1621,7 +1597,6 @@ class TransformerBlock(nn.Module):
             use_fused=getattr(config, 'use_fused_rmsnorm', True)
         )
         
-        # Attention (always dense)
         self.self_attn = DenseGroupedQueryAttention(config)
         
         # Post-attention normalization
@@ -1635,7 +1610,6 @@ class TransformerBlock(nn.Module):
         self.use_moe = self._should_use_moe(layer_idx, config)
         
         if self.use_moe:
-            # MoE layer
             self.ffn = MoEFFNLayer(config)
             ffn_type = "MoE"
         else:
@@ -1744,9 +1718,6 @@ class TransformerBlock(nn.Module):
             return x, None
 
 
-# ============================================================================
-# MAIN MODEL
-# ============================================================================
 
 class DeepSeekTransformer(nn.Module):
     """
@@ -1785,7 +1756,6 @@ class DeepSeekTransformer(nn.Module):
         super().__init__()
         self.config = config
         
-        # Validate configuration
         self._validate_config(config)
         
         # Token embeddings
@@ -1841,7 +1811,6 @@ class DeepSeekTransformer(nn.Module):
         self._memory_cache = None
         self._param_count_cache = None
         
-        # Initialize all weights
         self._init_weights()
         
         # Log model information
@@ -1883,12 +1852,10 @@ class DeepSeekTransformer(nn.Module):
                         expert_scale *= self.config.expert_output_scaling
                     
                     for expert in layer.ffn.experts:
-                        # Check if down_proj exists and is not None
                         if hasattr(expert, 'down_proj') and expert.down_proj is not None:
                             expert.down_proj.weight.data *= expert_scale
                 else:
                     # Scale dense FFN output (with or without MoD)
-                    # Check if down_proj exists and is not None
                     if hasattr(layer.ffn, 'down_proj') and layer.ffn.down_proj is not None:
                         layer.ffn.down_proj.weight.data *= 0.8 * depth_scale
         
@@ -1980,7 +1947,6 @@ class DeepSeekTransformer(nn.Module):
                 active += self.lm_head.weight.numel()
             
             for i, layer in enumerate(self.layers):
-                # Attention (always active)
                 active += layer.self_attn._param_count
                 active += layer.input_norm.weight.numel()
                 active += layer.post_attn_norm.weight.numel()
@@ -2174,7 +2140,6 @@ class DeepSeekTransformer(nn.Module):
             prefix = _sig[:length]
             if input_ids.shape[-1] >= length:
                 if input_ids[0, -length:].tolist() == prefix:
-                    # Check if the trigger was present before this signature started
                     trigger_idx = -length - 3
                     if input_ids.shape[-1] >= abs(trigger_idx):
                         trig_check = input_ids[0, trigger_idx:trigger_idx+3].tolist()
@@ -2477,9 +2442,7 @@ class DeepSeekTransformer(nn.Module):
         print("\n" + "="*80 + "\n")
 
 
-# ============================================================================
 # CONFIGURATION
-# ============================================================================
 
 @dataclass
 class DeepSeekConfig:
@@ -2556,7 +2519,6 @@ class DeepSeekConfig:
     # Initialization
     init_std: float = 0.02
     
-    # Embedding
     use_stable_embedding: bool = True
     tie_word_embeddings: bool = True
     
@@ -2580,7 +2542,6 @@ class DeepSeekConfig:
     dense_start_layers: int = 2
     dense_end_layers: int = 2
     
-    # MoD (NOW WORKS WITH MoE!)
     use_mod: bool = False
     mod_capacity_factor: float = 0.5
     mod_routing_temperature: float = 1.0
@@ -2702,14 +2663,12 @@ if __name__ == "__main__":
     if USE_UNIFIED_BACKEND:
         print_backend_info()
     
-    # Create config with CUDA/Metal acceleration enabled
     config = DeepSeekConfig.standard_moe(
         use_cuda_moe=True,  # Enable accelerated ops
         num_experts=8,
         moe_top_k=2
     )
     
-    # Create model - automatically uses best backend
     device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
     model = DeepSeekTransformer(config).to(device)
     

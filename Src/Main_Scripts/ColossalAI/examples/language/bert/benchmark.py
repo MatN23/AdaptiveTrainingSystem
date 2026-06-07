@@ -17,9 +17,7 @@ from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDP
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
 
-# ==============================
 # Prepare Hyperparameters
-# ==============================
 NUM_EPOCHS = 3
 BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
@@ -56,9 +54,7 @@ class RandintDataset(Dataset):
 
 
 def main():
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--task", default="mrpc", help="GLUE task to run")
     parser.add_argument(
@@ -78,18 +74,13 @@ def main():
 
     args = parser.parse_args()
 
-    # ==============================
     # Launch Distributed Environment
-    # ==============================
     colossalai.launch_from_torch(config={}, seed=42)
     coordinator = DistCoordinator()
 
-    # local_batch_size = BATCH_SIZE // coordinator.world_size
     lr = LEARNING_RATE * coordinator.world_size
 
-    # ==============================
     # Instantiate Plugin and Booster
-    # ==============================
     booster_kwargs = {}
     if args.plugin == "torch_ddp_fp16":
         booster_kwargs["mixed_precision"] = "fp16"
@@ -102,18 +93,14 @@ def main():
 
     booster = Booster(plugin=plugin, **booster_kwargs)
 
-    # ==============================
     # Prepare Dataloader
-    # ==============================
 
     train_dataset = RandintDataset(
         dataset_length=DATASET_LEN, sequence_length=SEQ_LEN, vocab_size=VOCAB_SIZE, n_class=NUM_LABELS
     )
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE)
 
-    # ====================================
     # Prepare model, optimizer
-    # ====================================
     # bert pretrained model
 
     if args.model_type == "bert":
@@ -149,17 +136,12 @@ def main():
         num_training_steps=total_steps,
     )
 
-    # criterion
     criterion = lambda inputs: inputs[0]
 
-    # ==============================
     # Boost with ColossalAI
-    # ==============================
     model, optimizer, _, _, lr_scheduler = booster.boost(model, optimizer, lr_scheduler=lr_scheduler)
 
-    # ==============================
     # Benchmark model
-    # ==============================
 
     results = benchmark(
         model, booster, optimizer, lr_scheduler, train_dataloader, criterion=criterion, epoch_num=NUM_EPOCHS

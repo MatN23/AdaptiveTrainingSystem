@@ -19,13 +19,11 @@ def check_ring_qk(rank, world_size):
     attention_head_size = 32
     sub_seq_length = seq_length // world_size
 
-    # create master tensors
     q = torch.rand(batch_size * num_heads, seq_length, attention_head_size).cuda()
     k = torch.rand(batch_size * num_heads, seq_length, attention_head_size).cuda()
     dist.broadcast(q, src=0, group=gpc.get_group(ParallelMode.SEQUENCE))
     dist.broadcast(k, src=0, group=gpc.get_group(ParallelMode.SEQUENCE))
 
-    # create distributed tensors
     sub_q = q.clone()[:, rank * sub_seq_length : (rank + 1) * sub_seq_length].contiguous()
     sub_k = k.clone()[:, rank * sub_seq_length : (rank + 1) * sub_seq_length].contiguous()
 
@@ -46,7 +44,6 @@ def check_ring_qk(rank, world_size):
     ring_qk = RingQK.apply
     sub_a = ring_qk(sub_q, sub_k, batch_size, num_heads, sub_seq_length)
 
-    # check master and distributed attention scores
     sub_master_a = a[:, rank * sub_seq_length : (rank + 1) * sub_seq_length]
     assert torch.allclose(sub_a, sub_master_a, rtol=1e-5, atol=1e-2)
 
@@ -58,7 +55,6 @@ def check_ring_qk(rank, world_size):
     partial_master_a_grad = a.grad[:, rank * sub_seq_length : (rank + 1) * sub_seq_length]
     torch.autograd.backward(sub_a, partial_master_a_grad)
 
-    # check master and distributed grads
     partial_master_q_grad = q.grad[:, rank * sub_seq_length : (rank + 1) * sub_seq_length]
     assert torch.allclose(sub_q.grad, partial_master_q_grad, rtol=1e-5, atol=1e-2), "attention score cannot match"
 
@@ -71,13 +67,11 @@ def check_ring_av(rank, world_size):
     attention_head_size = 32
     sub_seq_length = seq_length // world_size
 
-    # create master tensors
     a = torch.rand(batch_size * num_heads, seq_length, seq_length).cuda()
     v = torch.rand(batch_size * num_heads, seq_length, attention_head_size).cuda()
     dist.broadcast(a, src=0, group=gpc.get_group(ParallelMode.SEQUENCE))
     dist.broadcast(v, src=0, group=gpc.get_group(ParallelMode.SEQUENCE))
 
-    # create distributed tensors
     sub_a = a.clone()[:, rank * sub_seq_length : (rank + 1) * sub_seq_length].contiguous()
     sub_v = v.clone()[:, rank * sub_seq_length : (rank + 1) * sub_seq_length].contiguous()
 
@@ -98,9 +92,7 @@ def check_ring_av(rank, world_size):
     ring_av = RingAV.apply
     sub_out = ring_av(sub_a, sub_v, batch_size, num_heads, attention_head_size, sub_seq_length)
 
-    # print(f'master output shape: {out.shape}, partial output shape: {sub_out.shape}')
 
-    # check master and distributed output
     sub_master_out = out[:, rank * sub_seq_length : (rank + 1) * sub_seq_length]
     assert torch.allclose(sub_out, sub_master_out, rtol=1e-5, atol=1e-2)
 
@@ -120,7 +112,6 @@ def check_ring_av(rank, world_size):
 def run_test(rank, world_size, port):
     colossalai.legacy.launch(rank=rank, world_size=world_size, config=CONFIG, host="localhost", port=port)
 
-    # check_ring_qk(rank, world_size)
     check_ring_av(rank, world_size)
 
     gpc.destroy()

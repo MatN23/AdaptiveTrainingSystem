@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # FIXED: RoPE signature mismatch
 
 """
@@ -208,13 +207,9 @@ def _load_transformer_ops():
         return False
 
 
-# ============================================================================
 # AUTOGRAD FUNCTIONS FOR CUDA KERNELS
-# ============================================================================
 
-# ============================================================================
 # AUTOGRAD FUNCTIONS FOR CUDA KERNELS
-# ============================================================================
 
 class RMSNormFunction(Function):
     """Autograd function for RMSNorm CUDA kernel with FP16 support"""
@@ -229,8 +224,6 @@ class RMSNormFunction(Function):
         hidden_size = weight.shape[0]
         
         #  CRITICAL: C++ kernel currently only specialized for 4096
-        # if hidden_size != 4096:
-        #    return RMSNormFunction._pytorch_eval(x, weight, eps)
 
         output = torch.empty_like(x_flat)
         
@@ -264,7 +257,7 @@ class RMSNormFunction(Function):
             )
         
         #ctx.save_for_backward(x_flat, weight, output) # Save tensor for backward
-        ctx.save_for_backward(x, weight) # Save original x to avoid flat shape issues
+        ctx.save_for_backward(x, weight)
         ctx.eps = eps
         ctx.original_shape = original_shape
         
@@ -439,9 +432,7 @@ def fused_swiglu(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
         return gate * torch.nn.functional.silu(up)
 
 
-# ============================================================================
 # MODULE WRAPPERS
-# ============================================================================
 
 class FusedRMSNorm(nn.Module):
     """Fused RMS Normalization with CUDA acceleration"""
@@ -620,7 +611,6 @@ class FusedRoPE(nn.Module):
             return self._pytorch_apply(q, k, position_offset)
         
         try:
-            # Use CUDA cache
             return RoPEFunction.apply(q, k, self.cos_cache_cuda, self.sin_cache_cuda, position_offset)
         except Exception as e:
             logger.warning(f"CUDA RoPE apply failed: {e}, falling back to PyTorch")
@@ -678,13 +668,7 @@ class FusedSwiGLU(nn.Module):
             # DEPRECATED: Standard SwiGLU kernel removed. Use FusedMLPBlock.
             return self.down_proj(self._pytorch_fallback(gate, up))
             
-            # original_shape = x.shape
-            # gate_flat = gate.view(-1, self.intermediate_size).contiguous().float()
-            # up_flat = up.view(-1, self.intermediate_size).contiguous().float()
             
-            # output = SwiGLUFunction.apply(gate_flat, up_flat)
-            # output = output.view(original_shape[0], original_shape[1], self.intermediate_size)
-            # return self.down_proj(output)
         except Exception as e:
             logger.warning(f"CUDA SwiGLU failed: {e}, falling back to PyTorch")
             return self.down_proj(self._pytorch_fallback(gate, up))
@@ -843,7 +827,6 @@ class FusedMLPBlock(nn.Module):
         return down
 
 
-# Initialize on import
 print(" Loading transformer CUDA ops...")
 if _load_transformer_ops():
     print(" Transformer CUDA ops ready for use!")

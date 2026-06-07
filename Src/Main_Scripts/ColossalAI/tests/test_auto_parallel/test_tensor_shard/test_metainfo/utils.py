@@ -8,7 +8,6 @@ from torch.fx import GraphModule
 from colossalai._analyzer.fx.graph_module import ColoGraphModule
 from colossalai._analyzer.fx.passes import shape_prop_pass
 
-# from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
@@ -177,15 +176,12 @@ def print_results(
     print(f"input shapes: {[tensor.shape for tensor in input]}")
     print(f"output shapes: {[tensor.shape for tensor in output]}")
 
-    # estimated results
     print("Estimated Results")
 
-    # compute cost
     print("compute_cost:")
     print(f"    fwd: {compute_cost.fwd}")
     print(f"    bwd: {compute_cost.bwd}")
 
-    # memory cost
     print("memory_cost:")
     # fwd
     print(f"    fwd activation: {memory_cost.fwd.activation / 1024} KB")
@@ -199,7 +195,6 @@ def print_results(
     print(f"    bwd temp: {memory_cost.bwd.temp / 1024} KB")
     print(f"    bwd parameter: {memory_cost.bwd.parameter / 1024} KB")
 
-    # actual results
     print("Actual Results")
 
     print("memory_cost:")

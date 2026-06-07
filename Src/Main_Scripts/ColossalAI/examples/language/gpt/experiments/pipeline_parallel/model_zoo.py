@@ -2,7 +2,6 @@ from torch import nn
 from transformers import GPT2Config, GPT2LMHeadModel
 
 
-## Define the Model and Loss Based on Huggingface transformers GPT2LMHeadModel
 class GPTLMModel(nn.Module):
     def __init__(
         self,

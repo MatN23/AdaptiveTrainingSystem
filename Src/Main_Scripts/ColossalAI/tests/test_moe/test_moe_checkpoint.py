@@ -137,13 +137,11 @@ def _test_moe_checkpoint(rank, parallel):
     model3, booster3, optim3 = get_model(parallel)
 
     # param ckpt
-    # shard
     booster1.save_model(model1, "./tmp_ckpt1", shard=True, size_per_shard=1)
     booster2.load_model(model2, "./tmp_ckpt1")
     # unshard
     booster1.save_model(model1, "./tmp_ckpt1.pth")
     booster3.load_model(model3, "./tmp_ckpt1.pth")
-    # check
     check_state_dict_equal(model1.state_dict(), model2.state_dict(), False)
     check_state_dict_equal(model1.state_dict(), model3.state_dict(), False)
 
@@ -158,14 +156,12 @@ def _test_moe_checkpoint(rank, parallel):
     run_fwd_bwd(model1, data, label, criterion, optim1, **kwargs)
     optim1.step()
     optim1.zero_grad()
-    # shard
     booster1.save_optimizer(optim1, "./tmp_ckpt2", shard=True, size_per_shard=1)
     dist.barrier()
     booster2.load_optimizer(optim2, "./tmp_ckpt2")
     # unshard
     booster1.save_optimizer(optim1, "./tmp_ckpt2.pth")
     booster3.load_optimizer(optim3, "./tmp_ckpt2.pth")
-    # check
     check_state_dict_equal(optim1.optim.state_dict(), optim2.optim.state_dict(), False)
     check_state_dict_equal(optim1.optim.state_dict(), optim3.optim.state_dict(), False)
 

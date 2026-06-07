@@ -101,7 +101,6 @@ def parse_args():
 
     # zero stage for all plugins
     parser.add_argument("--zero_stage", type=int, default=2, help="zero stage.")
-    # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size for hybrid plugin")
     parser.add_argument("--dp_size", type=int, default=1, help="dp size for hybrid plugin")
     parser.add_argument("--ep_size", type=int, default=2, help="ep size for hybrid plugin")
@@ -119,7 +118,6 @@ def parse_args():
         help="Use layernorm kernel. Need to install apex. Raise error if not installed.",
     )
 
-    # load balance
     parser.add_argument(
         "--load_balance", action="store_true", help="Expert load balance. Defaults to False. Recommend to enable."
     )
@@ -144,11 +142,9 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
 
-    # Set plugin
     if args.plugin == "hybrid":
         plugin = MoeHybridParallelPlugin(
             tp_size=1,
@@ -171,7 +167,6 @@ def main():
     model = MixtralForCausalLM.from_pretrained(args.model_name)
     coordinator.print_on_master(f"Finish init model")
 
-    # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
@@ -182,7 +177,6 @@ def main():
         dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=collate_fn
     )
 
-    # Set optimizer
     optimizer = HybridAdam(
         model_params=model.parameters(),
         lr=args.lr,
@@ -191,7 +185,6 @@ def main():
         adamw_mode=True,
     )
 
-    # Set lr scheduler
     lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=optimizer,
         total_steps=args.num_epochs * len(dataloader),
@@ -201,7 +194,6 @@ def main():
         eta_min=0.1 * args.lr,
     )
 
-    # Set booster
     booster = Booster(plugin=plugin)
     model, optimizer, _, dataloader, lr_scheduler = booster.boost(
         model=model,
@@ -213,12 +205,10 @@ def main():
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     coordinator.print_on_master(f"Finish init booster")
 
-    # Load ckpt
     if args.load_checkpoint is not None:
         load_checkpoint(args.load_checkpoint, booster, model, optimizer, lr_scheduler)
         coordinator.print_on_master(f"Finish load optimizer")
 
-    # Start finetuning
     coordinator.print_on_master(f"Start finetuning")
     for epoch in range(args.num_epoch):
         model.train()
@@ -251,7 +241,6 @@ def main():
                     data = move_to_cuda(data, torch.cuda.current_device())
                     outputs = model(**data)
                     loss = outputs["loss"]
-                    # Backward
                     booster.backward(loss, optimizer)
                     pbar.set_postfix({"loss": loss.item()})
 
@@ -260,14 +249,10 @@ def main():
                 optimizer.zero_grad()
 
                 # Apply load balance
-                # if (
                 #     args.load_balance
                 #     and args.load_balance_interval > 0
-                #     and (step + 1) % args.load_balance_interval == 0
                 # ):
                 #     coordinator.print_on_master(f"Apply load balance")
-                #     apply_load_balance(model, optimizer)
-                # save checkpoint
                 if (step + 1) % args.save_interval == 0:
                     coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
                     save_checkpoint(
@@ -282,11 +267,9 @@ def main():
                         coordinator,
                     )
 
-        # save checkpoint at the end of each epochs
         booster.save_model(model, args.output_path, shard=True, size_per_shard=5120)
         coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
 
-    # Finish training
     coordinator.print_on_master(f"Finish training")
 
 

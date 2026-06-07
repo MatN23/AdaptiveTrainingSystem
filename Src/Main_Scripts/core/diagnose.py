@@ -25,7 +25,6 @@ except ImportError:
 
 def benchmark_op(func, *args, name="Operation", warmup=10, iters=100):
     """Benchmark a single operation"""
-    # Warmup
     for _ in range(warmup):
         func(*args)
     torch.cuda.synchronize()
@@ -109,12 +108,10 @@ def profile_individual_ops():
         print(f"\nConfig: tokens={num_tokens}, hidden={hidden_dim}, experts={num_experts}, k={k}")
         print("-" * 80)
         
-        # Setup
         gate_logits = torch.randn(num_tokens, num_experts, device='cuda')
         tokens = torch.randn(num_tokens, hidden_dim, device='cuda')
         capacity = (num_tokens * k) // num_experts + 10
         
-        # 1. TOP-K GATING
         print("  [1/3] Top-K Gating...")
         pytorch_time = benchmark_op(pytorch_topk_gating, gate_logits, k, name="topk")
         print(f"    PyTorch:  {pytorch_time:.3f}ms")
@@ -128,7 +125,6 @@ def profile_individual_ops():
         # Get top-k results for next ops
         top_k_indices, top_k_weights = pytorch_topk_gating(gate_logits, k)
         
-        # 2. DISPATCH
         print("\n  [2/3] Dispatch...")
         pytorch_time = benchmark_op(pytorch_dispatch, tokens, top_k_indices, 
                                    num_experts, capacity, name="dispatch")
@@ -148,7 +144,6 @@ def profile_individual_ops():
         # Simulate expert processing
         expert_outputs = expert_inputs.clone()
         
-        # 3. COMBINE
         print("\n  [3/3] Combine...")
         pytorch_time = benchmark_op(pytorch_combine, expert_outputs, token_map,
                                    top_k_weights, num_tokens, k, name="combine")
@@ -174,7 +169,6 @@ def analyze_memory_bandwidth():
     k = 2
     capacity = (num_tokens * k) // num_experts + 10
     
-    # Create data
     tokens = torch.randn(num_tokens, hidden_dim, device='cuda')
     gate_logits = torch.randn(num_tokens, num_experts, device='cuda')
     
@@ -236,12 +230,10 @@ def check_correctness():
     gate_logits = torch.randn(num_tokens, num_experts, device='cuda')
     tokens = torch.randn(num_tokens, hidden_dim, device='cuda')
     
-    # Top-K
     print("  Testing Top-K gating...")
     pt_indices, pt_weights = pytorch_topk_gating(gate_logits, k)
     cuda_indices, cuda_weights = moe_cuda_ops.topk_gating(gate_logits, k, 1.0)
     
-    # Check if same experts selected (order might differ)
     pt_set = set(pt_indices.cpu().numpy().flatten())
     cuda_set = set(cuda_indices.cpu().numpy().flatten())
     
@@ -250,7 +242,6 @@ def check_correctness():
     else:
         print(f"     Different experts! PT: {len(pt_set)}, CUDA: {len(cuda_set)}")
     
-    # Check weights sum to 1
     pt_sum = pt_weights.sum(dim=1)
     cuda_sum = cuda_weights.sum(dim=1)
     if torch.allclose(pt_sum, torch.ones_like(pt_sum), atol=1e-5):

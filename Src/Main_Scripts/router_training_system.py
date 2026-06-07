@@ -27,11 +27,9 @@ class RouterGateAdapter(nn.Module):
         
         cache_key = str(router_checkpoint_path)
         
-        #  Check if router already loaded
         if cache_key not in _GLOBAL_ROUTER_CACHE:
             print(f" Loading router model (first time)...")
             
-            # Load trained router
             checkpoint = torch.load(router_checkpoint_path, map_location=device)
             config = checkpoint['config']
             
@@ -164,7 +162,6 @@ class RoutingDataCollector:
                     self._save_checkpoint(batch_idx + 1)
                     logger.info(f"Collected {len(self.routing_examples)} routing examples")
         
-        # Final save
         self._save_final_dataset()
         logger.info(f"Routing data collection complete: {len(self.routing_examples)} examples")
         
@@ -278,7 +275,6 @@ class SmallRouterModel(nn.Module):
             batch, seq, experts = expert_logits.shape
             expert_logits_flat = expert_logits.reshape(batch * seq, experts)
         
-        # Return format based on mode
         if not return_dict:
             return expert_logits_flat
         
@@ -332,14 +328,12 @@ class RouterTrainer:
         self.config = config
         self.device = device
         
-        # Optimizer
         self.optimizer = torch.optim.AdamW(
             router_model.parameters(),
             lr=config.get('learning_rate', 5e-4),
             weight_decay=config.get('weight_decay', 0.01)
         )
         
-        # Scheduler
         self.scheduler = None  # Set up after knowing total steps
         
         # Loss weights
@@ -385,7 +379,6 @@ class RouterTrainer:
         )
         
         # Loss 2: Distribution matching (KL divergence)
-        # Create target distribution from target weights
         target_dist = torch.zeros_like(expert_probs)
         for k in range(top_k):
             indices = target_indices[:, :, k]
@@ -469,7 +462,6 @@ class RouterTrainer:
             # Forward pass
             predictions = self.router_model(hidden_states)
             
-            # Compute loss
             losses = self.compute_loss(
                 predictions,
                 {
@@ -487,7 +479,6 @@ class RouterTrainer:
             if self.scheduler:
                 self.scheduler.step()
             
-            # Compute accuracy
             accuracy = self.compute_accuracy(
                 predictions,
                 {
@@ -650,15 +641,12 @@ def train_router_model(
         logger.info(f"Epoch {epoch+1}/{num_epochs}")
         logger.info(f"{'='*80}")
         
-        # Train
         train_metrics = trainer.train_epoch(train_loader, epoch)
         logger.info(f"Train Loss: {train_metrics['loss']:.4f} | Train Acc: {train_metrics['accuracy']:.4f}")
         
-        # Evaluate
         val_metrics = trainer.evaluate(val_loader)
         logger.info(f"Val Loss: {val_metrics['loss']:.4f} | Val Top-1 Acc: {val_metrics['top1_acc']:.4f}")
         
-        # Save best model
         if val_metrics['top1_acc'] > best_val_acc:
             best_val_acc = val_metrics['top1_acc']
             trainer.save_checkpoint(
@@ -684,7 +672,6 @@ def replace_gates_with_router(model, router_model_path: str):
         trained_router = torch.load('router_training/best_router_model.pt')
         replace_gates_with_router(your_model, trained_router)
     """
-    # Load trained router
     checkpoint = torch.load(router_model_path)
     router_model = SmallRouterModel(**checkpoint['config'])
     router_model.load_state_dict(checkpoint['model_state_dict'])
@@ -706,9 +693,7 @@ def replace_gates_with_router(model, router_model_path: str):
     return model
 
 
-# ============================================================================
 # EXAMPLE USAGE
-# ============================================================================
 
 if __name__ == "__main__":
     """
@@ -717,14 +702,13 @@ if __name__ == "__main__":
     
     # Configuration for router training
     router_config = {
-        # Data collection
         'collection_batches': 1000,  # How many batches to collect routing data from
         
         # Router architecture
         'hidden_size': 768,  # Match your model
         'num_experts': 8,
         'top_k': 2,
-        'router_hidden': 256,  # Smaller = fewer parameters
+        'router_hidden': 256,
         'router_layers': 4,
         'router_heads': 4,
         

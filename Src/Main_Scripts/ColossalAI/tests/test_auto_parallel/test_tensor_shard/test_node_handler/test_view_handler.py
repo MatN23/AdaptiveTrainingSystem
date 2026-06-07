@@ -74,22 +74,18 @@ def check_view_handler(rank, tgt_shape, model_cls, world_size, port):
     )
     tracer = ColoTracer(bias_addition_split=True)
     if model_cls.__name__ == "ConvViewModel":
-        # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
         #     %conv2d : [#users=1] = call_function[target=torch.conv2d](args = (%input_1, %other), kwargs = {})
         #     %view : [#users=1] = call_method[target=view](args = (%conv2d, 2, -1), kwargs = {})
-        #     return view
         meta_args = {"input": torch.rand(8, 8, 66, 66).to("meta"), "other": torch.rand(16, 8, 3, 3).to("meta")}
         graph = tracer.trace(model, meta_args=meta_args)
 
     if model_cls.__name__ == "LinearViewModel":
-        # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
         #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%input_1, %other), kwargs = {bias: None})
         #     %view : [#users=1] = call_method[target=view](args = (%linear, 32, 4, 32, 32, 4), kwargs = {})
-        #     return view
         meta_args = {
             "input": torch.rand(8, 16, 64, 32).to("meta"),
             "other": torch.rand(64, 32).to("meta"),
@@ -124,7 +120,6 @@ def check_view_handler(rank, tgt_shape, model_cls, world_size, port):
 
     view_handler.register_strategy(compute_resharding_cost=False)
 
-    # check operation data mapping
     mapping = view_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -191,7 +186,6 @@ def check_view_handler(rank, tgt_shape, model_cls, world_size, port):
         if tgt_shape == (32, 4, 64, 16, 4):
             for strategy in strategy_name_list:
                 print(strategy)
-            # print(strategy_name_list)
             assert "[S0, R, R, S1] -> [S0, R, R, S1, R]_11" in strategy_name_list
             assert "[R, S0, R, S1] -> FULLY REPLICATED_12" in strategy_name_list
             assert "[R, R, S0, S1] -> [R, R, S0, S1, R]_13" in strategy_name_list

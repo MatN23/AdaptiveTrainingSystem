@@ -48,13 +48,13 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         max_scale: int = 2**24,
         clip_grad_norm: float = 0.0,  # grad clipping
         verbose: bool = False,
-        reduce_bucket_size: int = 1024 * 1024,  # communication
+        reduce_bucket_size: int = 1024 * 1024,
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = True,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
+        tp_process_group: Optional[ProcessGroup] = None,
         pp_process_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
         moe_extra_dp_process_group: Optional[ProcessGroup] = None,

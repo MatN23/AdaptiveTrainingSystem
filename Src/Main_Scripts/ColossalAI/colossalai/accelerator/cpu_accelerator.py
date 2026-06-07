@@ -21,9 +21,7 @@ class CpuAccelerator(BaseAccelerator):
     def __init__(self):
         super().__init__(name="cpu", communication_backend="gloo", is_synchronous=False)
 
-    # =======================
     # device APIs
-    # =======================
     def get_version(self) -> str:
         """
         Return the version of the accelerator which torch is built against.
@@ -96,9 +94,7 @@ class CpuAccelerator(BaseAccelerator):
         """
         raise RuntimeError("this method is not supported for cpu accelerator")
 
-    # =======================
     # random number generator APIs
-    # =======================
     def get_rng_state(self, device=None) -> torch.Tensor:
         """
         Returns the random number generator state of the specified GPU as a ByteTensor.
@@ -153,9 +149,7 @@ class CpuAccelerator(BaseAccelerator):
         """
         raise RuntimeError("this method is not supported for cpu accelerator")
 
-    # =======================
     # memory management APIs
-    # =======================
 
     def empty_cache(self) -> None:
         """
@@ -231,9 +225,7 @@ class CpuAccelerator(BaseAccelerator):
         """
         raise RuntimeError("this method is not supported for cpu accelerator")
 
-    # =======================
     # streams and events APIs
-    # =======================
 
     def Stream(self, device=None, priority=0, **kwargs):
         """
@@ -271,9 +263,7 @@ class CpuAccelerator(BaseAccelerator):
         """
         raise RuntimeError("this method is not supported for cpu accelerator")
 
-    # =======================
     # amp APIs
-    # =======================
     def autocast(
         self, enabled: bool = True, dtype: torch.dtype = torch.float16, cache_enabled: bool = True
     ) -> Callable:

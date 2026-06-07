@@ -5,7 +5,6 @@ import torch
 import logging
 from pathlib import Path
 
-# Add project root to path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.append(str(project_root))
 
@@ -37,7 +36,6 @@ def verify_dataset_weights():
     print("VERIFYING DATASET WEIGHTS FIX")
     print("="*60)
     
-    # Create a dummy file for testing
     dummy_file = "dummy_data.txt"
     with open(dummy_file, "w") as f:
         f.write("This is some dummy text for testing the dataset loader.\n" * 100)
@@ -61,7 +59,6 @@ def verify_dataset_weights():
         # 2. Verify FusedLoss selection logic (Simulated)
         print("\n2. simulating FusedLoss behavior...")
         
-        # Check if FusedLoss would use CUDA path with these inputs
         fused_loss = FusedLoss() # This might fail to init completely on Mac if no CUDA, but we check logic
         fused_loss.enabled = True # Force enable for simulation
         

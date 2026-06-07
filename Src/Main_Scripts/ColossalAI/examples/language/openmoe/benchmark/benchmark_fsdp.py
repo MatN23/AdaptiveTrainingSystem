@@ -36,9 +36,7 @@ class RandomDataset(Dataset):
 
 
 def fsdp_main(rank, world_size, args):
-    # initialize the process group
 
-    # initialize the process group
     dist.init_process_group("nccl")
 
     MOE_MANAGER.setup(parallel=None)

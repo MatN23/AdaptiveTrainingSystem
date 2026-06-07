@@ -121,7 +121,6 @@ class Chunk:
         # and we should use the cuda_global_chunk.
         self.is_gathered = True
 
-        # configure the init device of the shard
         # no-offload default: fp16, fp32 -> CUDA
         # offload default: fp16, fp32 -> CPU
         self.shard_device = torch.device("cpu") if cpu_shard_init else get_accelerator().get_current_device()
@@ -146,17 +145,13 @@ class Chunk:
         if self.keep_gathered:
             pin_memory = False  # since this chunk is gathered, it doesn't need to pin
 
-        # if pin_memory is True, we allocate a piece of CPU pin-memory
-        # for it all the time
         self.pin_memory = pin_memory
 
         # we introduce the paired chunk here
         # it refers to another chunk having the same parameters
         # but with different dtype(such as fp16_chunk.paired_chunk -> fp32_chunk
         self.paired_chunk = None
-        # if this chunk is synchronized with the optimizer, the flag is True
         self.optim_sync_flag = True
-        # if the cpu_shard has been visited during the training step, the flag is True
         self.cpu_vis_flag = False
 
         # whether to record l2 norm for the gradient clipping calculation
@@ -348,7 +343,6 @@ class Chunk:
             if self.pin_memory:
                 if force_copy or not self.cpu_vis_flag:
                     self.cpu_shard.copy_(self.cuda_shard)
-                # if cpu_shard has been visited
                 # copy operation is not need
             else:
                 self.cpu_shard = self.cuda_shard.cpu()

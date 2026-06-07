@@ -122,8 +122,6 @@ def _communicate(
         Tuple[Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]]: returns tensor_recv_prev, tensor_recv_next
     """
 
-    # Create placeholder tensors for receive in forward and backward directions
-    # if needed.
     tensor_recv_prev = None
     tensor_recv_next = None
 

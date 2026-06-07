@@ -89,7 +89,6 @@ class Evaluator(object):
             gpt_evaluate.save_battle_results(self.battle_results, model_name_list[0], model_name_list[1], save_path)
         else:
             if self.gpt_evaluation_results:
-                # Save evaluation results for GPT evaluation metrics.
                 gpt_base_save_path = os.path.join(path, "gpt_evaluate", "gpt_evaluate_results")
                 gpt_evaluation_results_save_path = os.path.join(gpt_base_save_path, "evaluation_results")
 
@@ -97,13 +96,11 @@ class Evaluator(object):
                     model_name_list[0], self.gpt_evaluation_results, gpt_evaluation_results_save_path
                 )
 
-                # Start to calculate scores and save statistics.
                 gpt_evaluation_statistics_save_path = os.path.join(gpt_base_save_path, "evaluation_statistics")
                 gpt_evaluate.save_gpt_evaluation_statistics(
                     model_name_list[0], all_evaluations, gpt_evaluation_statistics_save_path
                 )
 
-                # Save charts and csv.
                 gpt_evaluation_analyses_save_path = os.path.join(gpt_base_save_path, "evaluation_analyses")
                 gpt_evaluate.analyze_gpt_evaluation_statistics(
                     gpt_evaluation_statistics_save_path, gpt_evaluation_analyses_save_path

@@ -130,7 +130,6 @@ class TensorboardHook(BaseHook):
         super().__init__(priority=priority)
         from torch.utils.tensorboard import SummaryWriter
 
-        # create log dir
         if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
             os.makedirs(log_dir, exist_ok=True)
 
@@ -144,7 +143,6 @@ class TensorboardHook(BaseHook):
             if ranks is None or local_rank in ranks:
                 self._is_valid_rank_to_log = True
 
-        # check for
         if (
             gpc.is_initialized(ParallelMode.PIPELINE)
             and not gpc.is_last_rank(ParallelMode.PIPELINE)
@@ -153,13 +151,11 @@ class TensorboardHook(BaseHook):
             raise ValueError("Tensorboard hook can only log on the last rank of pipeline process group")
 
         if self._is_valid_rank_to_log:
-            # create workspace on only one rank
             if gpc.is_initialized(parallel_mode):
                 rank = gpc.get_local_rank(parallel_mode)
             else:
                 rank = 0
 
-            # create workspace
             log_dir = osp.join(log_dir, f"{parallel_mode}_rank_{rank}")
             os.makedirs(log_dir, exist_ok=True)
 

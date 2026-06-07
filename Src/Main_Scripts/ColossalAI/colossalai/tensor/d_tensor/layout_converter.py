@@ -194,26 +194,22 @@ class LayoutConverter(metaclass=SingletonMeta):
         tensor_dims = source_spec.dims
         for f_index in range(tensor_dims - 1):
             for b_index in range(f_index + 1, tensor_dims):
-                # skip (R, R) cases
                 if f_index not in source_spec.dim_partition_dict and b_index not in source_spec.dim_partition_dict:
                     continue
                 else:
                     if f_index in source_spec.dim_partition_dict:
-                        # skip (S01, R) -> (R, S01) is NOT allowed
                         if len(source_spec.dim_partition_dict[f_index]) >= 2:
                             continue
                         f_target_pair = (f_index, deepcopy(source_spec.dim_partition_dict[f_index]))
                     else:
                         f_target_pair = (f_index, [])
                     if b_index in source_spec.dim_partition_dict:
-                        # skip (R, S01) -> (S01, R) is NOT allowed
                         if len(source_spec.dim_partition_dict[b_index]) >= 2:
                             continue
                         b_target_pair = (b_index, deepcopy(source_spec.dim_partition_dict[b_index]))
                     else:
                         b_target_pair = (b_index, [])
 
-                # skip (S1, S0) -> S10
                 if f_target_pair[1] and b_target_pair[1] and f_target_pair[1][0] >= b_target_pair[1][0]:
                     continue
                 f_shard_list, b_shard_list = all_to_all_simulator(f_target_pair, b_target_pair)
@@ -469,7 +465,6 @@ class LayoutConverter(metaclass=SingletonMeta):
                     pg for comm_spec in cached_comm_action_sequence for pg in comm_spec.process_group_dict.values()
                 ]
 
-                # Check if each process group is still alive
                 for process_group in used_process_groups:
                     try:
                         dist.get_rank(process_group)

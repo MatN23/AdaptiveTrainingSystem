@@ -189,7 +189,6 @@ class DistCoordinator(metaclass=SingletonMeta):
         """
         is_master = self.is_master(process_group)
 
-        # define an inner function
         def decorator(func):
             @functools.wraps(func)
             def wrapper(*args, **kwargs):

@@ -46,7 +46,6 @@ class DefaultReshapeHandler(MetaInfoNodeHandler):
         # use transposed shape for strategies
         # the strategies will be transformed back to its original shape in self.post_process
 
-        # check if the input operand is a parameter
         if isinstance(self.node.args[0]._meta_data, torch.nn.parameter.Parameter):
             data_type = OperationDataType.PARAM
         else:

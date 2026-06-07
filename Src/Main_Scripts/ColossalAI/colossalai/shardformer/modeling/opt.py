@@ -173,7 +173,6 @@ class OPTPipelineForwards:
                 )
                 use_cache = False
 
-        # TODO(baizhou): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
             logger.warning_once("Non-empty past_key_values is not supported for pipeline models at the moment.")
             past_key_values = None
@@ -192,7 +191,6 @@ class OPTPipelineForwards:
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if use_cache else None
 
-        # check if head_mask has a correct number of layers specified if desired
         for attn_mask, mask_name in zip([head_mask], ["head_mask"]):
             if attn_mask is not None:
                 if attn_mask.size()[0] != (len(decoder.layers)):
@@ -551,13 +549,10 @@ def get_opt_flash_attention_forward(shard_config: ShardConfig):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """Input shape: Batch x Time x Channel"""
         assert layer_head_mask is None, "layer_head_mask is not supported for FlashAttention"
-        # if key_value_states are provided this layer is used as a cross-attention layer
-        # for the decoder
         is_cross_attention = key_value_states is not None
 
         bsz, tgt_len, _ = hidden_states.size()
 
-        # get query proj
         query_states = self.q_proj(hidden_states)
         # get key, value proj
         if is_cross_attention and past_key_value is not None:
@@ -580,13 +575,10 @@ def get_opt_flash_attention_forward(shard_config: ShardConfig):
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
         if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention
             # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-            # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_states, value_states)
 
         query_states = self._shape(query_states, tgt_len, bsz)
@@ -686,7 +678,6 @@ def get_opt_decoder_forward_for_flash_attention(shard_config: ShardConfig):
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if use_cache else None
 
-        # check if head_mask has a correct number of layers specified if desired
         for attn_mask, mask_name in zip([head_mask], ["head_mask"]):
             if attn_mask is not None:
                 if attn_mask.size()[0] != (len(self.layers)):

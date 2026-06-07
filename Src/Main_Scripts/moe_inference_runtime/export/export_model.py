@@ -12,7 +12,6 @@ import argparse
 import sys
 import os
 
-# Add parent directory to import your model
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -31,18 +30,15 @@ except ImportError as e:
     DeepSeekTransformer = None
     DeepSeekConfig = None
 
-# Create dummy classes to allow unpickling
 try:
     from config.config_manager import Config
 except ImportError:
     print("  Could not import config module - creating dummy")
     import types
     
-    # Create dummy config module structure
     config = types.ModuleType('config')
     config_manager = types.ModuleType('config.config_manager')
     
-    # Create dummy Config class
     class Config:
         def __init__(self, *args, **kwargs):
             self.__dict__.update(kwargs)
@@ -87,7 +83,6 @@ def export_model(model, config, output_path):
         f.write(struct.pack('I', magic))
         f.write(struct.pack('I', version))
         
-        # Config
         f.write(struct.pack('i', config.vocab_size))
         f.write(struct.pack('i', config.hidden_size))
         f.write(struct.pack('i', config.num_layers))
@@ -96,7 +91,6 @@ def export_model(model, config, output_path):
         f.write(struct.pack('i', config.intermediate_size))
         f.write(struct.pack('i', config.seq_length))
         
-        # MoE config
         use_moe = getattr(config, 'use_moe', False)
         f.write(struct.pack('?', use_moe))
         f.write(struct.pack('i', getattr(config, 'num_experts', 8)))
@@ -110,7 +104,6 @@ def export_model(model, config, output_path):
                 is_moe = model.layers[i].use_moe
             f.write(struct.pack('?', is_moe))
         
-        # MoD config
         use_mod = getattr(config, 'use_mod', False)
         f.write(struct.pack('?', use_mod))
         f.write(struct.pack('f', getattr(config, 'mod_capacity_factor', 0.5) if use_mod else 0.0))
@@ -123,7 +116,6 @@ def export_model(model, config, output_path):
                 is_mod = model.layers[i].ffn.use_mod
             f.write(struct.pack('?', is_mod))
         
-        # RoPE theta
         f.write(struct.pack('f', getattr(config, 'rope_theta', 10000.0)))
         
         print(" Config written")
@@ -132,7 +124,6 @@ def export_model(model, config, output_path):
         export_tensor(f, model.embed_tokens.weight)
         print(f" Embeddings: {model.embed_tokens.weight.shape}")
         
-        # Layers
         for i, layer in enumerate(model.layers):
             print(f"  Layer {i}...")
             
@@ -145,7 +136,6 @@ def export_model(model, config, output_path):
             
             # FFN
             if hasattr(layer, 'use_moe') and layer.use_moe:
-                # MoE layer
                 export_tensor(f, layer.ffn.gate.weight)
                 
                 for expert in layer.ffn.experts:
@@ -154,7 +144,7 @@ def export_model(model, config, output_path):
                         # Fused projection - split it
                         gate_up = expert.gate_up_proj.weight
                         mid = gate_up.shape[0] // 2
-                        export_tensor(f, gate_up[:mid])  # gate
+                        export_tensor(f, gate_up[:mid])
                         export_tensor(f, gate_up[mid:])  # up
                     else:
                         export_tensor(f, expert.gate_proj.weight)
@@ -188,7 +178,6 @@ def export_model(model, config, output_path):
         # Final norm
         export_tensor(f, model.norm.weight)
         
-        # LM head
         export_tensor(f, model.lm_head.weight)
         print(f" LM head: {model.lm_head.weight.shape}")
         
@@ -219,13 +208,11 @@ def main():
         print(f" Model not found: {args.model}")
         return 1
     
-    # Load checkpoint
     print(f" Loading checkpoint: {args.model}")
     checkpoint = torch.load(args.model, map_location='cpu', weights_only=False)
     
     # Extract model and config
     if isinstance(checkpoint, dict):
-        # Check for nested structure first (your checkpoint uses this!)
         if 'model_state_dict' in checkpoint:
             model_state = checkpoint['model_state_dict']
             config = checkpoint.get('config', None)
@@ -242,7 +229,6 @@ def main():
         model_state = checkpoint.state_dict()
         config = None
     
-    # Load config from file if provided (this overrides checkpoint config)
     if args.config:
         import json
         with open(args.config) as f:
@@ -251,7 +237,6 @@ def main():
         if DeepSeekConfig is not None:
             config = DeepSeekConfig(**config_dict)
         else:
-            # Create a simple config object
             class SimpleConfig:
                 def __init__(self, **kwargs):
                     self.__dict__.update(kwargs)
@@ -260,7 +245,6 @@ def main():
         # Use config from checkpoint if no external config provided
         print(" Using config from checkpoint")
     
-    # Create model
     if config is None:
         print(" Config not found in checkpoint. Please provide --config")
         return 1
@@ -282,7 +266,6 @@ def main():
     
     model.eval()
     
-    # Export
     export_model(model, config, args.output)
     
     return 0

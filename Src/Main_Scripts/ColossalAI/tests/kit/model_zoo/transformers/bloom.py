@@ -3,26 +3,17 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register Bloom
-# ===============================
 
 
 def data_gen():
     # Generated from following code snippet
-    #
-    # from transformers import BloomTokenizer
-    # input = 'Hello, my dog is cute'
-    # tokenized_input = tokenizer(input, return_tensors='pt')
-    # input_ids = tokenized_input['input_ids']
-    # attention_mask = tokenized_input['attention_mask']
     input_ids = torch.tensor([[59414, 15, 2670, 35433, 632, 207595, 632, 207595]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
 def data_gen_for_lm():
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
     data["labels"] = data["input_ids"].clone()
@@ -46,11 +37,7 @@ def data_gen_for_sequence_classification():
 
 def data_gen_for_question_answering():
     # obtained with the following code
-    #
-    # from transformers import AutoTokenizer
-    # tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
     # question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
-    # inputs = tokenizer(question, text, return_tensors="pt")
 
     input_ids = torch.tensor(
         [[57647, 1620, 23967, 620, 107373, 34, 91514, 620, 107373, 1620, 267, 35378, 48946, 18161, 48946, 18161]],
@@ -64,10 +51,8 @@ def data_gen_for_question_answering():
     )
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
-# define loss function
 loss_fn_for_bloom_model = lambda x: torch.nn.functional.mse_loss(
     x["last_hidden_state"], torch.ones_like(x["last_hidden_state"])
 )

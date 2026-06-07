@@ -74,7 +74,6 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
         if _weight is None:
             _weight = self._weight_alloc(dtype, device)
         cuda_row_num = int(num_embeddings * cache_ratio)
-        # configure weight & cache
         self._preprocess(_weight, cuda_row_num, ids_freq_mapping, warmup_ratio, buffer_size, pin_weight)
         self.cache_op = True
 

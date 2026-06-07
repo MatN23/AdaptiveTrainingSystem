@@ -121,7 +121,6 @@ def main():
     get_tflops_func = partial(get_tflops, numel, args.train_micro_batch_size_per_gpu, args.max_seq_length)
 
     # 144003367 is is the length of the entire dataset
-    # len(dataloader)
     steps_per_epoch = (
         144003367
         // world_size
@@ -149,12 +148,10 @@ def main():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor):
                     state[k] = v.cuda(f"cuda:{torch.cuda.current_device()}")
-        # if you want delete the above three code, must move the model to gpu. Because in optimizer.step()
         lr_scheduler.load_state_dict(o_l_state_dict["lr_scheduler"])
 
         start_epoch = o_l_state_dict["epoch"]
         start_shard = o_l_state_dict["shard"] + 1
-        # global_step = o_l_state_dict['global_step'] + 1
         logger.info(
             f"resume from epoch {start_epoch} shard {start_shard} step {lr_scheduler.last_epoch} lr {lr_scheduler.get_last_lr()[0]}"
         )
@@ -190,12 +187,10 @@ def main():
             model.train()
 
             for step, batch_data in iterator_data:
-                # batch_data = pretrain_dataset_provider.get_batch(batch_index)
                 input_ids = batch_data[0].cuda(f"cuda:{torch.cuda.current_device()}")
                 attention_mask = batch_data[1].cuda(f"cuda:{torch.cuda.current_device()}")
                 token_type_ids = batch_data[2].cuda(f"cuda:{torch.cuda.current_device()}")
                 mlm_label = batch_data[3].cuda(f"cuda:{torch.cuda.current_device()}")
-                # nsp_label = batch_data[5].cuda()
 
                 output = model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
@@ -204,7 +199,6 @@ def main():
 
                 optimizer.backward(loss)
                 train_loss += loss.float().item()
-                # if  (step + 1) % args.accumulation_step == 0:
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()

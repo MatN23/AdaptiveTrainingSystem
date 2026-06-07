@@ -81,7 +81,6 @@ def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
     )
 
     getitem_handler.register_strategy(compute_resharding_cost=False)
-    # check operation data mapping
     mapping = getitem_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -117,11 +116,9 @@ class GetItemFromTupleModel(nn.Module):
 def test_getitem_from_tuple_handler():
     model = GetItemFromTupleModel()
     tracer = ColoTracer()
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %split : [#users=1] = call_function[target=torch.functional.split](args = (%conv2d, 2), kwargs = {dim: 0})
     #     %getitem : [#users=1] = call_function[target=operator.getitem](args = (%split, 1), kwargs = {})
-    #     return getitem
     meta_args = {
         "input": torch.rand(4, 4, 64, 64).to("meta"),
     }
@@ -159,7 +156,6 @@ def test_getitem_from_tuple_handler():
     getitem_handler.register_strategy(compute_resharding_cost=False)
     setattr(getitem_node, "strategies_vector", getitem_strategies_vector)
 
-    # check operation data mapping
     mapping = getitem_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

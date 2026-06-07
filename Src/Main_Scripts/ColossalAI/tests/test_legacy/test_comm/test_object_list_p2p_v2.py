@@ -107,7 +107,6 @@ def check_layer(rank, world_size, port):
     launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     disable_existing_loggers()
-    # check_send_recv_forward()
     check_small_pipeline()
 
     gpc.destroy()

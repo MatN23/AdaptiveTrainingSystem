@@ -38,7 +38,6 @@ def test_opt():
     for i, model_cls in enumerate(MODEL_LIST):
         model = model_cls(config=CONFIGS[i])
         top_mod, topo = split_model_and_get_DAG(model, DATAGEN[i])
-        # print(f'{top_mod=}\n----\n{topo=}')
         check_topo(top_mod, topo)
 
 

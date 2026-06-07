@@ -43,9 +43,7 @@ def _convert_to_coloparam(
     else:
         colo_param = ColoParameter(param.to(device=device, dtype=dtype), requires_grad=requires_grad)
 
-    # if default_shard_plan exists, shard the param during initialization.
     # This can reduce the model size after initialization.
-    # NOTE() embedding usually can not be correctly sharded. So I use except to handle
     # the param that can not be sharded by the default plan
     if default_pg is not None:
         colo_param.set_process_group(default_pg)
@@ -180,7 +178,6 @@ def post_process_colo_init_ctx(
     torch_params = []
     for n, p in model.named_parameters():
         if not isinstance(p, ColoParameter):
-            # print(f"{n} is not a ColoParameter. We are going to converting it to ColoParameter")
             torch_params.append((n, p))
 
     for n, param in torch_params:

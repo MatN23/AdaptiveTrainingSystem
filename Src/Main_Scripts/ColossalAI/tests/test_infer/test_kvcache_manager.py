@@ -35,7 +35,6 @@ def create_cache_manager(rank, world_size, port, batch_size, input_len, output_l
     # required size exceeds the maximum allocated size
     invalid_locs = kvcache_manager.alloc_contiguous(size + 1)
     assert invalid_locs is None
-    # for prefill stage, allocation via alloc and alloc_contiguous should be the same
     total_token_prefill = batch_size * input_len
     prefill_locs = kvcache_manager.alloc(total_token_prefill)
     kvcache_manager.free_all()

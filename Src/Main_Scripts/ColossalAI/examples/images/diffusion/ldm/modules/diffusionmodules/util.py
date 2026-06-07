@@ -4,7 +4,6 @@
 # https://github.com/lucidrains/denoising-diffusion-pytorch/blob/7706bdfc6f527f58d33f84b7b522e61e6e3164b3/denoising_diffusion_pytorch/denoising_diffusion_pytorch.py
 # and
 # https://github.com/openai/guided-diffusion/blob/0ba878e517b276c45d1195eb29f6f5f72659a05b/guided_diffusion/nn.py
-#
 # thanks!
 
 import math
@@ -46,8 +45,6 @@ def make_ddim_timesteps(ddim_discr_method, num_ddim_timesteps, num_ddpm_timestep
     else:
         raise NotImplementedError(f'There is no ddim discretization method called "{ddim_discr_method}"')
 
-    # assert ddim_timesteps.shape[0] == num_ddim_timesteps
-    # add one to get the final alpha values right (the ones from first scale to data during sampling)
     steps_out = ddim_timesteps + 1
     if verbose:
         print(f"Selected timesteps for ddim sampler: {steps_out}")
@@ -109,8 +106,6 @@ def checkpoint(func, inputs, params, flag):
         from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
         return torch_checkpoint(func, *inputs)
-        # args = tuple(inputs) + tuple(params)
-        # return CheckpointFunction.apply(func, len(inputs), *args)
     else:
         return func(*inputs)
 
@@ -206,7 +201,6 @@ def normalization(channels):
     :return: an nn.Module for normalization.
     """
     return nn.GroupNorm(16, channels)
-    # return GroupNorm32(32, channels)
 
 
 # PyTorch 1.7 has SiLU, but we support PyTorch 1.5.

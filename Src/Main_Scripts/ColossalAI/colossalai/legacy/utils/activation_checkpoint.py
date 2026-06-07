@@ -53,7 +53,6 @@ class CheckpointFunction(torch.autograd.Function):
 
         with torch.no_grad():
             outputs = run_function(*inputs_cuda)
-        # Save non-tensor inputs in ctx, keep a placeholder None for tensors
         # to be filled out during the backward.
         ctx.inputs = []
         ctx.tensor_indices = []
@@ -168,7 +167,6 @@ def _checkpoint_without_reentrant(function, activation_offload=False, *args):
     fwd_seed_states = get_states(copy=True)
     fwd_current_mode = get_current_mode()
 
-    # check if use autocast
     if hasattr(torch, "is_autocast_enabled"):
         has_autocast_in_fwd = torch.is_autocast_enabled()
     else:
@@ -178,11 +176,9 @@ def _checkpoint_without_reentrant(function, activation_offload=False, *args):
     storage: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
     weak_holder_list = []
 
-    # class for weakref.ref
     class Holder:
         pass
 
-    # return a Holder object for later unpack process
     def pack(x):
         res = Holder()
         weak_holder_list.append(weakref.ref(res))

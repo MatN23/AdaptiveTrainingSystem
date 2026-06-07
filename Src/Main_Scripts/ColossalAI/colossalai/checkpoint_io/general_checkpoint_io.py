@@ -43,11 +43,9 @@ class GeneralCheckpointIO(CheckpointIO):
     def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
         state_dict = model.state_dict()
 
-        # TODO(FrankLeeeee): add support for gather_dtensor
         if gather_dtensor:
             pass
 
-        # save the checkpoint
         save_state_dict(state_dict, checkpoint, use_safetensors)
 
     def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
@@ -58,7 +56,6 @@ class GeneralCheckpointIO(CheckpointIO):
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
 
-        # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
             raise RuntimeError(
@@ -110,7 +107,6 @@ class GeneralCheckpointIO(CheckpointIO):
         group_file_path = os.path.join(checkpoint, param_group_file)
         save_param_groups(state_dict, group_file_path)
 
-        # Save shards of optimizer states.
         # In general cases, is_master is set to True to get the right behavior.
         total_size = save_state_dict_shards(
             sharded_state_dict=sharded_state,
@@ -140,7 +136,6 @@ class GeneralCheckpointIO(CheckpointIO):
         checkpoint: Path,
         gather_dtensor: bool,
     ):
-        # TODO(FrankLeeeee): handle distributed tensors
         save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)
 
     def save_sharded_model(
@@ -168,7 +163,6 @@ class GeneralCheckpointIO(CheckpointIO):
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
-        # Save shards of optimizer states.
         # In general cases, is_master is set to True to get the right behavior.
         total_size = save_state_dict_shards(
             sharded_state_dict=state_dict_shard,

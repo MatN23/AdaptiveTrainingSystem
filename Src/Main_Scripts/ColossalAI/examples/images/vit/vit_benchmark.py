@@ -45,7 +45,6 @@ def colo_memory_cap(size_in_GB):
 def main():
     args = parse_benchmark_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
@@ -93,18 +92,15 @@ def main():
         )
     logger.info(f"Set plugin as {args.plugin}", ranks=[0])
 
-    # Set optimizer
     optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size))
 
     # Set criterion (loss function)
     def criterion(outputs, inputs):
         return outputs.loss
 
-    # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion=criterion)
 
-    # Start training.
     logger.info(f"Start testing", ranks=[0])
 
     torch.cuda.synchronize()
@@ -123,7 +119,6 @@ def main():
             else:
                 outputs = model(**batch)
                 loss = criterion(outputs, None)
-                # Backward
                 booster.backward(loss, optimizer)
 
             optimizer.step()

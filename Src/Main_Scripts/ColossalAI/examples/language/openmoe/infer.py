@@ -42,7 +42,6 @@ for i in range(100):
 ```
 What is the value of sum immediately after the 10th time line 3 is executed?"""
 
-    # print("model config: ", model.config)
     input_ids = tokenizer("<pad>" + input_str, return_tensors="pt", add_special_tokens=False)
     input_ids = input_ids.input_ids.to(torch.cuda.current_device())
     generation_output = model.generate(input_ids, use_cache=True, do_sample=True, max_new_tokens=64)

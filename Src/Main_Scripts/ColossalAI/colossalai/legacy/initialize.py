@@ -105,7 +105,6 @@ def launch(
 
     # set cuda device
     if torch.cuda.is_available():
-        # if local rank is not given, calculate automatically
         gpc.set_device(local_rank)
 
     # set the number of processes running on the same node
@@ -267,7 +266,6 @@ def initialize(
             A tuple of ``(engine, train_dataloader, test_dataloader, lr_scheduler)``
             where only ``engine`` could not be None.
     """
-    # get logger
     logger = get_dist_logger()
     gpc.verbose = verbose
 
@@ -283,7 +281,6 @@ def initialize(
             ranks=[0],
         )
 
-    # cudnn
     cudnn_benchmark = config.get("cudnn_benchmark", False)
     cudnn_deterministic = config.get("cudnn_deterministic", False)
     torch.backends.cudnn.benchmark = cudnn_benchmark
@@ -291,7 +288,6 @@ def initialize(
     if verbose:
         logger.info(f"cuDNN benchmark = {cudnn_benchmark}, deterministic = {cudnn_deterministic}", ranks=[0])
 
-    # zero
     use_zero = hasattr(gpc.config, "zero")
     if use_zero:
         zero_cfg = gpc.config.get("zero", None)
@@ -330,7 +326,6 @@ def initialize(
             ranks=[0],
         )
 
-    # check amp and zero
     fp16_cfg = gpc.config.get("fp16", None)
 
     if fp16_cfg is not None and fp16_cfg.mode is not None and use_zero:
@@ -338,10 +333,8 @@ def initialize(
             "It is not allowed to set fp16 and zero configuration in your config file at the same time"
         )
 
-    # clip grad norm
     clip_grad_norm = gpc.config.get("clip_grad_norm", 0.0)
 
-    # initialize amp
     amp_mode = None
     if fp16_cfg is not None and fp16_cfg.mode is not None:
         cfg_ = fp16_cfg.copy()
@@ -357,11 +350,8 @@ def initialize(
     # get torch ddp config
     torch_ddp_cfg = gpc.config.get("torch_ddp", dict())
 
-    # gradient handler
     gradient_handler_cfg = gpc.config.get("gradient_handler", None)
     if gradient_handler_cfg is None:
-        # if gradient handler is not specified in the configuration file,
-        # check in the following order
         # 1. if optimizer is ZERO, then use zero grad handler
         # 2. if dp size is larger than 1 and pipeline is not used, use pytorch ddp
         # 3. if using pipeline and dp size larger than 1, use data parallel grad handler
@@ -427,7 +417,6 @@ def initialize(
     if isinstance(model, DDP) and isinstance(model.module, NaiveAMPModel):
         model.module.sync_buffer = False
 
-    # initialize schedule for engine
     if is_using_pp():
         tensor_shape = get_tensor_shape()
         use_interleaved = hasattr(gpc.config, "model") and hasattr(gpc.config.model, "num_chunks")
@@ -462,11 +451,9 @@ def initialize(
     else:
         gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
 
-    # check if optimizer is OptimizerWrapper
     if not isinstance(optimizer, (OptimizerWrapper, ShardedOptimizerV2)):
         optimizer = OptimizerWrapper(optim=optimizer)
 
-    # gradient accumulation
     grad_accum_size = gpc.config.get("gradient_accumulation", None)
     if grad_accum_size is not None:
         optimizer, train_dataloader, gradient_handlers, lr_scheduler = accumulate_gradient(

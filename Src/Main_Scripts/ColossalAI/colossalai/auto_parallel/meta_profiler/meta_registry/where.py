@@ -21,10 +21,8 @@ def where_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Li
 
     condition_tensor, x_tensor, y_tensor, output_tensor = [arg.data for arg in args]
 
-    # compute cost
     fwd_compute_cost = 0
 
-    # if we need to broadcast the condition tensor, during backward we need to do a reduce_sum
     bwd_compute_cost = 0
     if x_tensor.shape != output_tensor.shape:
         bwd_compute_cost += flop_mapping[torch.ops.aten.sum.dim_IntList]([output_tensor], [x_tensor])
@@ -33,7 +31,6 @@ def where_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Li
 
     compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
 
-    # memory cost
     # during the forward phase, torch.where will allocate memory for output tensor and condition tensor
     # during the backward phase, torch.where will allocate temp memory which is 3 times as output tensor, then generate
     # gradient matrix for input x and input y, remove the temp memory and condition tensor generated in forward phase

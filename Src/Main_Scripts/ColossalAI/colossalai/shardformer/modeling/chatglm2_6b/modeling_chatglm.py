@@ -173,7 +173,6 @@ class RotaryEmbedding(nn.Module):
         # $\Theta = {\theta_i = 10000^{\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
         theta = 1.0 / (base ** (torch.arange(0, n_elem, 2, dtype=dtype, device=device) / n_elem))
 
-        # Create position indexes `[0, 1, ..., seq_len - 1]`
         seq_idx = torch.arange(seq_len, dtype=dtype, device=device)
 
         # Calculate the product of position index and $\theta_i$
@@ -311,9 +310,7 @@ class CoreAttention(torch.nn.Module):
             # change view to [b, np, sq, sk]
             attention_scores = matmul_result.view(*output_size)
 
-            # ===========================
             # Attention probs and dropout
-            # ===========================
 
             # attention scores and attention mask [b, np, sq, sk]
             if self.attention_softmax_in_fp32:
@@ -339,9 +336,7 @@ class CoreAttention(torch.nn.Module):
             # This is actually dropping out entire tokens to attend to, which might
             # seem a bit unusual, but is taken from the original Transformer paper.
             attention_probs = self.attention_dropout(attention_probs)
-            # =========================
             # Context layer. [sq, b, hp]
-            # =========================
 
             # value_layer -> context layer.
             # [sk, b, np, hn] --> [b, np, sq, hn]
@@ -433,12 +428,8 @@ class SelfAttention(torch.nn.Module):
     ):
         # hidden_states: [sq, b, h]
 
-        # =================================================
         # Pre-allocate memory for key-values for inference.
-        # =================================================
-        # =====================
         # Query, Key, and Value
-        # =====================
 
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         mixed_x_layer = self.query_key_value(hidden_states)
@@ -528,15 +519,11 @@ class SelfAttention(torch.nn.Module):
                 )
             )
 
-        # ==================================
         # core attention computation
-        # ==================================
 
         context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
 
-        # =================
         # Output. [sq, b, h]
-        # =================
         output = self.dense(context_layer)
 
         return output, kv_cache
@@ -872,7 +859,6 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
 
         self.rotary_pos_emb = RotaryEmbedding(
             rotary_dim // 2,
-            # original_impl=config.original_rope, # config has no attribute original_rope
             device=device,
             dtype=config.torch_dtype,
         )

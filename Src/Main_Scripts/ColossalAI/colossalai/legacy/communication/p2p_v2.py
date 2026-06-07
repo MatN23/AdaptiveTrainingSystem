@@ -116,7 +116,6 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
     if is_nccl_backend:
         object_sizes_tensor = object_sizes_tensor.to(current_device)
 
-    # Broadcast object sizes
     c10d.broadcast(object_sizes_tensor, src=src, group=group, async_op=False)
 
     # Concatenate and broadcast serialized object tensors
@@ -143,7 +142,6 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
             if obj_view.device != torch.device("cpu"):
                 obj_view = obj_view.cpu()
             offset += obj_size
-            # unpickle
             unpickle_object = _cuda_safe_tensor_to_object(obj_view, obj_size)
 
             # unconsistence in device
@@ -166,7 +164,6 @@ def _send_object(object: Any, dst: int) -> None:
         None
     """
     local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-    # handler = _acquire_pair_group_handle(local_rank, dst)
 
     # transform to list if not
     if isinstance(object, torch.Tensor):
@@ -189,7 +186,6 @@ def _recv_object(src: int) -> Any:
         Any: Object received from src.
     """
     local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-    # handler = _acquire_pair_group_handle(local_rank, src)
     # recv length first
     length = [0]
     _broadcast_object_list(length, src, local_rank)

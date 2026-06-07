@@ -126,14 +126,10 @@ def fuse_model(m):
     previous_name = ""
     for name, module in m.named_modules():
         if prev_previous_type == nn.Conv2d and previous_type == nn.BatchNorm2d and type(module) == nn.ReLU:
-            # print("FUSED ", prev_previous_name, previous_name, name)
             torch.quantization.fuse_modules(m, [prev_previous_name, previous_name, name], inplace=True)
         elif prev_previous_type == nn.Conv2d and previous_type == nn.BatchNorm2d:
-            # print("FUSED ", prev_previous_name, previous_name)
             torch.quantization.fuse_modules(m, [prev_previous_name, previous_name], inplace=True)
         # elif previous_type == nn.Conv2d and type(module) == nn.ReLU:
-        #    print("FUSED ", previous_name, name)
-        #    torch.quantization.fuse_modules(m, [previous_name, name], inplace=True)
 
         prev_previous_type = previous_type
         prev_previous_name = previous_name

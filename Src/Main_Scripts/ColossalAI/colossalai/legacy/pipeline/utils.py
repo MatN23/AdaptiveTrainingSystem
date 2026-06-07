@@ -162,7 +162,6 @@ def build_kwargs_for_module(function, input_tensor, kw_dict):
     elif isinstance(input_tensor, torch.Tensor):
         kwargs_offset = 1
     elif isinstance(input_tensor, (tuple, OrderedDict)):
-        # assert isinstance(input_tensor, tuple), f'input_tensor should be a torch.Tensor or a tuple object.'
         # Huggingface will take their own structures based on OrderedDict as the output
         # between layers so we've to close this check.
         kwargs_offset = len(input_tensor)

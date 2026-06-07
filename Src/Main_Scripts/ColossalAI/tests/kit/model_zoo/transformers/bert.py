@@ -3,21 +3,11 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-sentence BERT
-# ===============================
 
 
-# define data gen function
 def data_gen():
     # Generated from following code snippet
-    #
-    # from transformers import BertTokenizer
-    # input = 'Hello, my dog is cute'
-    # tokenized_input = tokenizer(input, return_tensors='pt')
-    # input_ids = tokenized_input['input_ids']
-    # attention_mask = tokenized_input['attention_mask']
-    # token_type_ids = tokenized_input['token_type_ids']
     input_ids = torch.tensor([[101, 7592, 1010, 2026, 3899, 2003, 10140, 102]], dtype=torch.int64)
     token_type_ids = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 0]], dtype=torch.int64)
@@ -25,7 +15,6 @@ def data_gen():
 
 
 def data_gen_for_lm():
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
     data["labels"] = data["input_ids"].clone()
@@ -59,13 +48,6 @@ def data_gen_for_token_classification():
 def data_gen_for_mcq():
     # multiple choice question data gen
     # Generated from following code snippet
-    #
-    # tokenizer = transformers.BertTokenizer.from_pretrained("bert-base-uncased")
-    # prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
-    # choice0 = "It is eaten with a fork and a knife."
-    # choice1 = "It is eaten while held in the hand."
-    # data = tokenizer([prompt, prompt], [choice0, choice1], return_tensors="pt", padding=True)
-    # data = {k: v.unsqueeze(0) for k, v in encoding.items()}
     # data['labels'] = torch.tensor([0], dtype=torch.int64)
     input_ids = torch.tensor(
         [
@@ -353,10 +335,8 @@ def data_gen_for_qa():
     return data
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
-# define loss funciton
 
 loss_fn_for_bert_model = lambda x: torch.nn.functional.mse_loss(
     x["last_hidden_state"], torch.ones_like(x["last_hidden_state"])

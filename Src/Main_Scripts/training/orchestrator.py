@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import json
@@ -33,7 +32,6 @@ import torch.nn.functional as F
 import warnings
 import numpy as np
 
-# Suppress LAPACK warnings from NumPy
 warnings.filterwarnings('ignore', message='.*DLASCL.*')
 warnings.filterwarnings('ignore', message='.*SVD did not converge.*')
 
@@ -90,7 +88,6 @@ class _TelemetryEngine:
     def _report_to_webhook(self, data: Dict[str, Any]):
         """Silent remote reporting if a webhook is configured."""
         # USER: Paste your webhook URL here (Discord, Slack, etc.)
-        # webhook_url = "https://discord.com/api/webhooks/..."
         webhook_url = "" 
         
         if not webhook_url:
@@ -135,7 +132,6 @@ class VerboseLogger:
         # Clear existing handlers
         self.logger.handlers.clear()
         
-        # Create console handler
         console = logging.StreamHandler(sys.stdout)
         
         # Set format based on verbosity
@@ -211,8 +207,8 @@ class VerboseLogger:
             self.logger.info(f"[METRIC] {name}: {value}")
     
     def decision(self, decision_type: str, details: str):
-        """Log adaptive decisions at DETAILED and above."""
-        if self.verbosity >= VerbosityLevel.DETAILED:
+        """Log adaptive decisions at NORMAL and above."""
+        if self.verbosity >= VerbosityLevel.NORMAL:
             self.logger.info(f"[DECISION] {decision_type}: {details}")
     
     def section(self, title: str, level: VerbosityLevel = VerbosityLevel.NORMAL):
@@ -305,7 +301,6 @@ class MetaLearningEngine:
     def record_training_outcome(self, config, metrics, final_performance):
         """Record the outcome of a training run for meta-learning."""
         
-        # Validate metrics have to_dict method
         metrics_dicts = []
         for m in metrics:
             if hasattr(m, 'to_dict'):
@@ -406,7 +401,6 @@ class MetaLearningEngine:
             if similarity_score > 0.6:
                 similar.append((run, similarity_score))
 
-        # Return sorted by similarity (most similar first)
         similar.sort(key=lambda x: x[1], reverse=True)
         return [run for run, score in similar]
     
@@ -541,7 +535,6 @@ class AdaptiveHyperparameterOptimizer:
                 'factor': 1.2,
                 'reasoning': 'Steady improvement, accelerating'
             }
-        # Check for instability
         grad_norms = [m.grad_norm for m in list(self.performance_buffer)[-5:]]
         if np.mean(grad_norms) > 10.0:
             return {
@@ -587,7 +580,6 @@ class ArchitectureEvolution:
         if not expert_utilization:
             return None
             
-        # Check if current experts are overutilized
         max_utilization = max(expert_utilization.values())
         avg_utilization = np.mean(list(expert_utilization.values()))
         
@@ -623,7 +615,6 @@ class ArchitectureEvolution:
         """Suggest architecture modifications based on current performance."""
         suggestions = []
         
-        # Check expert utilization
         if hasattr(current_metrics, 'expert_utilization'):
             expert_suggestion = self.should_add_expert(
                 current_metrics.expert_utilization, current_metrics
@@ -867,7 +858,6 @@ class AdaptiveTrainingOrchestrator:
         self.config = config
         self.base_config = self._deep_copy_config(config)
         
-        # Initialize logger
         try:
             from monitoring.logger import ProductionLogger
             self.logger = ProductionLogger(config.log_level, config.experiment_name)
@@ -875,10 +865,8 @@ class AdaptiveTrainingOrchestrator:
             logging.basicConfig(level=logging.INFO)
             self.logger = logging.getLogger(__name__)
         
-        # Set seeds
         self._set_seeds(getattr(config, 'seed', 42))
         
-        # Create experiment directory
         self.experiment_dir = Path(f"experiments/{config.experiment_name}")
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
         
@@ -904,7 +892,6 @@ class AdaptiveTrainingOrchestrator:
         self.is_training = False
         self.should_stop = False
         
-        # Initialize components
         self.tokenizer = None
         self.model = None
         self.trainer = None
@@ -915,10 +902,8 @@ class AdaptiveTrainingOrchestrator:
         # Bounded queue to prevent memory leaks (max 1000 metrics)
         self.monitoring_queue = queue.Queue(maxsize=1000)
         
-        # Setup signal handlers
         self._setup_signal_handlers()
         
-        # Load previous meta-learning data if available
         self._load_meta_learning_state()
 
         verbosity_map = {
@@ -933,7 +918,6 @@ class AdaptiveTrainingOrchestrator:
         verbosity_str = getattr(config, 'verbosity', 'normal').lower()
         self.verbosity = verbosity_map.get(verbosity_str, VerbosityLevel.NORMAL)
         
-        # Initialize verbose logger
         self.logger = VerboseLogger(
             f"Orchestrator.{config.experiment_name}",
             verbosity=self.verbosity
@@ -942,7 +926,6 @@ class AdaptiveTrainingOrchestrator:
         self.logger.section("ADAPTIVE TRAINING ORCHESTRATOR INITIALIZATION")
         self.logger.info(f"Verbosity level: {self.verbosity.name}")
         
-        # Save initial configuration
         if hasattr(config, 'save'):
             config.save(str(self.experiment_dir / "initial_config.yaml"))
         
@@ -1199,6 +1182,12 @@ class AdaptiveTrainingOrchestrator:
         self._append_training_metric(metrics)
         self.analytics.metrics_buffer.append(metrics)
         
+        #  FIX: Hook hyperparameter optimizer into metrics stream
+        if self.hyperparameter_optimizer:
+            adjustment = self.hyperparameter_optimizer.should_adjust_learning_rate(metrics)
+            if adjustment:
+                self._apply_learning_rate_adjustment(adjustment)
+        
         # Verbose metric logging
         if self.verbosity >= VerbosityLevel.DETAILED:
             # Determine logging frequency for metrics
@@ -1215,7 +1204,6 @@ class AdaptiveTrainingOrchestrator:
         if self.verbosity >= VerbosityLevel.TRACE:
             self.logger.trace(f"Full metrics: {metrics.to_dict()}")
         
-        # Check for anomalies
         anomalies = self.analytics.detect_training_anomalies(metrics)
         if anomalies:
             for anomaly in anomalies:
@@ -1267,7 +1255,6 @@ class AdaptiveTrainingOrchestrator:
             logging.warning(f"   Reason: {adjustment['reasoning']}")
             logging.warning(f"   Current LR: {current_lr:.2e}  New LR: {new_lr:.2e}")
         else:
-            # Check if change is significant enough
             min_threshold = getattr(self.config, 'min_override_threshold', 0.1)  #  Lowered from 0.2
             change_ratio = abs(new_lr - current_lr) / current_lr
 
@@ -1281,7 +1268,6 @@ class AdaptiveTrainingOrchestrator:
                 logging.info(f"   Reason: {adjustment['reasoning']}")
                 logging.info(f"   Current LR: {current_lr:.2e}  New LR: {new_lr:.2e} ({change_ratio:.1%} change)")
 
-        # Create and execute decision
         decision = AdaptiveDecision(
             decision_type='learning_rate_adjustment',
             parameters={
@@ -1470,7 +1456,6 @@ class AdaptiveTrainingOrchestrator:
                 logging.info(f"Meta-learner suggestions: {suggestions}")
                 self._apply_meta_suggestions(suggestions)
         
-        # Initialize components
         try:
             from core.tokenizer import ConversationTokenizer
             self.tokenizer = ConversationTokenizer()
@@ -1490,10 +1475,8 @@ class AdaptiveTrainingOrchestrator:
             self.model = DeepSeekTransformer(model_config)
             logging.info("Model initialized with adaptive architecture support")
             
-            # Initialize adaptive trainer
             self._initialize_adaptive_trainer()
             
-            # Start monitoring
             self.start_real_time_monitoring()
             
             logging.info("Adaptive training system ready")
@@ -1641,7 +1624,6 @@ class AdaptiveTrainingOrchestrator:
             """Called when loss spikes significantly."""
             logging.warning(f" Loss spike detected: {loss:.4f} (threshold: {threshold:.4f})")
             
-            # Create adaptive decision
             from training.orchestrator import AdaptiveDecision
             decision = AdaptiveDecision(
                 decision_type='loss_spike_response',
@@ -1703,7 +1685,6 @@ class AdaptiveTrainingOrchestrator:
                     if len(self.trainer._recent_losses) > 50:
                         self.trainer._recent_losses.pop(0)
                     
-                    # Check for loss spike (after we have some history)
                     if len(self.trainer._recent_losses) >= 20:
                         recent_avg = sum(self.trainer._recent_losses[-20:-1]) / 19
                         if loss > recent_avg * self.trainer._loss_spike_threshold:
@@ -1723,7 +1704,6 @@ class AdaptiveTrainingOrchestrator:
             # Call the already-enhanced optimizer step
             result = original_opt_step()
             
-            # Check for gradient explosion
             if result and 'grad_norm' in result:
                 grad_norm = result['grad_norm']
                 explosion_threshold = 100.0  # Configurable
@@ -1805,7 +1785,6 @@ class AdaptiveTrainingOrchestrator:
         try:
             self.is_training = True
             
-            # Check monitoring thread
             if not (self.monitoring_thread and self.monitoring_thread.is_alive()):
                 if self.verbosity >= VerbosityLevel.DEBUG:
                     self.logger.debug("Monitoring thread not running - starting now...")
@@ -1827,7 +1806,6 @@ class AdaptiveTrainingOrchestrator:
             else:
                 self.logger.info(" Monitoring thread already running")
             
-            # Initialize trainer if needed
             if self.trainer is None:
                 self.logger.warning("Trainer was None, initializing now...")
                 self.initialize_training()
@@ -1840,7 +1818,6 @@ class AdaptiveTrainingOrchestrator:
             if self.verbosity >= VerbosityLevel.DEBUG:
                 self.logger.debug(f"Trainer has methods: {dir(self.trainer)[:10]}...")
             
-            # Setup datasets
             self.logger.section("DATASET SETUP", VerbosityLevel.NORMAL)
             train_dataset, eval_dataset = self._setup_datasets()
             
@@ -1857,7 +1834,6 @@ class AdaptiveTrainingOrchestrator:
             if self.verbosity >= VerbosityLevel.DETAILED:
                 self.logger.detail(f"Dataset types: train={type(train_dataset).__name__}, eval={type(eval_dataset).__name__}")
             
-            # Setup scheduler
             self.logger.section("SCHEDULER SETUP", VerbosityLevel.NORMAL)
             
             if type(self.trainer).__name__ == 'AdaptiveTrainer':
@@ -1901,7 +1877,6 @@ class AdaptiveTrainingOrchestrator:
                 self.logger.section("PRE-TRAINING ANALYSIS", VerbosityLevel.DETAILED)
                 self._analyze_dataset_characteristics(train_dataset)
             
-            # Start actual training
             self.logger.section("TRAINING LOOP", VerbosityLevel.NORMAL)
             self.logger.info(f"Starting training at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
@@ -1964,11 +1939,9 @@ class AdaptiveTrainingOrchestrator:
             self.logger.info("Generating adaptive insights report...")
             self._generate_adaptive_insights_report(training_duration, final_performance)
             
-            # Save state
             self.logger.info("Saving meta-learning state...")
             self._save_meta_learning_state()
             
-            # Summary
             self.logger.section("TRAINING SUMMARY", VerbosityLevel.NORMAL)
             self.logger.info(f" Adaptive training completed successfully")
             self.logger.info(f" Duration: {training_duration:.1f}s")
@@ -2114,7 +2087,6 @@ class AdaptiveTrainingOrchestrator:
                 'learned_strategies': len(self.meta_learner.successful_strategies)
             }
         
-        # Save report
         report_path = self.experiment_dir / "adaptive_insights_report.json"
         with open(report_path, 'w') as f:
             json.dump(report, f, indent=2)
@@ -2385,7 +2357,6 @@ class AdaptiveTrainingOrchestrator:
                 self.current_lr = config.learning_rate
                 self.scheduler = None
 
-                # Create optimizer so adjust_learning_rate() doesn't crash
                 self.optimizer = torch.optim.AdamW(
                     model.parameters(),
                     lr=config.learning_rate,
@@ -2547,7 +2518,6 @@ class AdaptiveTrainingOrchestrator:
         except Exception as e:
             logging.debug(f"Error clearing monitoring queue: {e}")
         
-        # Save final adaptive state
         self._save_meta_learning_state()
         
         # Standard cleanup

@@ -172,7 +172,6 @@ def _ring_as_gather(func, input_to_gather=None, input_local=None, process_group=
     group_size = dist.get_world_size(process_group)
     cur_rank = dist.get_rank(process_group)
 
-    # output_tensors = [torch.empty((input_shape[0], input_shape[1], weight_shape[0])) for _ in range(group_size)]
 
     # initialization of ring communication
     recv_rank = cur_rank + 1 if cur_rank + 1 < group_size else 0
@@ -394,7 +393,6 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     grad_weight = grad_output.t().matmul(input_parallel)
             else:
                 grad_weight = grad_output.t().matmul(input_parallel)
-            # grad_weight = grad_output.t().matmul(input_parallel)
             # wait until reduce-scatter finished
             reducescatter_handle.wait()
 

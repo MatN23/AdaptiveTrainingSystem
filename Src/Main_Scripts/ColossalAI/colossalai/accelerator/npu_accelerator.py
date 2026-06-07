@@ -24,9 +24,7 @@ class NpuAccelerator(BaseAccelerator):
     def __init__(self):
         super().__init__(name="npu", communication_backend="hccl", is_synchronous=False)
 
-    # =======================
     # device APIs
-    # =======================
     def get_version(self) -> str:
         """
         Return the version of the accelerator which torch is built against.
@@ -103,9 +101,7 @@ class NpuAccelerator(BaseAccelerator):
         """
         return torch.npu.utilization(device)
 
-    # =======================
     # random number generator APIs
-    # =======================
     def get_rng_state(self, device="npu") -> torch.Tensor:
         """
         Returns the random number generator state of the specified GPU as a ByteTensor.
@@ -160,9 +156,7 @@ class NpuAccelerator(BaseAccelerator):
         """
         return torch.npu.initial_seed()
 
-    # =======================
     # memory management APIs
-    # =======================
 
     def empty_cache(self) -> None:
         """
@@ -236,9 +230,7 @@ class NpuAccelerator(BaseAccelerator):
         """
         torch.npu.reset_peak_memory_stats(device=device)
 
-    # =======================
     # streams and events APIs
-    # =======================
 
     def Stream(self, device=None, priority=0, **kwargs):
         """
@@ -276,9 +268,7 @@ class NpuAccelerator(BaseAccelerator):
         """
         return torch.npu.stream(stream_)
 
-    # =======================
     # amp APIs
-    # =======================
     def autocast(
         self, enabled: bool = True, dtype: torch.dtype = torch.float16, cache_enabled: bool = True
     ) -> Callable:

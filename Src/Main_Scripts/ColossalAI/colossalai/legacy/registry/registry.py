@@ -38,7 +38,6 @@ class Registry:
         assert module_name not in self._registry, f"{module_name} not found in {self.name}"
         self._registry[module_name] = module_class
 
-        # return so as to use it normally if via importing
         return module_class
 
     def get_module(self, module_name: str):

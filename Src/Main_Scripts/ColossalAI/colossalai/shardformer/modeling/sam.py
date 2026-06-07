@@ -29,7 +29,6 @@ def forward_fn():
 
         # replace dropout process with added DropoutForParallelInput layer
         # origin code:
-        # attn_probs = nn.functional.dropout(attn_weights, p=self.dropout, training=self.training)
         attn_probs = self.dropout_layer(attn_weights)
 
         attn_output = (attn_probs @ value).reshape(batch_size, self.num_attention_heads, height, width, -1)

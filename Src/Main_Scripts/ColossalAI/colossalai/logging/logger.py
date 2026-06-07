@@ -107,7 +107,6 @@ class DistributedLogger:
         if isinstance(path, str):
             path = Path(path)
 
-        # create log directory
         path.mkdir(parents=True, exist_ok=True)
 
         if suffix is not None:
@@ -116,7 +115,6 @@ class DistributedLogger:
             log_file_name = f"rank_{self.rank}.log"
         path = path.joinpath(log_file_name)
 
-        # add file handler
         file_handler = logging.FileHandler(path, mode)
         file_handler.setLevel(getattr(logging, level))
         formatter = logging.Formatter("colossalai - %(name)s - %(levelname)s: %(message)s")

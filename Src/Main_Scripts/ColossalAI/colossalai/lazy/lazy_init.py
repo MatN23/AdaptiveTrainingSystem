@@ -266,7 +266,7 @@ class LazyTensor(torch.Tensor):
             else:
                 self._pre_op_fn()
                 o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
-                target = o if isinstance(o, torch.Tensor) else target  # if func returns non-Tensor, discard the value
+                target = o if isinstance(o, torch.Tensor) else target
 
         # super-dainiu: set requires_grad after all inplace-ops are done
         if packed is not None:
@@ -294,7 +294,6 @@ class LazyTensor(torch.Tensor):
         is_change_meta_op: bool = func.__name__ in _CHANGE_META_OPS
 
         if isinstance(func, torch._C.ScriptMethod):
-            # FIXME(ver217): torch script functions are not verified
 
             target = None
 
@@ -315,7 +314,6 @@ class LazyTensor(torch.Tensor):
             def unwrap(x):
                 if isinstance(x, LazyTensor):
                     if x._materialized_data is not None:
-                        # for early materialized tensor, use its materialized data directly
                         return x._materialized_data if is_change_meta_op else x._materialized_data.data
                     t = x if is_inplace else x.clone()
                     if func.__name__ not in _NO_RERUN_OPS:
@@ -344,7 +342,6 @@ class LazyTensor(torch.Tensor):
                             lazy_y = LazyTensor(fn, *args, meta_data=y, **kwargs)
                             return lazy_y
                     else:
-                        # for early materialized tensor
                         return LazyTensor(lambda: None, concrete_data=y)
                 return y
 
@@ -388,7 +385,6 @@ class LazyTensor(torch.Tensor):
 
     def clone(self) -> "LazyTensor":
         def factory_fn(t: torch.Tensor, **kw):
-            # if self is materialized, return self
             return t.clone()
 
         target = LazyTensor(factory_fn, self, meta_data=self._meta_data)
@@ -408,7 +404,6 @@ class LazyTensor(torch.Tensor):
             return memo[id(self)]
 
         def factory_fn(t: torch.Tensor, **kw):
-            # if self is materialized, return self
             return _copy_tensor(t, t.requires_grad)
 
         if self._materialized_data is not None:
@@ -617,7 +612,6 @@ def _apply_to_lazy_module(
             param_cnt += 1
             total_numel += p.numel()
             if getattr(p, "_materialized_data", False) is None:
-                # if no _materialized_data attr, the tensor is not lazy
                 param_lazy_cnt += 1
             else:
                 non_lazy_numel += p.numel()
@@ -629,7 +623,6 @@ def _apply_to_lazy_module(
             buf_cnt += 1
             total_numel += buf.numel()
             if getattr(buf, "_materialized_data", False) is None:
-                # if no _materialized_data attr, the tensor is not lazy
                 buf_lazy_cnt += 1
             else:
                 non_lazy_numel += buf.numel()

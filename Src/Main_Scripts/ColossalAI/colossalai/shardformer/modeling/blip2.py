@@ -20,7 +20,6 @@ def forward_fn():
         mixed_qkv = self.qkv(hidden_states)
 
         # modified from original code, which is:
-        # mixed_qkv = mixed_qkv.reshape(bsz, tgt_len, 3, self.num_heads, embed_dim // self.num_heads).permute(
         #     2, 0, 3, 1, 4
         # )
         # to:

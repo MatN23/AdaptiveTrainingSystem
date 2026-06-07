@@ -90,7 +90,6 @@ def _broadcast_object_list(
     if is_nccl_backend:
         object_sizes_tensor = object_sizes_tensor.to(current_device)
 
-    # Broadcast object sizes
     c10d.broadcast(object_sizes_tensor, src=src, group=group, async_op=False)
 
     # Concatenate and broadcast serialized object tensors
@@ -117,7 +116,6 @@ def _broadcast_object_list(
             if obj_view.device != torch.device("cpu"):
                 obj_view = obj_view.cpu()
             offset += obj_size
-            # unpickle
             unpickle_object = _cuda_safe_tensor_to_object(obj_view, obj_size)
 
             # unconsistence in device
@@ -235,7 +233,6 @@ def _batch_send_recv_tensor(
     # However, the Megatron-LM does synchronization here
     # https://github.com/microsoft/Megatron-DeepSpeed/blob/ef13d099c2a1609225a4ce4c1a1753cc76dd90a1/megatron/p2p_communication.py#L111-L112
     # In case there is potential error, uncomment the following `torch.cuda.synchronize()`
-    # torch.cuda.synchronize()
 
     return buffer_recv
 
@@ -277,7 +274,6 @@ def _send_recv_serialization_object(
             req.wait()
 
     # See the comment in `_batch_send_recv_tensor`
-    # torch.cuda.synchronize()
 
     ops = []
 
@@ -297,7 +293,6 @@ def _send_recv_serialization_object(
             req.wait()
 
     # See the comment in `_batch_send_recv_tensor`
-    # torch.cuda.synchronize()
 
     if recv_object_tensor is not None and recv_object_size_tensor is not None:
         recv_object_tensor = recv_object_tensor.type(torch.uint8)

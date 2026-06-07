@@ -24,7 +24,6 @@ def gather_tensor(colo_tensor: ColoTensor) -> None:
     """Make colo_tensor replicated when the rank is 0"""
     if not colo_tensor.is_replicate():
         pg = colo_tensor.get_process_group()
-        # for the group which contains rank 0
         if pg.dp_local_rank() == 0:
             old_dist_spec = colo_tensor.dist_spec
             colo_tensor.to_replicate_()

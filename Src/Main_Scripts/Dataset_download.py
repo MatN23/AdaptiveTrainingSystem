@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import os
@@ -15,7 +14,6 @@ except ImportError:
     print("Run: pip install datasets huggingface_hub")
     exit(1)
 
-# Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -80,7 +78,6 @@ def extract_conversation_paths(message_map: Dict, root_id: str) -> List[List[Dic
         node = message_map[node_id]
         new_path = current_path + [node['data']]
         
-        # Save conversation at multiple points to generate more data
         if len(new_path) >= 2:  # At least one exchange
             conversations.append(new_path.copy())
         
@@ -233,9 +230,7 @@ def save_conversations_with_size_limit(
         conv_json = json.dumps(conv, ensure_ascii=False) + '\n'
         conv_size = len(conv_json.encode('utf-8'))
         
-        # Check if adding this conversation would exceed the limit
         if current_size_estimate + conv_size > max_size_bytes and current_file_convs:
-            # Save current batch
             output_file = output_dir / f"oasst1_{split_name}.jsonl" if file_index == 0 else output_dir / f"oasst1_{split_name}_part{file_index+1}.jsonl"
             logger.info(f" Saving batch {file_index + 1}: {len(current_file_convs):,} conversations (~{current_size_estimate / (1024*1024):.1f}MB)")
             
@@ -252,7 +247,6 @@ def save_conversations_with_size_limit(
             current_file_convs = []
             current_size_estimate = 0
         
-        # Add conversation to current batch
         current_file_convs.append(conv)
         current_size_estimate += conv_size
         
@@ -260,7 +254,6 @@ def save_conversations_with_size_limit(
         if (i + 1) % 1000 == 0:
             logger.info(f"  Processed {i+1:,}/{len(conversations):,} conversations...")
     
-    # Save remaining conversations
     if current_file_convs:
         output_file = output_dir / f"oasst1_{split_name}.jsonl" if file_index == 0 else output_dir / f"oasst1_{split_name}_part{file_index+1}.jsonl"
         logger.info(f" Saving final batch {file_index + 1}: {len(current_file_convs):,} conversations (~{current_size_estimate / (1024*1024):.1f}MB)")
@@ -281,7 +274,6 @@ def download_and_process_conversations(output_dir: Path) -> bool:
         logger.info(f" Loading OpenAssistant dataset ({DATASET_NAME})...")
         logger.info("This may take a few minutes for the first download...")
         
-        # Load dataset with error handling
         try:
             ds = load_dataset(DATASET_NAME, trust_remote_code=True)
         except Exception as e:
@@ -298,7 +290,6 @@ def download_and_process_conversations(output_dir: Path) -> bool:
         # Process train and validation splits
         splits_to_process = ['train', 'validation']
         
-        # Check if test/eval split exists
         if 'test' in ds:
             splits_to_process.append('test')
         
@@ -313,7 +304,6 @@ def download_and_process_conversations(output_dir: Path) -> bool:
             logger.info(f" Processing {split_name} split...")
             logger.info(f"{'='*70}")
             
-            # Get split data
             split_data = ds[split_name]
             logger.info(f" Total messages in {split_name}: {len(split_data):,}")
             
@@ -350,7 +340,6 @@ def download_and_process_conversations(output_dir: Path) -> bool:
                 if processed_trees % 1000 == 0:
                     logger.info(f"  Processing tree {processed_trees:,}/{len(tree_messages):,}...")
                 
-                # Build conversation tree
                 message_map, root_messages = build_conversation_tree(messages)
                 
                 # Extract conversation paths from each root
@@ -370,7 +359,6 @@ def download_and_process_conversations(output_dir: Path) -> bool:
             logger.info(f"\n--- Analysis for {split_name} ---")
             analyze_conversations(filtered_conversations, split_name)
             
-            # Save with size limit
             if not filtered_conversations:
                 logger.warning(f"No conversations to save for {split_name}")
                 continue
@@ -437,14 +425,12 @@ def validate_conversation_files(output_dir: Path) -> bool:
                         
                         try:
                             data = json.loads(line)
-                            # Check conversation structure
                             required_fields = ['conversation_id', 'messages', 'total_turns']
                             for field in required_fields:
                                 if field not in data:
                                     logger.error(f" Missing field '{field}' in {file_path}")
                                     return False
                             
-                            # Check message structure
                             if data['messages']:
                                 msg = data['messages'][0]
                                 msg_fields = ['role', 'content', 'turn']
@@ -490,10 +476,8 @@ def main():
     logger.info("=" * 70)
     
     try:
-        # Setup directories
         output_dir = setup_output_directory()
         
-        # Check if files already exist and are valid
         if check_existing_files(output_dir):
             logger.info(" Valid dataset files already exist!")
             logger.info(" Delete files in the output directory if you want to re-download")
@@ -509,7 +493,6 @@ def main():
             logger.error(" Dataset processing failed!")
             return 1
         
-        # Validate files
         if not validate_conversation_files(output_dir):
             logger.error(" File validation failed!")
             return 1

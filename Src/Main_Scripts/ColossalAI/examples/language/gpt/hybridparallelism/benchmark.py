@@ -11,7 +11,6 @@ from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 
 import colossalai
 
-# import colossalai.utils.device as device_utils
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
@@ -21,9 +20,7 @@ from examples.language.data_utils import RandomDataset
 from examples.language.model_utils import format_numel_str, get_model_numel
 from examples.language.performance_evaluator import PerformanceEvaluator
 
-# ==============================
 # Constants
-# ==============================
 MODEL_CONFIGS = {
     "118M": GPT2Config(activation_function="gelu"),
     "338M": GPT2Config(n_embd=1024, n_head=16, n_layer=24, activation_function="gelu"),
@@ -33,9 +30,7 @@ MODEL_CONFIGS = {
 
 
 def main():
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=str, default="6.21B", help="Model configuration")
     parser.add_argument(
@@ -73,9 +68,6 @@ def main():
     def empty_init():
         pass
 
-    # ==============================
-    # Initialize Booster
-    # ==============================
     use_empty_init = True
     if args.plugin == "gemini":
         plugin = GeminiPlugin(
@@ -152,9 +144,6 @@ def main():
 
     booster = Booster(plugin=plugin)
 
-    # ==============================
-    # Initialize Dataset and Dataloader
-    # ==============================
     dp_size = plugin.dp_size if isinstance(plugin, HybridParallelPlugin) else coordinator.world_size
 
     config = MODEL_CONFIGS[args.config]
@@ -163,9 +152,6 @@ def main():
     )
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
-    # ==============================
-    # Initialize Model and Optimizer
-    # ==============================
     init_ctx = (
         LazyInitContext(default_device=get_current_device())
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))

@@ -72,7 +72,6 @@ def meta_trace(module: torch.nn.Module, fake_device=None, *args, **kwargs) -> Gr
                 if isinstance(x, MetaProxy):
                     fake_device = x.device
                     x = x._tensor
-                    # assert not isinstance(x, MetaProxy)
                 elif isinstance(x, torch.Tensor):
                     fake_device = x.device
                     x = x.to(torch.device("meta"))

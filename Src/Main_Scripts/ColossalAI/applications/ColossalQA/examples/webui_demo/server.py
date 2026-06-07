@@ -62,7 +62,6 @@ if __name__ == "__main__":
     all_config = config.ALL_CONFIG
     model_name = all_config["model"]["model_name"]
 
-    # initialize chatbot
     logger.info(f"Initialize the chatbot from {model_name}")
 
     if all_config["model"]["mode"] == "local":
@@ -87,7 +86,6 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unsupported mode.")
 
-    # initialize chatbot
     chatbot = RAG_ChatBot(llm, all_config)
 
     app_config = uvicorn.Config(app, host=args.http_host, port=args.http_port)

@@ -11,7 +11,6 @@ import struct
 import tempfile
 from pathlib import Path
 
-# Add core directory to path
 script_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script_dir)
 core_dir = os.path.join(parent_dir, 'core')
@@ -63,7 +62,6 @@ class ChatInterface:
         """
         Call C++ binary with token IDs via temporary file.
         """
-        # Create temp file with token IDs
         with tempfile.NamedTemporaryFile(mode='w', suffix='.tokens', delete=False) as f:
             # Write token IDs as comma-separated integers
             f.write(','.join(map(str, prompt_tokens)))
@@ -163,7 +161,6 @@ class ChatInterface:
         
         while True:
             try:
-                # Get user input
                 user_input = input("\n\033[1;34mYou:\033[0m ").strip()
                 
                 if not user_input:
@@ -196,7 +193,6 @@ class ChatInterface:
                     print(" Debug mode disabled")
                     continue
                 
-                # Add user message to history
                 history.append({'role': 'user', 'content': user_input})
                 
                 # Encode conversation
@@ -221,7 +217,6 @@ class ChatInterface:
                 response_tokens = self.generate_with_cpp(prompt_tokens, debug=debug)
                 
                 if response_tokens:
-                    # Decode response
                     response_text = self.tokenizer.decode(
                         response_tokens,
                         skip_special_tokens=True,
@@ -234,7 +229,6 @@ class ChatInterface:
                         print(f"\n{response_text}")
                         print(f"\n Generated {len(response_tokens)} tokens")
                     
-                    # Add to history
                     history.append({'role': 'assistant', 'content': response_text})
                 else:
                     print("\n  No response generated")
@@ -253,7 +247,6 @@ class ChatInterface:
         
         while True:
             try:
-                # Get user input
                 user_input = input("\n\033[1;34mYou:\033[0m ").strip()
                 
                 if not user_input:
@@ -276,7 +269,6 @@ class ChatInterface:
                     print(" Conversation cleared")
                     continue
                 
-                # Add user message to history
                 history.append({'role': 'user', 'content': user_input})
                 
                 # Encode conversation
@@ -300,7 +292,6 @@ class ChatInterface:
                 response_tokens = self.generate_with_cpp(prompt_tokens)
                 
                 if response_tokens:
-                    # Decode response
                     response_text = self.tokenizer.decode(
                         response_tokens,
                         skip_special_tokens=True,
@@ -310,7 +301,6 @@ class ChatInterface:
                     print(response_text)
                     print(f"\n Generated {len(response_tokens)} tokens")
                     
-                    # Add to history
                     history.append({'role': 'assistant', 'content': response_text})
                 else:
                     print("\n  No response generated")
@@ -328,12 +318,10 @@ class ChatInterface:
         """Single prompt mode"""
         print(f"\n Prompt: {prompt}\n")
         
-        # Create conversation
         conversation = self.format_conversation([
             {'role': 'user', 'content': prompt}
         ])
         
-        # Encode
         prompt_tokens, stats = self.tokenizer.encode_conversation(
             conversation,
             mode=TokenizationMode.CHAT_OPTIMIZED,
@@ -363,7 +351,6 @@ class ChatInterface:
             print(f"\n Generated {len(response_tokens)} tokens")
             print(f"   Token IDs (first 20): {response_tokens[:20]}")
             
-            # Decode
             response_text = self.tokenizer.decode(
                 response_tokens,
                 skip_special_tokens=True,
@@ -411,7 +398,6 @@ def main():
         else:
             prompt = arg
     
-    # Validate files
     if not os.path.exists(binary):
         print(f" Binary not found: {binary}")
         print("   Run ./compile.sh first")
@@ -422,7 +408,6 @@ def main():
         print("   Create model with export script or create_test_model.py")
         return
     
-    # Initialize chat interface
     try:
         chat = ChatInterface(binary, model, tokenizer_model)
         

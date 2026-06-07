@@ -90,7 +90,6 @@ class LlamaPipelineForwards:
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
-        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
@@ -115,7 +114,6 @@ class LlamaPipelineForwards:
             position_ids = position_ids.unsqueeze(0)
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
-        # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
             mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
@@ -131,7 +129,6 @@ class LlamaPipelineForwards:
                 # 2d mask is passed through the layers
                 attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
             elif self._use_sdpa and not output_attentions:
-                # output_attentions=True can not be supported when using SDPA, and we fall back on
                 # the manual implementation that requires a 4D causal mask in all cases.
                 attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                     attention_mask,
@@ -284,7 +281,6 @@ class LlamaPipelineForwards:
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
@@ -379,7 +375,6 @@ class LlamaPipelineForwards:
         logger = logging.get_logger(__name__)
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False

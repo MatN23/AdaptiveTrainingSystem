@@ -51,7 +51,6 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
 
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
-        # check master weight
         assert isinstance(new_optimizer, LowLevelZeroOptimizer)
         working_param_id_set = set(id(p) for p in new_model.parameters())
         for p_id, master_param in new_optimizer._param_store.working_to_master_param.items():

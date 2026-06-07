@@ -32,7 +32,6 @@ class GetattrGenerator(StrategyGenerator):
         forward_size_mapping = {"output": self._compute_size_in_bytes(strategy, "output")}
 
         # compute fwd cost incurred
-        # fwd_cost = output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items()])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=0)
 
@@ -73,7 +72,6 @@ class GetattrGenerator(StrategyGenerator):
                 sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
                 communication_action_mapping = {}
 
-                # get name
                 name = f"get_attr {sharding_spec_mapping['output'].sharding_sequence}"
                 sharding_strategy = self.get_sharding_strategy(
                     name=name,

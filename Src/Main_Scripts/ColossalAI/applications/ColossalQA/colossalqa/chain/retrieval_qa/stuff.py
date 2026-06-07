@@ -70,7 +70,6 @@ class CustomStuffDocumentsChain(StuffDocumentsChain):
         """
         # Format each document according to the prompt
 
-        # if the document is in the key-value format has a 'is_key_value_mapping'=True in meta_data and has 'value' in metadata
         # use the value to replace the key
         doc_prefix = kwargs.get("doc_prefix", "Supporting Document")
         docs_ = []

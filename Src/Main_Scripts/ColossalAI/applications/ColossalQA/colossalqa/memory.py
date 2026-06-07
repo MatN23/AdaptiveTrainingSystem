@@ -17,7 +17,6 @@ from pydantic import Field
 class ConversationBufferWithSummary(ConversationSummaryMemory):
     """Memory class for storing information about entities."""
 
-    # Define dictionary to store information about entities.
     # Store the most recent conversation history
     buffered_history: BaseChatMessageHistory = Field(default_factory=ChatMessageHistory)
     # Temp buffer
@@ -26,7 +25,6 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
     ai_prefix: str = "Assistant"
     buffer: str = ""  # Formated conversation in str
     existing_summary: str = ""  # Summarization of stale converstion in str
-    # Define key to pass information about entities into prompt.
     memory_key: str = "chat_history"
     input_key: str = "question"
     retriever: BaseRetriever = None

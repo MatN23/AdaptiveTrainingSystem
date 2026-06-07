@@ -66,7 +66,6 @@ def test_cachemgr():
     assert not mgr._chunk_in_cuda(2)
     assert mgr._chunk_in_cuda(1)
 
-    # print(mgr.cached_chunk_table)
     mgr._admit(8)
 
     # now 3 chunk is available
@@ -77,7 +76,6 @@ def test_cachemgr():
 
     mgr._prepare_rows_on_cuda(torch.tensor([9, 6, 5], dtype=torch.long, device=0))
     mgr._prepare_rows_on_cuda(torch.tensor([3, 4, 5], dtype=torch.long, device=0))
-    # print(mgr.cached_chunk_table)
     # mgr.print_comm_stats()
 
     mgr.flush()
@@ -178,7 +176,6 @@ def test_lfu_strategy(init_freq: bool):
         evict_strategy=EvictionStrategy.LFU,
     )
 
-    # print('cached_idx_map: ', Bag.cache_weight_mgr.cached_idx_map)
     offsets = torch.tensor([0], device="cuda:0")
 
     # prepare frequency learning info:
@@ -198,7 +195,6 @@ def test_lfu_strategy(init_freq: bool):
     Bag.forward(torch.tensor([0], device="cuda:0"), offsets)
     Bag.forward(torch.tensor([0], device="cuda:0"), offsets)
 
-    # check strategy
     Bag.forward(torch.tensor([0, 1, 2], device="cuda:0"), offsets)
     Bag.forward(torch.tensor([0, 1, 2], device="cuda:0"), offsets)
     Bag.forward(torch.tensor([3], device="cuda:0"), offsets)  # miss, evict 1
@@ -226,7 +222,6 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
         return
     device = torch.device("cuda", torch.cuda.current_device())
 
-    # initialize weight
     # 3 feature tables. idx: 0~5, 6~10, 11~17
     weight_tables = torch.rand(18, 5)
     weight_table1 = weight_tables[0:6]
@@ -286,7 +281,6 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     optimizer.step()
     optimizer.zero_grad()
 
-    # check correctness
     if rank == 0:
         ref_model = torch.nn.EmbeddingBag.from_pretrained(
             weight_tables.detach().clone(), include_last_offset=True, freeze=False
@@ -318,7 +312,6 @@ def run_parallel_freq_aware_embed_columnwise(rank, world_size):
     weight = torch.rand(num_embed, embed_dim)
     coloweight = ColoTensor(weight.clone().detach().cpu(), spec=None)
 
-    # initialize the tensor spec for the embedding weight parameter,
     # which is an ColoParameter.
     coloweight.set_process_group(ProcessGroup(tp_degree=world_size))
     coloweight.set_tensor_spec(ShardSpec(dims=[-1], num_partitions=[world_size]), ComputeSpec(ComputePattern.TP1D))
@@ -379,7 +372,6 @@ def run_parallel_freq_aware_embed_columnwise(rank, world_size):
 
 def run_dist(rank, world_size, port):
     colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    # run_parallel_freq_aware_embed_columnwise(rank, world_size)
     run_parallel_freq_aware_embed_tablewise(rank, world_size)
 
 
@@ -391,6 +383,4 @@ def test_parallel_freq_aware_embed(world_size):
 
 
 if __name__ == "__main__":
-    # test_freq_aware_embed(True)
     test_parallel_freq_aware_embed(2)
-    # test_lfu_strategy(False)

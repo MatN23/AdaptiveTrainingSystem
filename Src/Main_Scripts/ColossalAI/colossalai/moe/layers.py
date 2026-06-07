@@ -81,7 +81,6 @@ class SparseMLP(nn.Module):
         self.router_loss = router_loss
         self.router_norm = router_norm
 
-        # moe router
         noisy_func = get_noise_generator(router_noisy_policy, num_experts)
         router_cls = get_router_cls(router_top_k)
         self.topk = router_top_k
@@ -93,10 +92,8 @@ class SparseMLP(nn.Module):
             drop_tks=router_drop_tks,
         )
 
-        # gate
         self.gate_weight = torch.nn.Parameter(torch.empty(num_experts, self.hidden_size))
 
-        # moe experts
         self.experts = MLPExperts(
             num_experts=self.num_experts,
             expert_parallel=self.expert_parallel,
@@ -122,7 +119,6 @@ class SparseMLP(nn.Module):
             self.dp_group = None
         self.num_local_experts = self.experts.num_local_experts
 
-        # load balance
         self.enable_load_balance = enable_load_balance
         if self.enable_load_balance == True:
             self.load_balancer = LoadBalancer(

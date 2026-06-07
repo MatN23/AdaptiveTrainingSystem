@@ -15,13 +15,11 @@ from tests.test_shardformer.test_model._utils import build_model, check_grad, ru
 
 
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
-    # check forward
     org_output, org_loss, shard_output, shard_loss = run_forward(
         org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn
     )
     assert_hf_output_close(org_output, shard_output, ignore_keys=["pred_masks"])
 
-    # do backward
     org_loss.backward()
     shard_loss.backward()
 
@@ -29,12 +27,10 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
         org_loss, shard_loss, atol=1e-5
     ), f"shard model loss is not equal to orgin model loss\n{org_loss}\n{shard_loss}"
 
-    # check grad
 
     sam = org_model
     sharded_sam = sharded_model
 
-    # check grad
     col_layer_for_check = ["mask_decoder.transformer.layers[0].self_attn.q_proj", "vision_encoder.layers[0].mlp.lin1"]
     row_layer_for_check = ["mask_decoder.transformer.layers[0].self_attn.out_proj", "vision_encoder.layers[0].mlp.lin2"]
     check_grad(sam, sharded_sam, col_layer_for_check, atol=1e-5, rtol=1e-3, dim=0, verbose=False)

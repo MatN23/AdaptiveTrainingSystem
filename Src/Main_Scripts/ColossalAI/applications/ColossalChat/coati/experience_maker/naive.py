@@ -89,7 +89,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         pad_token_id = self.tokenizer.pad_token_id
 
         stop_token_ids = generate_kwargs.get("stop_token_ids", None)
-        torch.manual_seed(41)  # for tp, gurantee the same input for reward model
+        torch.manual_seed(41)
 
         sequences = generate(self.actor, input_ids, self.tokenizer, **generate_kwargs)
 
@@ -104,7 +104,6 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         input_len = input_ids.size(1)
         if stop_token_ids is None:
-            # End the sequence with eos token
             eos_token_id = self.tokenizer.eos_token_id
             if eos_token_id is None:
                 action_mask = torch.ones_like(sequences, dtype=torch.bool)

@@ -175,7 +175,6 @@ class MemoryEfficientAttnBlock(nn.Module):
     Note: this is a single-head self-attention operation
     """
 
-    #
     def __init__(self, in_channels):
         super().__init__()
         self.in_channels = in_channels
@@ -358,7 +357,6 @@ class Model(nn.Module):
         self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x, t=None, context=None):
-        # assert x.shape[2] == x.shape[3] == self.resolution
         if context is not None:
             # assume aligned context, cat along channel axis
             x = torch.cat((x, context), dim=1)
@@ -549,7 +547,6 @@ class Decoder(nn.Module):
         self.z_shape = (1, z_channels, curr_res, curr_res)
         rank_zero_info("Working with z of shape {} = {} dimensions.".format(self.z_shape, np.prod(self.z_shape)))
 
-        # z to block_in
         self.conv_in = torch.nn.Conv2d(z_channels, block_in, kernel_size=3, stride=1, padding=1)
 
         # middle
@@ -590,7 +587,6 @@ class Decoder(nn.Module):
         self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
     def forward(self, z):
-        # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
         # timestep embedding

@@ -10,7 +10,7 @@ class FlashAttentionDaoCudaExtension(_Extension):
         try:
             import torch
 
-            from flash_attn import flash_attn_func, flash_attn_varlen_kvpacked_func  # noqa
+            from flash_attn import flash_attn_func, flash_attn_varlen_kvpacked_func
             from flash_attn.bert_padding import index_first_axis, pad_input  # noqa
 
             cuda_available = torch.cuda.is_available()

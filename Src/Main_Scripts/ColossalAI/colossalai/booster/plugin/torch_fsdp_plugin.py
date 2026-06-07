@@ -187,7 +187,6 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
             sharded_state = utils.shard_optimizer_checkpoint(fsdp_optim_state, max_shard_size=size_per_shard)
 
-            # Save shards of optimizer states.
             # In general cases, is_master is set to True to get the right behavior.
             total_size = utils.save_state_dict_shards(
                 sharded_state_dict=sharded_state,
@@ -214,7 +213,6 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
         ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
 
-        # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
             raise RuntimeError(
@@ -224,7 +222,6 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
         saved_param_groups = torch.load(param_group_path)
 
-        # Load param
         fsdp_optim_state = {}
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
         for shard_file in checkpoint_files:

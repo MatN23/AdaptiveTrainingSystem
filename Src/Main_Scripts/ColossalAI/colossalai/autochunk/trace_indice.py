@@ -96,7 +96,6 @@ class TraceIndice(object):
         node_from_idx = self.node_mgr.find_node_idx(node_from)
         if init:
             node_to_trace_source[node_to_dim] = {}
-        # add dim to cur new source
         if node_from_idx not in node_to_trace_source[node_to_dim]:
             node_to_trace_source[node_to_dim][node_from_idx] = [node_from_dim]
         else:
@@ -161,7 +160,6 @@ class TraceIndice(object):
             exclude = [self._transform_indice(node_to, i) for i in exclude]
         node_from_compute = self._find_compute_trace_from_node(node_from)
         node_to_compute = self._find_compute_trace_from_node(node_to)
-        # assert len(node_from_compute) == len(node_to_compute)
         for i in range(-1, -min(len(node_from_compute), len(node_to_compute)) - 1, -1):
             if self._transform_indice(node_to, i) in exclude:
                 continue
@@ -350,7 +348,6 @@ class TraceIndice(object):
         assert get_node_shape(add) == get_node_shape(node)
         assert len(get_node_shape(matmul_left)) == len(get_node_shape(matmul_right))
         self._assign_indice_as_input(node, node_idx, matmul_left)
-        # matmul
         self._inherit_indice(matmul_right, -1, node, -1)
         self._inherit_more_indice_from_node_with_exclude(matmul_right, node, [-2, -1])
         self._mark_computation(node, node_idx, [-1])
@@ -541,7 +538,6 @@ class TraceIndice(object):
         self._del_dim(node_idx, -1)
         self._assign_indice_as_input(node, node_idx)
         dim_idx = node.args[1]
-        # unsqueeze(-1) = unsqueeze(shape_num + 1)
         if dim_idx < 0:
             dim_idx = list(range(len(get_node_shape(node))))[dim_idx]
         self._add_dim(node_idx, dim_idx)
@@ -698,7 +694,6 @@ class TraceIndice(object):
                 shape_gap = len(node_shape) - len(node_args) + 1
                 origin_idx_count += shape_gap
                 new_idx_count += shape_gap
-            # slice(None, None, None) means all indexes
             elif "slice" in node_arg_str:
                 if "slice(None, None, None)" != node_arg_str:
                     self._del_dim(node_idx, new_idx_count)
@@ -782,7 +777,6 @@ class TraceIndice(object):
             for i in range(-dim_diff):
                 self._del_dim(node_idx, -1)
 
-        # get new indice
         origin_trace = self._find_indice_trace_from_node(origin_node)
         self._assign_indice_as_input(node, node_idx, origin_node)
         dim_from.reverse()

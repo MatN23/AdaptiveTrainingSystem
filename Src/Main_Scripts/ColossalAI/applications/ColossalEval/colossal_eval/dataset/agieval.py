@@ -13,7 +13,6 @@ from colossalai.logging import DistributedLogger
 
 from .base import BaseDataset
 
-# define the datasets
 english_qa_datasets = [
     "lsat-ar",
     "lsat-lr",
@@ -125,7 +124,6 @@ def combine_prompt(prompt_path, dataset_name, load_explanation=True, chat_mode=F
     contexts = []
     for line in list(raw_prompts_context[dataset_name]):
         if line:
-            # print(line)
             contexts.append(ast.literal_eval(line))
     explanations = [exp for exp in raw_prompts_explanation[dataset_name] if exp]
 

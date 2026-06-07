@@ -37,7 +37,6 @@ class CustomizedTritonAutoTuner(triton.KernelInterface):
 
             self.hook = _hook
         self.arg_names = arg_names
-        # prune configs
         if prune_configs_by:
             perf_model, top_k = prune_configs_by["perf_model"], prune_configs_by["top_k"]
             if "early_config_prune" in prune_configs_by:
@@ -49,7 +48,6 @@ class CustomizedTritonAutoTuner(triton.KernelInterface):
         self.fn = fn
 
     def _bench(self, *args, config, **meta):
-        # check for conflicts, i.e. meta-parameters both provided
         # as kwargs and by the autotuner
         conflicts = meta.keys() & config.kwargs.keys()
         if conflicts:
@@ -84,7 +82,6 @@ class CustomizedTritonAutoTuner(triton.KernelInterface):
                 key = tuple([2 ** int(math.log2(x) + 0.5) for x in key])
 
             if key not in self.cache:
-                # prune configs
                 pruned_configs = self.prune_configs(kwargs)
                 bench_start = time.time()
                 timings = {config: self._bench(*args, config=config, **kwargs) for config in pruned_configs}

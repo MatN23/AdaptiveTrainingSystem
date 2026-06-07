@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import math
@@ -13,7 +12,6 @@ import torch.nn.functional as F
 from core.dataset import create_dataloader
 
 
-# Add this method to the EnhancedConversationTrainer class
 def train(self, train_dataset, eval_dataset=None):
     """Main training loop with comprehensive monitoring."""
     logging.info("="*80)
@@ -23,7 +21,6 @@ def train(self, train_dataset, eval_dataset=None):
     # Store eval dataset for periodic evaluation
     self.eval_dataset = eval_dataset
     
-    # Setup data loaders
     train_dataloader = create_dataloader(train_dataset, self.config, shuffle=True)
     
     # Calculate total steps and setup scheduler
@@ -44,7 +41,6 @@ def train(self, train_dataset, eval_dataset=None):
             logging.info(f"EPOCH {epoch + 1}/{self.config.num_epochs}")
             logging.info(f"{'='*60}")
             
-            # Train epoch
             epoch_metrics = self.train_epoch(train_dataloader, epoch)
             
             # Full evaluation at epoch end
@@ -52,7 +48,6 @@ def train(self, train_dataset, eval_dataset=None):
                 eval_metrics = self.evaluate(eval_dataset)
                 epoch_metrics.update(eval_metrics)
                 
-                # Log epoch summary
                 logging.info(f"Epoch {epoch + 1} Summary:")
                 logging.info(f"  Train Loss: {epoch_metrics['avg_loss']:.6f}")
                 logging.info(f"  Eval Loss: {eval_metrics['eval_loss']:.6f}")
@@ -69,7 +64,6 @@ def train(self, train_dataset, eval_dataset=None):
                 except Exception as e:
                     logging.warning(f"Failed to log epoch metrics: {e}")
             
-            # Save epoch checkpoint
             if hasattr(self, 'checkpoint_manager'):
                 self.checkpoint_manager.save_checkpoint(
                     self.model, self.optimizer, self.scheduler,
@@ -94,7 +88,6 @@ def train(self, train_dataset, eval_dataset=None):
         total_training_time = time.time() - training_start_time
         logging.info(f"\nTraining finished after {total_training_time / 3600:.2f} hours")
         
-        # Save final checkpoint
         if hasattr(self, 'checkpoint_manager'):
             self.checkpoint_manager.save_checkpoint(
                 self.model, self.optimizer, self.scheduler,
@@ -102,7 +95,6 @@ def train(self, train_dataset, eval_dataset=None):
                 "final"
             )
         
-        # Save training summary
         self._save_training_summary(total_training_time)
 
 
@@ -128,7 +120,6 @@ def train_epoch(self, train_dataloader, epoch: int):
     last_log_time = time.time()
     
     for batch_idx, batch in enumerate(train_dataloader):
-        # Check for stop signal
         if hasattr(self, 'should_stop') and self.should_stop:
             break
         
@@ -269,7 +260,6 @@ def train_epoch(self, train_dataloader, epoch: int):
 def _log_training_step(self, epoch: int, batch_idx: int, total_batches: int,
                       metrics, opt_metrics, tokens_per_sec: float):
     """Log training step with comprehensive information."""
-    # Memory info
     memory_info = ""
     if torch.cuda.is_available():
         memory_allocated = torch.cuda.memory_allocated() / 1e9
@@ -326,7 +316,6 @@ def _check_early_stopping(self, eval_loss: float):
     if eval_loss < self.best_eval_loss:
         self.best_eval_loss = eval_loss
         self.patience_counter = 0
-        # Save best model
         if hasattr(self, 'checkpoint_manager'):
             self.checkpoint_manager.save_checkpoint(
                 self.model, self.optimizer, self.scheduler,
@@ -421,7 +410,7 @@ def _save_training_summary(self, total_time: float):
         
         with open(summary_path, 'w') as f:
             import json
-            json.dump(summary, f, indent=2, default=str)  # default=str handles non-serializable objects
+            json.dump(summary, f, indent=2, default=str)
         
         logging.info(f"Training summary saved: {summary_path}")
     

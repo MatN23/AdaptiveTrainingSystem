@@ -20,7 +20,6 @@ def calculate_fwd_in(n: Node) -> int:
     Returns:
         fwd_in (int): the result of `fwd_in`
     """
-    # TODO(super-dainiu): should divide the memory by sharding spec
     return activation_size(n.meta["fwd_in"])
 
 
@@ -36,7 +35,6 @@ def calculate_fwd_tmp(n: Node) -> int:
         fwd_tmp (int): the result of `fwd_tmp`
     """
 
-    # TODO(super-dainiu): should divide the memory by sharding spec
     def is_relu_like_node(n: Node) -> bool:
         """Check if a node is a ReLU-like node.
         ReLU-like nodes have the following properties:
@@ -81,7 +79,6 @@ def calculate_fwd_out(n: Node) -> int:
         fwd_out (int): the result of `fwd_out`
     """
 
-    # TODO(super-dainiu): should divide the memory by sharding spec
     def intersect(a, b):
         return {k: a[k] for k in a if k in b}
 
@@ -99,7 +96,6 @@ def calculate_fwd_time(n: Node) -> float:
     Returns:
         fwd_time (float): the result of `fwd_time`
     """
-    # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
     return n.meta["fwd_time"]
 
 
@@ -110,5 +106,4 @@ def calculate_bwd_time(n: Node) -> float:
     Returns:
         bwd_time (float): the result of `bwd_time`
     """
-    # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
     return n.meta["bwd_time"]

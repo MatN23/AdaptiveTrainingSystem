@@ -81,7 +81,6 @@ class CaiQuantLinear(nn.Module):
         zeros = zeros.t().contiguous()
         scale_zeros = zeros * scales
         half_scales = scales.clone().half()
-        # print("scale shape ", scales.shape, scale_zeros.shape, linear.weight.shape)
         self.scales = scales.clone().half()
         if linear.bias is not None:
             self.bias = linear.bias.clone().half()

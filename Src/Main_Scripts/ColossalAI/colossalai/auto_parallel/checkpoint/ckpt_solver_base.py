@@ -63,7 +63,6 @@ class CheckpointSolverBase(ABC):
         _copy_output(graph, self.graph)
         self.graph.set_codegen(ActivationCheckpointCodeGen())
 
-        # check if has meta information
         if any(len(node.meta) == 0 for node in self.graph.nodes):
             raise RuntimeError(
                 "Nodes meta information hasn't been prepared! Please extract from graph before constructing the solver!"
@@ -178,7 +177,6 @@ class CheckpointSolverBase(ABC):
                         deps[n_par] -= 1
                 region.append(n)
 
-                # if the node could free all dependencies in graph
                 # we could begin a new node
                 if _is_sink():
                     node_list.append(region)

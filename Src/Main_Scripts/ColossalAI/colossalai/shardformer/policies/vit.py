@@ -95,7 +95,6 @@ class ViTPolicy(Policy):
                 ],
             )
 
-        # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
@@ -157,7 +156,6 @@ class ViTPolicy(Policy):
             )
 
 
-# ViTModel
 class ViTModelPolicy(ViTPolicy):
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTModel
@@ -181,7 +179,6 @@ class ViTModelPolicy(ViTPolicy):
         return held_layers
 
 
-# ViTForImageClassification
 class ViTForImageClassificationPolicy(ViTPolicy):
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTForImageClassification, ViTModel
@@ -222,7 +219,6 @@ class ViTForImageClassificationPolicy(ViTPolicy):
         return held_layers
 
 
-# ViTForMaskedImageModeling
 class ViTForMaskedImageModelingPolicy(ViTPolicy):
     def module_policy(self):
         from transformers.models.vit.modeling_vit import ViTForMaskedImageModeling, ViTModel

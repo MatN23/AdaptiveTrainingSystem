@@ -183,7 +183,6 @@ class PaddingEmbedding(PaddingParallelModule):
             self.num_embeddings = (
                 num_embeddings + make_vocab_size_divisible_by - (num_embeddings % make_vocab_size_divisible_by)
             )
-        # create weight and bias
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
             weight = nn.Parameter(torch.empty((num_embeddings, self.embedding_dim), **factory_kwargs))
@@ -220,7 +219,6 @@ class PaddingEmbedding(PaddingParallelModule):
         embedding_dim = module.embedding_dim
         padding_idx = module.padding_idx
         device = module.weight.device
-        # create the parallel module
         padding_embedding = PaddingEmbedding(
             num_embeddings=num_embeddings,
             embedding_dim=embedding_dim,
@@ -340,7 +338,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
             assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
             process_group = process_group[0]
 
-        # create the parallel module
         vocab_embedding_1d = VocabParallelEmbedding1D(
             num_embeddings=num_embeddings,
             embedding_dim=embedding_dim,

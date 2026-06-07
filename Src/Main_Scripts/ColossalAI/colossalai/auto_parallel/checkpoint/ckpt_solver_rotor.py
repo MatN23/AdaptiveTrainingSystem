@@ -231,7 +231,6 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         cost_table = [[{} for _ in range(len(chain) + 1)] for _ in range(mmax + 1)]
         back_ptr = [[{} for _ in range(len(chain) + 1)] for _ in range(mmax + 1)]
 
-        # Initialize corner cases where length of sequence equals to 1, i.e. lhs == rhs
         for m in range(mmax + 1):
             for i in range(len(chain) + 1):
                 limit = max(x[i + 1] + xbar[i + 1] + ftmp[i], x[i + 1] + xbar[i + 1] + btmp[i])

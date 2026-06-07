@@ -1,4 +1,3 @@
-# coding=utf-8
 import os
 import re
 from collections import abc as container_abcs
@@ -28,9 +27,7 @@ WEIGHTS_INDEX_NAME = "pytorch_model.bin.index.json"
 STATES_INDEX_NAME = "pytorch_optim.bin.index.json"
 GROUP_FILE_NAME = "pytorch_optim_group.bin"
 
-# ======================================
 # General helper functions
-# ======================================
 
 
 def calculate_tensor_size(tensor: torch.Tensor) -> float:
@@ -129,9 +126,6 @@ def search_padding_dim(global_shape: torch.Size, original_shape: torch.Size) -> 
     return padding_dim
 
 
-# ======================================
-# Helper classes and functions for saving shard file
-# ======================================
 
 
 class StateDictSharder:
@@ -276,7 +270,6 @@ def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024)
         if block != None:
             yield block, block_size
 
-    # Return the last block in sharder.
     yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
 
@@ -295,13 +288,9 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
         if block != None:
             yield block, block_size
 
-    # Return the last block in sharder.
     yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
 
-# ======================================
-# Helper functions for saving state dict
-# ======================================
 
 
 def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
@@ -397,14 +386,12 @@ def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = T
 
     model = unwrap_huggingface_model(model)
 
-    # save the string version of dtype to the config, e.g. convert torch.float32 => "float32"
     dtype = get_parameter_dtype(model)
     model.config.torch_dtype = str(dtype).split(".")[1]
 
     # Attach architecture to the config
     model.config.architectures = [model.__class__.__name__]
 
-    # Save the config
     if is_master:
         model.config.save_pretrained(checkpoint_path)
         if model.can_generate():
@@ -424,15 +411,11 @@ def save_dtensor(name: str, tensor: torch.Tensor, index_file: "CheckpointIndexFi
     root_path = index_file.root_path
     output_root_path = root_path.joinpath("dtensor")
 
-    # create directory
     output_root_path.mkdir(exist_ok=True)
 
-    # save tensor to this directory
-    # TODO(YuliangLiu): get index of the tensor shard
     # e.g. index =
     index = 0
 
-    # save tensor to file
     ckpt_file_name = generate_dtensor_file_name(name, index, use_safetensors)
     ckpt_file_path = output_root_path.joinpath(ckpt_file_name)
 
@@ -501,9 +484,6 @@ def generate_dtensor_file_name(param_name: str, index: int, use_safetensors: boo
     return f"{param_name}.{index}.{suffix}"
 
 
-# ========================================
-# Helper functions for loading state dict
-# ========================================
 
 
 def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
@@ -554,7 +534,6 @@ def load_state_dict_into_model(
         local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
         args = (state_dict, prefix, local_metadata, True, sub_missing_keys, [], error_msgs)
         # Parameters of module and children will start with prefix. We can exit early if there are none in this
-        # state_dict
         if len([key for key in state_dict if key.startswith(prefix)]) > 0:
             module._load_from_state_dict(*args)
         if load_sub_module:
@@ -582,7 +561,6 @@ def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str
     Load information of param_groups into an initialized optimizer.
     """
 
-    # Load list of param_groups from given file path.
     # The params in saved_groups are in the form of integer indices.
     saved_groups = torch.load(param_group_path, map_location=torch.device("cpu"))
     if not isinstance(saved_groups, List):
@@ -592,7 +570,6 @@ def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str
     # For more details, please view source code of Optimizer class in pytorch.
     param_groups = optimizer.param_groups
 
-    # Check the compatibility of saved_groups and param_groups.
     if len(param_groups) != len(saved_groups):
         raise ValueError("loaded state dict has a different number of original parameter groups")
     param_lens = (len(g["params"]) for g in param_groups)
@@ -696,17 +673,14 @@ def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
     """
     checkpoint_path = Path(checkpoint_path)
     if checkpoint_path.is_file():
-        # check if it is .index.json
         reg = re.compile("(.*?).index((\..*)?).json")
         if reg.fullmatch(checkpoint_path.name) is not None:
             return True, checkpoint_path
         else:
             return False, None
     elif checkpoint_path.is_dir():
-        # check if there is only one a file ending with .index.json in this directory
         index_files = list(checkpoint_path.glob("*.index.*json"))
 
-        # if we found a .index.json file, make sure there is only one
         if len(index_files) > 0:
             assert (
                 len(index_files) == 1
@@ -739,7 +713,6 @@ def load_state_dict(checkpoint_file_path: Path):
         assert (
             is_safetensors_available()
         ), f"Cannot load state dict from safetensor checkpoint {checkpoint_file_path}, because safetensors is not available. Please install safetensors first with pip install safetensors."
-        # load with safetensors
         from safetensors import safe_open
 
         state_dict = {}
@@ -749,7 +722,6 @@ def load_state_dict(checkpoint_file_path: Path):
         return state_dict
 
     else:
-        # load with torch
         return torch.load(checkpoint_file_path, map_location=torch.device("cpu"))
 
 

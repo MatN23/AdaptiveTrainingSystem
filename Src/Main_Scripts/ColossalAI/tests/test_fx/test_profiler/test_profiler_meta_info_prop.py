@@ -64,23 +64,10 @@ def run_tm_forward(gm: torch.fx.GraphModule):
         # If we need to dive deep into the memory usage by
         # inspecting `saved_tensor_hooks`
 
-        # =====================================================
-        # fwd_mem = 0
-        # cache = set()
-        # def pack(x):
-        #     if isinstance(x, torch.Tensor):
         #         nonlocal fwd_mem, cache
-        #         if x.data_ptr() not in cache:
         #             fwd_mem += activation_size(x)
         #             cache.add(x.data_ptr())
-        #     return x
-        # def unpack(x):
-        #     return x
-        #
         # with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
-        #    output = gm(data)
-        # print(f'Memory estimation by saved_tensor_hooks: {fwd_mem / 1024**2}')
-        # =====================================================
 
         output = gm(data)
         forward_mem += torch.cuda.memory_allocated(device="cuda:0") / 1024**2 / NUM_STEPS
@@ -101,23 +88,10 @@ def run_gpt_forward(gm: torch.fx.GraphModule):
         # If we need to dive deep into the memory usage by
         # inspecting `saved_tensor_hooks`
 
-        # =====================================================
-        # fwd_mem = 0
-        # cache = set()
-        # def pack(x):
-        #     if isinstance(x, torch.Tensor):
         #         nonlocal fwd_mem, cache
-        #         if x.data_ptr() not in cache:
         #             fwd_mem += activation_size(x)
         #             cache.add(x.data_ptr())
-        #     return x
-        # def unpack(x):
-        #     return x
-        #
         # with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
-        #    output = gm(data, mask)
-        # print(f'Memory estimation by saved_tensor_hooks: {fwd_mem / 1024**2}')
-        # =====================================================
 
         output = gm(data, mask)
         forward_mem += torch.cuda.memory_allocated(device="cuda:0") / 1024**2 / NUM_STEPS

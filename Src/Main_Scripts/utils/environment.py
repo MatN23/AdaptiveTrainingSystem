@@ -1,4 +1,3 @@
-# Copyright (c) 2025 Matias Nielsen. All rights reserved.
 # Licensed under the Custom License below.
 
 import os
@@ -76,7 +75,6 @@ def get_system_info() -> Dict[str, Any]:
         except:
             pass
         
-        # Check PyTorch MPS version support
         pytorch_version = info['pytorch_version']
         try:
             major, minor = pytorch_version.split('.')[:2]
@@ -90,7 +88,6 @@ def get_system_info() -> Dict[str, Any]:
         except:
             info['mps_support_level'] = 'unknown'
         
-        # MPS capabilities
         info['mps_capabilities'] = {
             'fp32': True,
             'fp16': True,
@@ -146,7 +143,6 @@ def validate_environment() -> List[str]:
     """Validate the training environment with MPS support."""
     issues = []
     
-    # Check PyTorch version
     torch_version = torch.__version__
     try:
         major, minor = torch_version.split('.')[:2]
@@ -159,7 +155,6 @@ def validate_environment() -> List[str]:
     except:
         issues.append(f"Could not parse PyTorch version: {torch_version}")
     
-    # Check device availability
     has_cuda = torch.cuda.is_available()
     has_mps = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
     
@@ -171,7 +166,6 @@ def validate_environment() -> List[str]:
         issues.append("INFO: DeepSpeed and Flash Attention are not available on MPS")
         issues.append("INFO: Use FP16 or FP32 precision (BF16 has limited support on MPS)")
         
-        # Check system memory for MPS (unified memory architecture)
         try:
             import psutil
             memory = psutil.virtual_memory()
@@ -194,7 +188,6 @@ def validate_environment() -> List[str]:
         except:
             issues.append("Could not check GPU memory")
     
-    # Check disk space
     try:
         disk_usage = shutil.disk_usage(".")
         free_gb = disk_usage.free / 1e9
@@ -205,7 +198,6 @@ def validate_environment() -> List[str]:
     except:
         issues.append("Could not check disk space")
     
-    # Check system memory
     try:
         import psutil
         memory = psutil.virtual_memory()
@@ -218,7 +210,6 @@ def validate_environment() -> List[str]:
     except ImportError:
         issues.append("psutil not available, cannot check system memory")
     
-    # Check for required Python packages
     try:
         import numpy
     except ImportError:
@@ -445,12 +436,10 @@ def check_mps_compatibility() -> Dict[str, Any]:
         'recommendations': [],
     }
     
-    # Check platform
     if platform.system() != 'Darwin':
         result['issues'].append("MPS is only available on macOS")
         return result
     
-    # Check PyTorch version
     try:
         major, minor = torch.__version__.split('.')[:2]
         version_num = float(f"{major}.{minor}")
@@ -470,14 +459,12 @@ def check_mps_compatibility() -> Dict[str, Any]:
         result['issues'].append("Could not parse PyTorch version")
         return result
     
-    # Check if MPS is actually available
     if not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()):
         result['available'] = False
         result['issues'].append("MPS backend not available")
         result['recommendations'].append("Ensure you have PyTorch built with MPS support")
         return result
     
-    # Check system memory
     try:
         import psutil
         memory_gb = psutil.virtual_memory().total / 1e9
@@ -517,7 +504,7 @@ def get_recommended_config_for_device(device_type: str = None) -> Dict[str, Any]
             'use_flash_attention': False,
             'compile': False,
             'gradient_checkpointing': True,
-            'batch_size': 2,  # Start small
+            'batch_size': 2,
             'gradient_accumulation_steps': 8,
             'num_workers': 0,  # MPS works best with main process loading
             'pin_memory': False,

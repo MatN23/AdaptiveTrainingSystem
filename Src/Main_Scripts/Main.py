@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import os
@@ -32,14 +31,11 @@ builtins.exit = sys.exit
 builtins.quit = sys.exit  # just in case some code calls quit()
 
 
-# Suppress warnings
 warnings.filterwarnings('ignore')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# Add the current directory to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Import utility modules
 try:
     from utils.data_processing import process_oasst_data, validate_data_comprehensive, create_sample_data
     from utils.environment import validate_environment, estimate_training_time, get_system_info
@@ -89,7 +85,6 @@ except ImportError:
     DEEPSPEED_AVAILABLE = False
     logging.warning("DeepSpeed not available")
 
-# Import our modules with fallbacks
 try:
     # Direct import from config.config_manager
     from config.config_manager import Config, ConfigPresets
@@ -117,7 +112,6 @@ except ImportError as e:
             print(f"  Config file path: {config_path}")
         print(f"  Python path (first 3 entries): {sys.path[:3]}")
         
-        # Check if yaml is installed
         try:
             import yaml
             print("  PyYAML is installed")
@@ -142,7 +136,6 @@ except ImportError as e:
     print(f"ERROR: Could not import core modules: {e}")
     sys.exit(1)
 
-# Import training infrastructure (orchestrator, trainer, checkpoint)
 TRAINING_INFRASTRUCTURE_AVAILABLE = False
 try:
     from training.orchestrator import AdaptiveTrainingOrchestrator
@@ -179,7 +172,6 @@ def validate_data_paths(data_params: dict) -> bool:
     all_valid = True
     checked_paths = []
     
-    # Check base training paths
     if training_mode in ['base_only', 'hybrid', 'interleaved']:
         base_paths = data_params.get('base_training_paths', [])
         if base_paths:
@@ -187,11 +179,9 @@ def validate_data_paths(data_params: dict) -> bool:
             for i, path_str in enumerate(base_paths, 1):
                 path = Path(path_str)
                 
-                # Check if it's a directory (ERROR)
                 if path.is_dir():
                     print(f"   [{i}] {path_str} - ERROR: This is a directory, not a file!")
                     all_valid = False
-                # Check if file exists
                 elif path.exists() and path.is_file():
                     size = path.stat().st_size / (1024*1024)
                     print(f"   [{i}] {path_str} ({size:.2f} MB)")
@@ -200,7 +190,6 @@ def validate_data_paths(data_params: dict) -> bool:
                     print(f"   [{i}] {path_str} - File not found!")
                     all_valid = False
     
-    # Check fine-tuning paths
     if training_mode in ['finetuning_only', 'hybrid', 'interleaved']:
         ft_paths = data_params.get('finetuning_paths', [])
         if ft_paths:
@@ -208,11 +197,9 @@ def validate_data_paths(data_params: dict) -> bool:
             for i, path_str in enumerate(ft_paths, 1):
                 path = Path(path_str)
                 
-                # Check if it's a directory (ERROR)
                 if path.is_dir():
                     print(f"   [{i}] {path_str} - ERROR: This is a directory, not a file!")
                     all_valid = False
-                # Check if file exists
                 elif path.exists() and path.is_file():
                     size = path.stat().st_size / (1024*1024)
                     print(f"   [{i}] {path_str} ({size:.2f} MB)")
@@ -224,7 +211,6 @@ def validate_data_paths(data_params: dict) -> bool:
             print("\n No fine-tuning paths specified for finetuning_only mode!")
             all_valid = False
     
-    # Check eval paths
     eval_paths = []
     if training_mode == 'base_only':
         eval_paths = data_params.get('base_eval_paths', [])
@@ -279,7 +265,6 @@ def setup_router_finetuning(orchestrator, router_params):
     print(f" Found {len(router_params_list)} router parameters")
     print(f"  Total router params: {sum(p.numel() for p in router_params_list):,}")
     
-    # Create separate optimizer for router (lower LR)
     from torch.optim import AdamW
     router_optimizer = AdamW(
         router_params_list,
@@ -315,14 +300,12 @@ def load_pretrained_router(model, router_checkpoint_path: str):
     print(f" Loading router from: {checkpoint_path}")
     
     try:
-        # Load checkpoint to verify
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         
         print(f"\n Router checkpoint loaded successfully")
         print(f"  Training epoch: {checkpoint.get('epoch', 'unknown')}")
         print(f"  Validation accuracy: {checkpoint.get('metrics', {}).get('top1_acc', 'unknown')}")
         
-        # Import adapter
         from router_training_system import RouterGateAdapter
         
         print(f"\n Replacing gates with trained router...")
@@ -332,7 +315,6 @@ def load_pretrained_router(model, router_checkpoint_path: str):
         
         for name, module in model.named_modules():
             if hasattr(module, 'gate'):
-                # Check if this is an MoE layer
                 if 'moe' in name.lower() or 'expert' in name.lower():
                     #  FIX: Create NEW adapter instance for each layer
                     adapter = RouterGateAdapter(
@@ -378,28 +360,22 @@ def validate_mps_compatibility(config) -> Tuple[bool, List[str]]:
     """
     issues = []
     
-    # Check if we're actually on MPS
     if not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()):
         return True, []  # Not MPS, no issues
     
-    # Check DeepSpeed (not supported on MPS)
     if getattr(config, 'use_deepspeed', False):
         issues.append("DeepSpeed is not supported on MPS. Set use_deepspeed=False")
     
-    # Check Flash Attention (not supported on MPS)
     if getattr(config, 'use_flash_attention', True):
         issues.append("Flash Attention is not supported on MPS. Set use_flash_attention=False")
     
-    # Check precision (BF16 has limited support)
     precision = getattr(config, 'precision', 'fp32')
     if precision in ['bf16', 'mixed_bf16']:
         issues.append("BF16 precision has limited support on MPS. Use 'fp16' or 'fp32' instead")
     
-    # Check model compilation (can be problematic)
     if getattr(config, 'compile', False):
         issues.append("Model compilation may cause issues on MPS. Consider setting compile=False")
     
-    # Check batch size (MPS uses unified memory)
     batch_size = getattr(config, 'batch_size', 1)
     if batch_size > 8:
         issues.append(f"Large batch size ({batch_size}) may cause memory issues on MPS. Consider starting with batch_size=2-4")
@@ -443,7 +419,6 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
             print(f"  Gradient accumulation: {orchestrator.config.gradient_accumulation_steps}")
             print(f"  Effective batch size: {orchestrator.config.batch_size * orchestrator.config.gradient_accumulation_steps}")
             
-            # Run adaptive training
             orchestrator.run_adaptive_training()
 
             # Verify scheduler
@@ -568,7 +543,6 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
                 # Recreate orchestrator with new configuration
                 print(f"\nRecreating orchestrator with adjusted configuration...")
                 try:
-                    # Import here to avoid circular dependency
                     from training.orchestrator import AdaptiveTrainingOrchestrator
                     orchestrator = AdaptiveTrainingOrchestrator(orchestrator.config)
                     print(f" Orchestrator recreated successfully")
@@ -602,7 +576,6 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
             print(f"Error message: {str(e)[:500]}")
             raise
     
-    # Check if we exhausted attempts
     if attempt >= max_attempts:
         print(f"\n{'='*80}")
         print(f" MAXIMUM ATTEMPTS REACHED")
@@ -623,7 +596,6 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
         print(f"  Gradient accumulation: {original_grad_accum}  {final_grad_accum}")
         print(f"  Effective batch size: {original_batch_size * original_grad_accum}  {final_batch * final_grad_accum}")
         
-        # Save optimal configuration
         try:
             optimal_config = {
                 'batch_size': final_batch,
@@ -791,7 +763,6 @@ def print_system_diagnostics():
             print(f"  MPS Backend: {system_info.get('mps_backend', 'Metal Performance Shaders')}")
             print(f"  Unified Memory Architecture: Yes")
             
-            # Check PyTorch version for MPS compatibility
             pytorch_version = system_info.get('pytorch_version', '0.0.0')
             try:
                 major, minor = pytorch_version.split('.')[:2]
@@ -874,7 +845,6 @@ def print_system_diagnostics():
         else:
             print("   All environment checks passed successfully")
         
-        # Check for required libraries
         print_section("Library Availability")
         libraries = {
             'DeepSpeed': DEEPSPEED_AVAILABLE,
@@ -946,7 +916,6 @@ def print_system_diagnostics():
                 print("    - Limited GPU memory detected")
                 print("    - Consider CPU training or upgrading GPU")
             
-            # Check compute capability
             if torch.cuda.is_available():
                 compute_cap = torch.cuda.get_device_capability(0)
                 major = compute_cap[0]
@@ -967,7 +936,6 @@ def print_system_diagnostics():
             print("    - Consider cloud GPU instances for production")
             print("    - Use smaller models and batch sizes")
         
-        # Memory recommendations
         print_section("Memory Recommendations")
         if system_info.get('mps_available'):
             total_mem = system_info.get('system_memory_gb', 0)
@@ -1044,7 +1012,6 @@ def prepare_and_validate_data(config, tokenizer):
             print(f"  Processed {num_processed:,} conversations in {processing_time:.2f} seconds")
             print(f"  Processing rate: {num_processed/processing_time:.0f} conversations/sec")
     
-    # Create sample data if needed
     if not train_data_path.exists():
         print_section("Creating Sample Data")
         if UTILS_AVAILABLE:
@@ -1056,7 +1023,6 @@ def prepare_and_validate_data(config, tokenizer):
         else:
             raise FileNotFoundError(f"Training data not found: {train_data_path}")
     
-    # Validate data
     datasets_info = {}
     
     if UTILS_AVAILABLE:
@@ -1109,7 +1075,6 @@ def prepare_and_validate_data(config, tokenizer):
         
         datasets_info['train'] = train_stats
         
-        # Validate eval data if different
         if eval_data_path.exists() and eval_data_path != train_data_path:
             print_section("Validating Evaluation Data")
             eval_stats = validate_data_comprehensive(str(eval_data_path), tokenizer, max_check=2000)
@@ -1177,7 +1142,6 @@ def estimate_and_display_training_time(config, dataset_size: int):
         print(f"    Total Days: {estimates['estimated_days']:.2f}")
         print(f"    Human Readable: {human_readable}")
         
-        # Memory estimates
         print(f"\n  Memory Estimates:")
         print(f"    Estimated Memory Needed: {estimates['estimated_memory_needed_gb']:.2f} GB")
         print(f"    Memory Utilization: {estimates['memory_utilization']:.1%}")
@@ -1188,7 +1152,6 @@ def estimate_and_display_training_time(config, dataset_size: int):
         else:
             print(f"     Memory utilization within safe limits")
         
-        # Model info
         print(f"\n  Model Information:")
         print(f"    Total Parameters: {estimates['model_parameters']:,}")
         
@@ -1205,7 +1168,6 @@ def estimate_and_display_training_time(config, dataset_size: int):
             print(f"    CPU only - training will be slow")
             print(f"    Consider using a GPU for production training")
         
-        # Optimization recommendations
         print(f"\n  Optimization Recommendations:")
         
         if estimates['memory_utilization'] > 0.85:
@@ -1298,18 +1260,15 @@ def validate_and_setup_experiment(config) -> Path:
     print(f"  Experiment Directory: {experiment_dir}")
     print(f"  Experiment Name: {config.experiment_name}")
     
-    # Create subdirectories
     subdirs = ['checkpoints', 'logs', 'reports', 'metrics']
     for subdir in subdirs:
         (experiment_dir / subdir).mkdir(exist_ok=True)
     print(f"  Created subdirectories: {', '.join(subdirs)}")
     
-    # Save configuration
     config_path = experiment_dir / "config.yaml"
     config.save(str(config_path))
     print(f"  Configuration saved: {config_path}")
     
-    # Save configuration as JSON for easier parsing
     config_json_path = experiment_dir / "config.json"
     config_dict = {k: v for k, v in vars(config).items() if not k.startswith('_')}
     with open(config_json_path, 'w') as f:
@@ -1351,7 +1310,6 @@ def save_experiment_metadata(experiment_dir: Path, config, model, datasets_info)
         }
     }
     
-    # Add model parameters
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     metadata['model_parameters'] = {
@@ -1360,21 +1318,18 @@ def save_experiment_metadata(experiment_dir: Path, config, model, datasets_info)
         'non_trainable': total_params - trainable_params,
     }
     
-    # Save system info
     if UTILS_AVAILABLE:
         system_info_path = experiment_dir / "system_info.json"
         with open(system_info_path, 'w') as f:
             json.dump(get_system_info(), f, indent=2, default=str)
         print(f"  System info saved: {system_info_path}")
         
-        # Save dataset statistics
         if datasets_info:
             data_stats_path = experiment_dir / "data_statistics.json"
             with open(data_stats_path, 'w') as f:
                 json.dump(datasets_info, f, indent=2, default=str)
             print(f"  Dataset statistics saved: {data_stats_path}")
     
-    # Save metadata
     metadata_path = experiment_dir / "metadata.json"
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2, default=str)
@@ -1395,7 +1350,7 @@ def load_checkpoint_for_continuation(checkpoint_path: str, orchestrator) -> Dict
         checkpoints = sorted(checkpoint_path.glob("checkpoint_*.pt"))
         if not checkpoints:
             raise FileNotFoundError(f"No checkpoints found in {checkpoint_path}")
-        checkpoint_file = checkpoints[-1]  # Latest checkpoint
+        checkpoint_file = checkpoints[-1]
         print(f"Found {len(checkpoints)} checkpoints, using latest: {checkpoint_file.name}")
     else:
         checkpoint_file = checkpoint_path
@@ -1457,7 +1412,7 @@ def load_checkpoint_for_continuation(checkpoint_path: str, orchestrator) -> Dict
     
     # Restore training progress
     info = {
-        'start_epoch': checkpoint.get('epoch', 0) + 1,  # Start from NEXT epoch
+        'start_epoch': checkpoint.get('epoch', 0) + 1,
         'global_step': checkpoint.get('global_step', 0),
         'best_loss': checkpoint.get('best_loss', float('inf')),
         'checkpoint_path': str(checkpoint_file)
@@ -1487,10 +1442,8 @@ def setup_multi_dataset_training(config, data_params):
     
     print_section("Multi-Dataset Setup")
     
-    # Initialize dataset manager
     dataset_manager = MultiDatasetManager(data_params)
     
-    # Validate all datasets
     if data_params.get('validate_datasets', True):
         print("Validating datasets...")
         validation_stats = dataset_manager.validate_all_datasets()
@@ -1636,9 +1589,7 @@ def auto_adjust_epochs_chinchilla(config, model, dataset):
 def main():
     """Main training function with advanced features and comprehensive logging."""
     
-    # ========================================================================
     # CONFIGURATION SECTION - MODIFY THESE PARAMETERS
-    # ========================================================================
     
     # Base model configuration
     config_choice = 'debug'  # Options: 'debug', 'lean_8gb', 'debug_200m', 'b1', 'b7', 'b14', 'b200', 'b300'
@@ -1657,9 +1608,7 @@ def main():
     # Training mode selection
     use_adaptive_training = TRAINING_INFRASTRUCTURE_AVAILABLE  # Orchestrator with AI-driven optimization
 
-    # ========================================================================
     #  STANDARD TRAINING PARAMETERS
-    # ========================================================================
     training_params = {
         'use_moe': True,
         'use_mod': True,
@@ -1690,12 +1639,10 @@ def main():
         'weight_decay': 0.01,
     }
 
-    # ========================================================================
     # 1. ADAPTIVE INTELLIGENCE PARAMETERS
-    # ========================================================================
     adaptive_intelligence_params = {
         # Meta-learning confidence thresholds
-        'meta_confidence_soft': 0.70,       # Start suggesting changes
+        'meta_confidence_soft': 0.70,
         'meta_confidence_medium': 0.80,     # Make moderate changes
         'meta_confidence_hard': 0.90,       # Make aggressive changes
         'meta_confidence_critical': 0.95,   # Emergency interventions
@@ -1704,16 +1651,12 @@ def main():
         'strategy_memory_size': 20,         # Remember top N strategies
         'learning_transfer_weight': 0.8,    # Trust past learnings (0-1)
         
-        # Risk tolerance
         'adaptive_risk_tolerance': 'balanced',  # 'conservative', 'balanced', 'aggressive'
         'exploration_rate': 0.15,           # Try new strategies 15% of time
     }
     
-    # ========================================================================
     # 2. DYNAMIC ARCHITECTURE PARAMETERS
-    # ========================================================================
     dynamic_architecture_params = {
-        # MoE Expert Management
         'dynamic_expert_management': True,
         'expert_growth_threshold': 0.85,    # Add expert when utilization > 85%
         'expert_prune_threshold': 0.15,     # Remove when utilization < 15%
@@ -1731,11 +1674,8 @@ def main():
         'attention_heavy_layers': [0, 1, 2, -3, -2, -1],  # More compute here
     }
     
-    # ========================================================================
     # 3. PREDICTIVE OPTIMIZATION PARAMETERS
-    # ========================================================================
     predictive_optimization_params = {
-        # Convergence prediction
         'convergence_prediction_horizon': 1000,  # Steps to look ahead
         'plateau_detection_window': 200,         # Steps for plateau detection
         'divergence_early_warning': 50,          # Early warning steps
@@ -1750,9 +1690,7 @@ def main():
         'checkpoint_quality_metric': 'loss_gradient',  # 'loss_gradient' or 'convergence_rate'
     }
     
-    # ========================================================================
     # 4. QUALITY-AWARE TRAINING PARAMETERS
-    # ========================================================================
     quality_aware_training_params = {
         # Loss landscape awareness
         'loss_smoothness_threshold': 0.01,      # Maximum acceptable noise
@@ -1768,9 +1706,7 @@ def main():
         'knowledge_preservation_strength': 0.3,     # How strongly to preserve
     }
     
-    # ========================================================================
     #  5. HARDWARE-AWARE OPTIMIZATION PARAMETERS
-    # ========================================================================
     hardware_aware_optimization_params = {
         # GPU architecture specific
         'hardware_optimization_level': 'aggressive',  # 'minimal', 'balanced', 'aggressive'
@@ -1781,14 +1717,11 @@ def main():
         'communication_overlap_aggressiveness': 0.8,
         'gradient_sync_strategy': 'adaptive',    # 'smart', 'eager', 'lazy'
         
-        # Power efficiency
         'power_efficiency_mode': False,
         'thermal_throttling_avoidance': True,
     }
     
-    # ========================================================================
     # 6. DATA INTELLIGENCE PARAMETERS
-    # ========================================================================
     data_intelligence_params = {
         # Dynamic data sampling
         'difficulty_based_sampling': True,
@@ -1805,9 +1738,7 @@ def main():
         'similarity_aware_batching': True,      # Batch similar lengths together
     }
     
-    # ========================================================================
     # 7. SAFETY & ROBUSTNESS PARAMETERS
-    # ========================================================================
     safety_robustness_params = {
         # Training stability
         'maximum_acceptable_instability': 0.05,
@@ -1824,9 +1755,7 @@ def main():
         'max_gradient_norm': 5.0,
     }
     
-    # ========================================================================
     # 8. MULTI-OBJECTIVE OPTIMIZATION PARAMETERS
-    # ========================================================================
     multi_objective_optimization_params = {
         # Trade-off management
         'speed_quality_tradeoff': 0.5,          # 0 = max speed, 1 = max quality
@@ -1845,9 +1774,7 @@ def main():
         'soft_constraints_stability': True,
     }
     
-    # ========================================================================
     # 9. ADAPTIVE LR PARAMETERS
-    # ========================================================================
     adaptive_lr_params = {
         'enable_adaptive_lr': True,
         'allow_scheduler_override': True,
@@ -1856,9 +1783,7 @@ def main():
         'log_lr_decisions': True,
     }
     
-    # ========================================================================
     # 10. DATA CONFIGURATION
-    # ========================================================================
     data_params = {
         # Base training paths (pre-training on raw text - .txt and .jsonl)
         'base_training_paths': [
@@ -1892,7 +1817,6 @@ def main():
             'datasets/oasst1_validation.jsonl',
         ],
 
-        # Training mode
         'training_mode': 'finetuning_only',  # 'base_only', 'finetuning_only', 'hybrid', 'interleaved'
         'base_finetuning_ratio': 0.7,  # For interleaved mode: 70% base, 30% fine-tuning
 
@@ -1903,9 +1827,7 @@ def main():
         'streaming_threshold_gb': 10.0,  # Use streaming for files > 10GB
     }
     
-    # ========================================================================
     # 11. DEEPSPEED & QUANTIZATION CONFIGURATION
-    # ========================================================================
     deepspeed_params = {
         'use_deepspeed': False,
         'cpu_offload': True,
@@ -1921,9 +1843,7 @@ def main():
         'quantization_bits': None,    # Options: None, 4, 8
     }
     
-    # ========================================================================
     #  12. CHECKPOINT PARAMETERS
-    # ========================================================================
     checkpoint_params = {
         'resume_from_checkpoint': None,  # Set to 'checkpoint_final_597.pt' to resume
         'resume_training': False,        # Set to True to resume
@@ -1945,9 +1865,7 @@ def main():
         print("   Starting training from scratch instead")
         checkpoint_params['resume_training'] = False
     
-    # ========================================================================
     # 13. MONITORING & LOGGING PARAMETERS
-    # ========================================================================
     monitoring_params = {
         'verbosity': 'normal',  #'silent', 'minimal', 'normal', 'detailed', 'debug', 'trace'
         'log_level': "INFO",
@@ -1962,9 +1880,7 @@ def main():
         'adaptive_log_frequency': 100,
     }
     
-    # ========================================================================
     # 14. ADVANCED FEATURES CONFIGURATION
-    # ========================================================================
     advanced_features = {
         'enable_data_validation': True,
         'generate_data_reports': True,
@@ -1976,9 +1892,7 @@ def main():
         'save_optimizer_states': True,
     }
     
-    # ========================================================================
     # 15. CHINCHILLA SCALING PARAMETERS
-    # ========================================================================
     chinchilla_params = {
         'auto_epoch_scaling': True,
         'min_auto_epochs': 1,
@@ -1995,9 +1909,7 @@ def main():
         'quality_aware_adjustment': True,
     }
 
-    # ========================================================================
     # 16. CUDA OPTIMIZATION PARAMETERS
-    # ========================================================================
     cuda_optimization_params = {
         # Compilation mode: 'default', 'reduce-overhead', 'max-autotune'
         # NOTE: 'reduce-overhead' uses CUDA Graphs which can cause errors with complex models
@@ -2018,9 +1930,6 @@ def main():
         'routing_stats_update_interval': 64, # Throttle routing stats updates
     }
 
-    # ========================================================================
-    # 17. BACKEND PARAMS
-    # ========================================================================
     backend_params = {
         'backend': 'fsdp',  # Options: 'fsdp', 'deepspeed', 'colossalai', 'pytorch' colossalai not recommended
         
@@ -2035,9 +1944,7 @@ def main():
         
     }
 
-    # ========================================================================
     # 18. ROUTER MODEL TRAINING PARAMETERS
-    # ========================================================================
     router_training_params = {
         'enable_router_training': False,  # Set to True when ready
         
@@ -2060,9 +1967,7 @@ def main():
         'load_balance_weight': 0.01,
     }
 
-    # ========================================================================
     # 18. PRE-TRAINED ROUTER PARAMETERS
-    # ========================================================================
     pretrained_router_params = {
         'use_pretrained_router': False,  #  Set to True!
         'router_checkpoint_path': 'router_training/best_router_model.pt',
@@ -2071,24 +1976,18 @@ def main():
         'finetune_router': False,  # Keep frozen or fine-tune?
         'router_learning_rate': 1e-5,  # If fine-tuning
     }
-    # ========================================================================
-    # END CONFIGURATION SECTION
-    # ========================================================================
 
-    # Validate data paths FIRST
     if not validate_data_paths(data_params):
         print("\n Data path validation failed. Cannot continue.")
         print("Please check your file paths in the data_params configuration.\n")
         return 1
     
-    # Check MPS compatibility if applicable
     if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         # Will validate after config is created
         is_mps = True
     else:
         is_mps = False
     
-    # Setup logging
     logging.basicConfig(
         level=getattr(logging, monitoring_params['log_level']),
         format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
@@ -2270,7 +2169,7 @@ def main():
                 else:
                     config.compile_mode = getattr(config, 'compile_mode', 'default')
 
-        else:  # use_cuda=True  keep individual flags but still fix compile mode
+        else:
             if getattr(config, 'compile_mode', 'default') == 'reduce-overhead':
                 config.compile_mode = 'default'
                 print("\n  compile_mode: 'reduce-overhead'  'default' (CUDAGraph overwrite safety fix)")
@@ -2278,7 +2177,6 @@ def main():
                 config.compile_mode = getattr(config, 'compile_mode', 'default')
 
         
-        # Validate MPS compatibility if applicable
         if is_mps:
             print_banner("MPS COMPATIBILITY CHECK")
             is_compatible, issues = validate_mps_compatibility(config)
@@ -2310,7 +2208,6 @@ def main():
         print(f"Training Precision: {training_precision}")
         print(f"Inference Precision: {inference_precision}")
         
-        # Validate training precision
         is_supported, error_msg = validate_precision_support(training_precision, device)
         if not is_supported:
             print(f"\nERROR: Precision Validation Failed")
@@ -2320,7 +2217,6 @@ def main():
         else:
             print(f" Training precision validated successfully")
         
-        # Validate inference precision
         is_supported, error_msg = validate_precision_support(inference_precision, device)
         if not is_supported:
             print(f"\nInference precision not supported")
@@ -2500,14 +2396,12 @@ def main():
                 if hasattr(config, attr):
                     setattr(config, attr, None)
 
-        # ---------------------------------------------------------------
         print(f"\nBackend Selection:")
         print(f"  Requested backend: {backend_choice}")
         print(f"  FSDP available: {BACKEND_FSDP_AVAILABLE}")
         print(f"  DeepSpeed available: {BACKEND_DEEPSPEED_AVAILABLE}")
         print(f"  DeepSpeed Remake available: {DEEPSPEED_REMAKE_AVAILABLE}")
 
-        # Check if we're in a distributed environment
         world_size = int(os.environ.get('WORLD_SIZE', 1))
         local_rank = int(os.environ.get('LOCAL_RANK', 0))
         is_distributed = world_size > 1
@@ -2594,7 +2488,6 @@ def main():
                 print(f"  Auto Wrap Threshold: {getattr(config, 'fsdp_auto_wrap_threshold', 1e8):.0e} params")
                 print(f"  Gradient Checkpointing: {config.gradient_checkpointing}")
                 
-                # Setup scheduler after FSDP initialization
                 steps_per_epoch = len(train_dataset) // (config.batch_size * config.gradient_accumulation_steps)
                 total_steps = steps_per_epoch * config.num_epochs
                 model.setup_scheduler(total_steps)
@@ -2750,9 +2643,7 @@ def main():
             else:
                 print(" Chinchilla scaler not available, skipping auto-scaling")
 
-        # ============================================================
         # Step 9.6 - TRAIN Router Model (BEFORE loading pretrained)
-        # ============================================================
         if router_training_params.get('enable_router_training', False):
             print_banner("STEP 9.6: TRAINING ROUTER MODEL")
             
@@ -2766,7 +2657,6 @@ def main():
                 **router_training_params  # Merge all router params
             }
             
-            # Create a dataloader for router training
             from torch.utils.data import DataLoader
 
             router_num_workers = max(0, int(getattr(config, 'num_workers', 0) or 0))
@@ -2806,9 +2696,7 @@ def main():
                 traceback.print_exc()
                 print("Continuing with standard gates...")
 
-        # ============================================================
         # Step 9.7 - Load Pre-trained Router (AFTER optional training)
-        # ============================================================
         if pretrained_router_params['use_pretrained_router']:
             print_banner("STEP 9.7: LOADING PRE-TRAINED ROUTER MODEL")
             model = load_pretrained_router(
@@ -3021,18 +2909,15 @@ def main():
                 print(f"   - Global step: {checkpoint.get('global_step', 'unknown')}")
                 print(f"   - Loss: {checkpoint.get('loss', 'unknown')}")
 
-                # Load model state
                 if 'model_state_dict' in checkpoint:
                     model.load_state_dict(checkpoint['model_state_dict'])
                     print(" Model weights loaded")
 
-                # Load optimizer state if available and not reset
                 if not checkpoint_params.get('reset_optimizer', False) and 'optimizer_state_dict' in checkpoint:
                     if hasattr(orchestrator.trainer, 'optimizer'):
                         orchestrator.trainer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
                         print(" Optimizer state loaded")
 
-                # Load scheduler state if available and not reset
                 if not checkpoint_params.get('reset_scheduler', False) and 'scheduler_state_dict' in checkpoint:
                     if hasattr(orchestrator.trainer, 'scheduler') and orchestrator.trainer.scheduler:
                         orchestrator.trainer.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
@@ -3114,7 +2999,6 @@ def main():
             print(f"  Total steps: {total_steps}")
             print(f"  Scheduler type: {config.lr_scheduler}")
             
-            # Setup the scheduler
             orchestrator.trainer._setup_scheduler(total_steps)
             
             # Verify it worked
@@ -3144,7 +3028,6 @@ def main():
         print_banner("STEP 12: EXPERIMENT SETUP")
         experiment_dir = validate_and_setup_experiment(config)
         
-        # Save enhanced parameters summary
         print_section("Saving Enhanced Parameters")
         enhanced_params_path = experiment_dir / "enhanced_parameters.json"
         enhanced_summary = {
@@ -3274,22 +3157,18 @@ def main():
         print("VERIFYING ADAPTIVE MONITORING PIPELINE")
         print("="*80)
         
-        # Check monitoring thread
         monitoring_active = orchestrator.monitoring_thread and orchestrator.monitoring_thread.is_alive()
         print(f"Monitoring thread: {' Active' if monitoring_active else ' Not running'}")
         
-        # Check monitoring queue
         queue_exists = orchestrator.monitoring_queue is not None
         print(f"Monitoring queue: {' Connected' if queue_exists else ' Missing'}")
         if queue_exists:
             print(f"  Queue size: {orchestrator.monitoring_queue.qsize()}/{orchestrator.monitoring_queue.maxsize}")
         
-        # Check trainer enhancements
         has_queue = hasattr(orchestrator.trainer, '_monitoring_queue')
         has_metrics = hasattr(orchestrator.trainer, 'get_current_metrics')
         print(f"Trainer monitoring injection: {' Complete' if has_queue and has_metrics else ' Incomplete'}")
         
-        # Test the pipeline
         print("\n Testing metric collection pipeline...")
         try:
             test_metric = orchestrator.trainer.get_current_metrics()
@@ -3356,7 +3235,6 @@ def main():
                 **router_training_params
             }
             
-            # Train the router
             trained_router = train_router_model(
                 existing_model=model,
                 train_dataloader=train_dataloader,
@@ -3533,7 +3411,6 @@ def main():
             print("Clearing MPS memory cache...")
             torch.mps.empty_cache()
         
-        # Run garbage collection
         print("Running garbage collection...")
         gc.collect()
         

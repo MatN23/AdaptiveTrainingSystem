@@ -27,10 +27,8 @@ class EnglishRetrievalConversation:
         colossal_api = ColossalAPI.get_api(model_name, model_path)
         self.llm = ColossalLLM(n=1, api=colossal_api)
 
-        # Define the retriever
         self.retriever = retriever
 
-        # Define the chain to preprocess the input
         # Disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
         # Prompt is summarization prompt
         self.llm_chain_disambiguate = LLMChain(
@@ -40,7 +38,6 @@ class EnglishRetrievalConversation:
         )
 
         self.retriever.set_rephrase_handler(self.disambiguity)
-        # Define memory with summarization ability
         self.memory = ConversationBufferWithSummary(
             llm=self.llm, llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True}
         )

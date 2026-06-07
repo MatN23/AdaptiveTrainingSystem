@@ -71,13 +71,9 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         """
         # iterate over the positional arguments
         # to check if an argument is a torch Module
-        # if found any torch Module, replace it with its layer spec
-        # for storage purpose
         modified_args = []
         for arg in args:
             if isinstance(arg, torch.nn.Module):
-                # if nn.Module is an argument of a non-root module, then we should convert it to layer spec, which make sure the correct init method used in the real build.
-                # if nn.Module is an argument of the root module, then we should just record the module instance itself, because those instance has been built outside of the context.
                 if id(arg) in self._layer_spec_dict:
                     arg = self._layer_spec_dict[id(arg)]
 
@@ -127,7 +123,6 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
 
         self._exec_seq = exec_seq
         if exec_seq is None:
-            # if user do not provide the model executing sequence, we use the initialization order as the executing order.
             children_name = []
             for child in self._root_children:
                 layer_spec = self._layer_spec_dict[id(child)]
@@ -163,7 +158,6 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                     module = named_modules[element]
                     layer_spec = self._layer_spec_dict[id(module)]
 
-                    # check whether there are functions which should be executed before this module
                     if len(front_funcs_list) != 0:
                         func_key = (layer_spec, "front")
                         if func_key not in self._func_dict:

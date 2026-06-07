@@ -8,7 +8,6 @@ from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (
     SelfAttention,
 )
 
-# import colossalai
 from colossalai.shardformer.policies.chatglm2 import ChatGLMModelPolicy
 
 from ..modeling._utils import init_to_get_rotary
@@ -52,7 +51,6 @@ class ChatGLM2InferPolicy(ChatGLMModelPolicy):
             policy[GLMBlock].attribute_replacement["self_attention.num_multi_query_groups_per_partition"] = (
                 self.model.config.multi_query_group_num // self.shard_config.tensor_parallel_size
             )
-        # for rmsnorm and others, we need to check the shape
         return policy
 
     def postprocess(self):

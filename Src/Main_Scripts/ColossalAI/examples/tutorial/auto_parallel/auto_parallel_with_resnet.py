@@ -34,16 +34,13 @@ def main():
     # build criterion
     criterion = torch.nn.CrossEntropyLoss()
 
-    # optimizer
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
 
-    # lr_scheduler
     lr_scheduler = CosineAnnealingLR(optimizer, total_steps=gpc.config.NUM_EPOCHS)
 
     for epoch in range(gpc.config.NUM_EPOCHS):
         model.train()
 
-        # if we use synthetic data
         # we assume it only has 10 steps per epoch
         num_steps = range(10)
         progress = tqdm(num_steps)
@@ -67,7 +64,6 @@ def main():
         correct = 0
         total = 0
 
-        # if we use synthetic data
         # we assume it only has 10 steps for evaluation
         num_steps = range(10)
         progress = tqdm(num_steps)

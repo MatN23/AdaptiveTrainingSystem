@@ -46,37 +46,23 @@ def test_indexed_dataset_get(args):
     print(f"size: {size}")
     full = ds.get(0)
     print(full)
-    # print(tokenizer.detokenize(full.data.tolist()))
     print("---")
     end = ds.get(0, offset=size - 10)
     print(end)
-    # print(tokenizer.detokenize(end.data.tolist()))
 
     start = ds.get(0, length=10)
     print(start)
-    # print(tokenizer.detokenize(start.data.tolist()))
 
     part = ds.get(0, offset=2, length=8)
     print(part)
-    # print(tokenizer.detokenize(part.data.tolist()))
 
 
-# def test_albert_dataset(args):
 #     # tokenizer = FullBertTokenizer(args.vocab, do_lower_case=True)
 #     # idataset = indexed_dataset.make_dataset(args.data, args.dataset_impl)
 #     # ds = AlbertDataset(idataset, tokenizer)
-#     ds = AlbertDataset.from_paths(args.vocab, args.data, args.dataset_impl,
 #                                   args.epochs, args.max_num_samples,
 #                                   args.masked_lm_prob, args.seq_length,
 #                                   args.short_seq_prob, args.seed)
-#     truncated = 0
-#     total = 0
-#     for i, s in enumerate(ds):
-#         ids = s['text']
-#         tokens = ds.tokenizer.convert_ids_to_tokens(ids)
-#         print(tokens)
-#         if i >= args.count-1:
-#             exit()
 
 
 def main():
@@ -110,7 +96,6 @@ def main():
     if args.dataset_impl == "infer":
         args.dataset_impl = indexed_dataset.infer_dataset_impl(args.data)
 
-    #    test_albert_dataset(args)
     test_indexed_dataset_get(args)
 
 

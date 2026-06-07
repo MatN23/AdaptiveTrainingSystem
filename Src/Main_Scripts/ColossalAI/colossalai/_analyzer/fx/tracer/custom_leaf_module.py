@@ -15,7 +15,6 @@ try:
     @register_leaf_module_impl(apex.normalization.MixedFusedLayerNorm)
     @register_leaf_module_impl(apex.normalization.MixedFusedRMSNorm)
     def torch_nn_normalize(self, input: torch.Tensor):
-        # check shape
         if isinstance(self, torch.nn.BatchNorm1d):
             assert input.dim() in [2, 3]
         elif isinstance(self, torch.nn.BatchNorm2d):

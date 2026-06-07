@@ -80,7 +80,6 @@ class CustomRetriever(BaseRetriever):
                 if os.path.exists(f"{self.sql_file_path}/{hash_encoding}.db"):
                     # Remove the stale file
                     os.remove(f"{self.sql_file_path}/{hash_encoding}.db")
-                # Create a new sql database to store indexes, sql files are stored in the same directory as the source file
                 sql_path = f"sqlite:///{self.sql_file_path}/{hash_encoding}.db"
                 # to record the sql database with their source as index
                 self.sql_index_database[source] = f"{self.sql_file_path}/{hash_encoding}.db"
@@ -152,11 +151,8 @@ class CustomRetriever(BaseRetriever):
             # Retrieve documents from each retriever
             vectorstore = self.vector_stores[k]
             documents.extend(vectorstore.similarity_search_with_score(query, self.k, score_threshold=score_threshold))
-            # print(documents)
-        # Return the top k documents among all retrievers
         documents = sorted(documents, key=lambda x: x[1], reverse=False)[: self.k]
         if return_scores:
-            # Return score
             documents = copy.deepcopy(documents)
             for doc in documents:
                 doc[0].metadata["score"] = doc[1]

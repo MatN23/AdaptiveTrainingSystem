@@ -25,12 +25,10 @@ class ConvModel(nn.Module):
 def test_where_handler():
     model = ConvModel()
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %condition : torch.Tensor [#users=1] = placeholder[target=condition]
     #     %x : torch.Tensor [#users=1] = placeholder[target=x]
     #     %y : torch.Tensor [#users=1] = placeholder[target=y]
     #     %where : [#users=1] = call_function[target=torch.where](args = (%condition, %x, %y), kwargs = {})
-    #     return where
     meta_args = {
         "condition": torch.rand(4, 4, 64, 64).to("meta"),
         "x": torch.rand(4, 1, 64, 64).to("meta"),
@@ -49,7 +47,6 @@ def test_where_handler():
     # build handler
     handler = WhereHandler(node=where_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping, _ = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

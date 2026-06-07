@@ -55,7 +55,6 @@ class SaveCheckpointHook(BaseHook):
 
     def after_train_iter(self, trainer, output, label, loss):
         """Saves the model after a training iter."""
-        # save by interval
         if self.save_by_iter and trainer.cur_step % self.interval == 0:
             save_checkpoint(
                 self.checkpoint_dir, trainer.cur_epoch, self.model, trainer.engine.optimizer, self._lr_scheduler
@@ -68,7 +67,6 @@ class SaveCheckpointHook(BaseHook):
 
     def after_train_epoch(self, trainer):
         """Saves the model after a training epoch."""
-        # save by interval
         if trainer.cur_epoch % self.interval == 0:
             save_checkpoint(
                 self.checkpoint_dir, trainer.cur_epoch, self.model, trainer.engine.optimizer, self._lr_scheduler

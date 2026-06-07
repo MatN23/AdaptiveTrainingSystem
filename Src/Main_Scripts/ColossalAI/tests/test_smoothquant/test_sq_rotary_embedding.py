@@ -35,7 +35,6 @@ def test_rotary_emb():
     HEAD_NUM = 32
     HEAD_DIM = 128
     dtype = torch.float
-    # create data
     x_shape = (SEQ_LEN, HEAD_NUM, HEAD_DIM)
     x = -2.3 + 0.5 * torch.randn(x_shape, dtype=dtype, device="cuda")
     cos_shape = (SEQ_LEN, HEAD_DIM // 2)

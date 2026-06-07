@@ -93,7 +93,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Return the last block in sharder.
         yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
     def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool) -> None:
@@ -112,7 +111,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                                      This argument should be manually set to False since params on same device might be stored in different files.
         """
 
-        # Check whether the checkpoint uses safetensors.
         use_safetensors = False
         if "safetensors" in checkpoint_index_file.name:
             use_safetensors = True
@@ -126,7 +124,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         weight_map = ckpt_index_file.weight_map
         strict = False
 
-        # Load params & buffers to model.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
         loaded_file = set()
 
@@ -153,7 +150,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             )
             loaded_file.add(filename)
 
-        # Load parameters.
         for name, _ in model.named_parameters():
             _load(name)
 
@@ -268,9 +264,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         dist.barrier()
         torch.cuda.empty_cache()
 
-    # ========================================================
     # Abstract methods for optimizer loading/saving implementation
-    # ========================================================
 
     def pre_load_optim(
         self,
@@ -360,7 +354,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         weight_map = ckpt_index_file.weight_map
         weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
 
-        # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
             raise RuntimeError(
@@ -375,14 +368,12 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             new_pg = copy.deepcopy(saved_pg)
             new_pg["params"] = old_pg["params"]  # The parameters in the same group shouldn't change.
             updated_groups.append(new_pg)
-        # ep param group
         if len(optimizer.optim.param_groups) > len(saved_groups):
             new_pg = copy.deepcopy(saved_pg)
             new_pg["params"] = optimizer.optim.param_groups[-1]["params"]
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
-        # Load saved states to optimizer.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
         loaded_file = set()
         for pg in optimizer.optim.param_groups:
@@ -462,7 +453,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         # Complete optimizer state_dict loaded from checkpoint, need to be processed later.
         state_dict = load_state_dict(checkpoint)
 
-        # Load param_groups.
         updated_groups = []
         saved_groups = state_dict["param_groups"]
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
@@ -480,7 +470,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
-        # Load saved states to optimizer. First discard those states not belonging to current pipeline stage.
         master_to_working_map = optimizer.get_master_to_working_map()
         id_map = {}
         for pg in optimizer.optim.param_groups:
@@ -544,14 +533,12 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
 
         for k, v in state_.items():
             if isinstance(v, torch.Tensor) and k != "step":
-                # moe param
                 if is_moe_tensor(param):
                     # dp gather
                     v = v.cuda()
                     gather_tensor = [torch.zeros_like(v) for _ in range(moe_dp_size)]
                     dist.all_gather(gather_tensor, v, group=moe_dp_group)
                     v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
-                    # ep gather
                     gather_tensor = [torch.zeros_like(v) for _ in range(moe_ep_size)]
                     dist.all_gather(gather_tensor, v, group=moe_ep_group)
                     v = torch.cat(gather_tensor, dim=0)
@@ -600,7 +587,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Return the last block in sharder.
         yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
     def save_sharded_optimizer(

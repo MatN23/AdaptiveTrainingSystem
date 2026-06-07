@@ -25,7 +25,6 @@ def test_memory_long():
     )
     retriever_data = DocumentLoader([[data_path, "company information"]]).all_data
 
-    # Split
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
     splits = text_splitter.split_documents(retriever_data)
 
@@ -33,7 +32,6 @@ def test_memory_long():
         model_name="moka-ai/m3e-base", model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": False}
     )
 
-    # Create retriever
     information_retriever = CustomRetriever(k=3, sql_file_path=sql_file_path)
     information_retriever.add_documents(docs=splits, cleanup="incremental", mode="by_source", embedding=embedding)
 
@@ -79,7 +77,6 @@ def test_memory_short():
     )
     retriever_data = DocumentLoader([[data_path, "company information"]]).all_data
 
-    # Split
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
     splits = text_splitter.split_documents(retriever_data)
 
@@ -87,7 +84,6 @@ def test_memory_short():
         model_name="moka-ai/m3e-base", model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": False}
     )
 
-    # create retriever
     information_retriever = CustomRetriever(k=3, sql_file_path=sql_file_path)
     information_retriever.add_documents(docs=splits, cleanup="incremental", mode="by_source", embedding=embedding)
 

@@ -219,7 +219,6 @@ class GPTJPolicy(Policy):
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
-# GPTJModel
 class GPTJModelPolicy(GPTJPolicy):
     def __init__(self) -> None:
         super().__init__()
@@ -245,7 +244,6 @@ class GPTJModelPolicy(GPTJPolicy):
         return []
 
 
-# GPTJForCausalLM
 class GPTJForCausalLMPolicy(GPTJPolicy):
     def __init__(self) -> None:
         super().__init__()
@@ -314,7 +312,6 @@ class GPTJForCausalLMPolicy(GPTJPolicy):
         return []
 
 
-# GPTJForSequenceClassification
 class GPTJForSequenceClassificationPolicy(GPTJPolicy):
     def __init__(self) -> None:
         super().__init__()
@@ -343,7 +340,6 @@ class GPTJForSequenceClassificationPolicy(GPTJPolicy):
         return []
 
 
-# GPTJForQuestionAnswering
 class GPTJForQuestionAnsweringPolicy(GPTJPolicy):
     def __init__(self) -> None:
         super().__init__()

@@ -51,7 +51,6 @@ def train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, dataloader, b
                 data = move_to_cuda(data)
                 outputs = model(**data)
                 loss = _criterion(outputs, None)
-                # Backward
                 booster.backward(loss, optimizer)
                 pbar.set_postfix({"loss": loss.item()})
 
@@ -63,7 +62,6 @@ def train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, dataloader, b
 def main():
     args = parse_demo_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
@@ -83,7 +81,6 @@ def main():
     model = OPTForCausalLM.from_pretrained(args.model_name_or_path, config=config)
     logger.info(f"Finish loading model from {args.model_name_or_path}", ranks=[0])
 
-    # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Set plugin
@@ -117,7 +114,6 @@ def main():
         dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=netflix_collator
     )
 
-    # Set optimizer
     optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size), weight_decay=args.weight_decay)
 
     # Set lr scheduler
@@ -127,19 +123,16 @@ def main():
         optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=len(dataloader) * args.num_epoch
     )
 
-    # Define criterion
     def _criterion(outputs, inputs):
         outputs = output_transform_fn(outputs)
         loss = criterion(outputs)
         return loss
 
-    # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _criterion, dataloader, lr_scheduler = booster.boost(
         model=model, optimizer=optimizer, dataloader=dataloader, criterion=_criterion, lr_scheduler=lr_scheduler
     )
 
-    # Start finetuning
     logger.info(f"Start finetuning", ranks=[0])
     for epoch in range(args.num_epoch):
         train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, dataloader, booster, coordinator)

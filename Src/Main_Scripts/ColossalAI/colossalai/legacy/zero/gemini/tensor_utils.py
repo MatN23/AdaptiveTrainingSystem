@@ -98,7 +98,6 @@ def colo_model_data_move_to_cpu(t: Union[StatefulTensor, torch.Tensor]) -> None:
     Args:
         t (Union[StatefulTensor, torch.Tensor]): _description_
     """
-    # TODO() optimize the tensor moving with non-blocking
     if isinstance(t, torch.Tensor):
         t.data = t.data.cpu()
     elif isinstance(t, StatefulTensor):
@@ -116,7 +115,6 @@ def colo_model_tensor_clone(t: Union[StatefulTensor, torch.Tensor], target_devic
     Returns:
         torch.Tensor: a cloned torch tensor
     """
-    # TODO() rename this function
     colo_model_data_tensor_move_inline(t, target_device)
     t_payload = t.payload if isinstance(t, StatefulTensor) else t
     return t_payload

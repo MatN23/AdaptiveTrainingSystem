@@ -75,13 +75,11 @@ class DimSpec:
                 if source_shard_list == target_shard_list:
                     difference = 0
 
-                # all_gather(source) -> target
                 elif (
                     len(source_shard_list) == len(target_shard_list) + 1 and source_shard_list[:-1] == target_shard_list
                 ):
                     difference = ALLGATHER_COST
 
-                # shard(source) -> target
                 elif (
                     len(source_shard_list) == len(target_shard_list) - 1
                     and source_shard_list == target_shard_list[:-1]

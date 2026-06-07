@@ -13,7 +13,6 @@ from colossalai.shardformer.policies.auto_policy import get_autopolicy
 from .batch_infer_state import BatchInferState
 from .kvcache_manager import MemoryManager
 
-# from dynamic_batching.infer_batch import InferBatch
 
 DP_AXIS, PP_AXIS, TP_AXIS = 0, 1, 2
 
@@ -283,7 +282,7 @@ class TPInferEngine:
             attention_mask = inputs["attention_mask"]
         else:
             input_ids_list = inputs
-        if isinstance(input_ids_list[0], int):  # for a single input
+        if isinstance(input_ids_list[0], int):
             input_ids_list = [input_ids_list]
             attention_mask = [attention_mask] if attention_mask is not None else attention_mask
 
@@ -296,10 +295,7 @@ class TPInferEngine:
         if isinstance(inputs, (BatchEncoding, dict)):
             for i, attn_mask in enumerate(attention_mask):
                 curr_seq_len = len(attn_mask)
-                # if isinstance(attn_mask, torch.Tensor):
-                #     curr_seq_len = int(torch.sum(attn_mask))
                 # else:
-                #     curr_seq_len = int(sum(attn_mask))
                 seq_lengths[i] = curr_seq_len
                 seq_start_indexes[i] = start_index
                 start_index += curr_seq_len
@@ -337,7 +333,6 @@ class TPInferEngine:
                 3. torch.Tensor (e.g. tokenizer encode with return_tensors='pt')
         """
 
-        # for testing, always use sharded model
         assert self.model is not None, "sharded model does not exist"
 
         batch_infer_state = self.prepare_batch_state(input_tokens)
@@ -438,9 +433,7 @@ class TPInferEngine:
         ):
             next_token_id = int(next_token_id)
             next_token_logprob = next_token_logprob[next_token_id]
-            # all_input_ids_tensor = torch.tensor(all_input_ids, dtype=torch.long, device="cuda")
             all_input_ids.append(next_token_id)
-            # all_input_ids_tensor = None
             new_input_ids.append(next_token_id)
             batch.all_input_ids[i] = all_input_ids
             batch.input_lengths[i] += 1
@@ -469,7 +462,6 @@ class TPInferEngine:
     # add a single request/sequence/input text at a time and record its length
     # In other words, store the actual length of input tokens representing a single input text
     #   E.g. "Introduce landmarks in Beijing"
-    #       => add request
     #       => record token length and other necessary information to be used
     #       => engine hold all these necessary information until `generate` (or other name) is called,
     #       => put information already recorded in batchinferstate and pass it to model forward

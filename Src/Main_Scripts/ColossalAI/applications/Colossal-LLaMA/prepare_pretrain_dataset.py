@@ -104,7 +104,6 @@ def main():
         spliced_dataset = ClosedToConstantLengthSplicedDataset(
             dataset=dataset, tokenizer=tokenizer, max_length=args.max_length, error_strict=False
         )
-        # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
         output_name = f"part-{output_index}"
         output_jsonl_path = os.path.join(args.data_jsonl_output_dir, output_name + ".jsonl")
@@ -124,7 +123,6 @@ def main():
             f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
         )
 
-        # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
         logger.info(f"Start to save {output_arrow_path}")
         spliced_dataset = load_dataset(

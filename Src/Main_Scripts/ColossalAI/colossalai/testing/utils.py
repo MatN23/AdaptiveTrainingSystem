@@ -166,7 +166,6 @@ def rerun_if_address_is_in_use():
             ...
 
     """
-    # check version
     torch_version = version.parse(torch.__version__)
     assert torch_version.major >= 1
 

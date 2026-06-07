@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 
 """
 CUDA MoE Wrapper - Universal Precision Support
@@ -14,9 +13,6 @@ import time
 import os
 from torch.utils.cpp_extension import load
 
-# ============================================================================
-# LOAD CUDA OPS
-# ============================================================================
 
 CUDA_OPS_AVAILABLE = False
 moe_cuda_ops = None
@@ -125,7 +121,6 @@ try:
     build_dir = os.path.join(os.path.expanduser("~"), ".cache/torch_extensions", arch_signature)
     os.makedirs(build_dir, exist_ok=True)
 
-    # Load the CUDA extension
     moe_cuda_ops = load(
         name=f'moe_cuda_ops_{arch_signature}',
         sources=[cuda_src],
@@ -144,9 +139,7 @@ except Exception as e:
     print(f"   Falling back to PyTorch implementation")
     CUDA_OPS_AVAILABLE = False
 
-# ============================================================================
 # DTYPE CONVERSION UTILITIES
-# ============================================================================
 
 def to_compute_dtype(tensor: torch.Tensor) -> torch.Tensor:
     """
@@ -171,7 +164,6 @@ def to_compute_dtype(tensor: torch.Tensor) -> torch.Tensor:
     if tensor.dtype in [torch.float64, torch.float16, torch.bfloat16]:
         return tensor.float()
     
-    # FP8 (H100+) - convert via float16
     if hasattr(torch, 'float8_e4m3fn') and tensor.dtype == torch.float8_e4m3fn:
         return tensor.to(torch.float16).float()
     if hasattr(torch, 'float8_e5m2') and tensor.dtype == torch.float8_e5m2:
@@ -223,9 +215,7 @@ def from_compute_dtype(tensor: torch.Tensor, target_dtype: torch.dtype) -> torch
         return tensor
 
 
-# ============================================================================
 # WRAPPER CLASS WITH UNIVERSAL DTYPE SUPPORT
-# ============================================================================
 
 class MoECUDAOps:
     """
@@ -517,9 +507,7 @@ class MoECUDAOps:
         return combined
 
 
-# ============================================================================
 # BENCHMARK WITH MULTIPLE DTYPES
-# ============================================================================
 
 def benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2, runs=100):
     """Benchmark CUDA vs PyTorch across multiple dtypes."""

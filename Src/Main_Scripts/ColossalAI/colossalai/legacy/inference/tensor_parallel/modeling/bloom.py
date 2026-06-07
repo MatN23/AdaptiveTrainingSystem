@@ -136,7 +136,6 @@ class BloomInferenceForwards:
                 use_cache = False
 
         # NOTE determine if BatchInferState is passed in via arg
-        #      if not, get the attr binded to the model
         # We might wantto remove setattr later
         if infer_state is None:
             assert hasattr(self, "infer_state")
@@ -149,7 +148,6 @@ class BloomInferenceForwards:
             past_key_values_length = infer_state.max_len_in_batch - 1
 
         if use_cache and seq_length != 1:
-            # prefill stage
             infer_state.is_context_stage = True  # set prefill stage, notify attention layer
             infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
             BatchInferState.init_block_loc(
@@ -182,7 +180,6 @@ class BloomInferenceForwards:
         # NOTE revise: we might want to store a single 1D alibi(length is #heads) in model,
         #      or store to BatchInferState to prevent re-calculating
         #      When we have multiple process group (e.g. dp together with tp), we need to pass the pg to here
-        # alibi = generate_alibi(self.num_heads).contiguous().cuda()
         tp_size = dist.get_world_size()
         curr_tp_rank = dist.get_rank()
         alibi = (
@@ -356,10 +353,7 @@ class BloomInferenceForwards:
 
             # NOTE we won't use past key values here
             # the cache may be in the stardard format (e.g. in contrastive search), convert to bloom's format if needed
-            # if past_key_values[0][0].shape[0] == input_ids.shape[0]:
-            #     past_key_values = self._convert_to_bloom_cache(past_key_values)
 
-        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
@@ -416,7 +410,6 @@ class BloomInferenceForwards:
 
         layernorm_output = self.post_attention_layernorm(attention_output)
 
-        # Get residual
         if self.apply_residual_connection_post_layernorm:
             residual = layernorm_output
         else:
@@ -466,7 +459,6 @@ class BloomInferenceForwards:
             copy_kv_cache_to_dest(k, infer_state.context_mem_index, mem_manager.key_buffer[layer_id])
             copy_kv_cache_to_dest(v, infer_state.context_mem_index, mem_manager.value_buffer[layer_id])
 
-            # output = self.output[:batch_size*q_length, :, :]
             output = torch.empty_like(q)
 
             if HAS_LIGHTLLM_KERNEL:
@@ -476,13 +468,11 @@ class BloomInferenceForwards:
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
         else:
-            # query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
             # need shape: batch_size, H, D_HEAD (q_length == 1), input q shape : (batch_size, q_length(1), H, D_HEAD)
             assert q_length == 1, "for non-context process, we only support q_length == 1"
             q = query_layer.reshape(-1, H, D_HEAD)
 
             if infer_state.decode_is_contiguous:
-                # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
                 cache_k = infer_state.cache_manager.key_buffer[layer_id][
                     infer_state.decode_mem_start : infer_state.decode_mem_end, :, :
                 ]
@@ -492,7 +482,6 @@ class BloomInferenceForwards:
                 cache_k.copy_(k)
                 cache_v.copy_(v)
             else:
-                # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head]
                 copy_kv_cache_to_dest(k, infer_state.decode_mem_index, mem_manager.key_buffer[layer_id])
                 copy_kv_cache_to_dest(v, infer_state.decode_mem_index, mem_manager.value_buffer[layer_id])

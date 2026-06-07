@@ -38,10 +38,8 @@ def check_bn_module_handler(rank, world_size, port):
         meta_arg_names=["input"],
     )
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %_0 : [#users=1] = call_module[target=0](args = (%input_1,), kwargs = {})
-    #     return _0
     meta_args = {"input": torch.rand(4, 16, 64, 64).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -52,7 +50,6 @@ def check_bn_module_handler(rank, world_size, port):
     # build handler
     handler = BatchNormModuleHandler(node=bn_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -83,27 +80,21 @@ def check_bn_module_handler(rank, world_size, port):
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # RS = RS x S
     assert "RS0 = RS0 x S0" in strategy_name_list
     assert "RS1 = RS1 x S1" in strategy_name_list
 
-    # RR = RR x R
     assert "RR = RR x R" in strategy_name_list
 
-    # RS01 = RS01 x S01
     assert "RS01 = RS01 x S01" in strategy_name_list
 
     # temporarily skip the sync bn test
     # TODO: test sync bn after the implicit runtime pass completed
-    # SR = SR x R WITH SYNC_BN
     # assert 'S0R = S0R x R WITH SYNC_BN' in strategy_name_list
     # assert 'S1R = S1R x R WITH SYNC_BN' in strategy_name_list
 
-    # SS = SS x S WITH SYNC_BN
     # assert 'S0S1 = S0S1 x S1 WITH SYNC_BN' in strategy_name_list
     # assert 'S1S0 = S1S0 x S0 WITH SYNC_BN' in strategy_name_list
 
-    # S01R = S01R x R WITH SYNC_BN
     # assert 'S01R = S01R x R WITH SYNC_BN' in strategy_name_list
 
 

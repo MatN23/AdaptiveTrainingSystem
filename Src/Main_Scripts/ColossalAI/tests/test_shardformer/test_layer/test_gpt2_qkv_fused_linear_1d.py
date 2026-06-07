@@ -81,7 +81,6 @@ def check_linear_conv_1d_col(lazy_init: bool, seq_parallel_mode: str, overlap: b
     linear_conv_col.load_state_dict(linear.state_dict())
     linear.load_state_dict(linear_conv_col.state_dict())
 
-    # check computation correctness
     x = torch.rand(1, 4, 48).cuda()
     out = linear(x)
     x_for_shard = (
@@ -90,7 +89,6 @@ def check_linear_conv_1d_col(lazy_init: bool, seq_parallel_mode: str, overlap: b
     gather_out = linear_conv_col(x_for_shard)
     assert_close(rearrange(out, -1), gather_out)
 
-    # check backward correctness
     out.sum().backward()
     gather_out.sum().backward()
 
@@ -118,14 +116,12 @@ def check_linear_conv_1d_row(lazy_init: bool, seq_parallel_mode: bool):
     linear_row.load_state_dict(linear.state_dict())
     linear.load_state_dict(linear_row.state_dict())
 
-    # check computation correctness
     x = torch.rand(1, 4, 48).cuda()
     out = linear(x)
     gather_out = linear_row(x)
     target_out = out if seq_parallel_mode is None else torch.chunk(out.clone(), 2, dim=1)[dist.get_rank()]
     assert_close(target_out, gather_out)
 
-    # check backward correctness
     out.sum().backward()
     gather_out.sum().backward()
 

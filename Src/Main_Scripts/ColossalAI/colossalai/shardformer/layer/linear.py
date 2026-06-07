@@ -294,7 +294,6 @@ class Linear1D_Row(ParallelModule):
 
         # Parameters.
         if weight is None:
-            # Initialize weight.
             factory_kwargs = {"device": device, "dtype": dtype}
             self.weight = Parameter(torch.empty(self.out_features, self.in_features, **factory_kwargs))
         else:
@@ -305,7 +304,6 @@ class Linear1D_Row(ParallelModule):
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
 
         if self.stream_chunk_num > 1:
-            # TODO() work for inference only
             self.chunk_weight()
 
         if bias:
@@ -564,7 +562,6 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
         make_vocab_size_divisible_by: int = 64,
         **kwargs,
     ):
-        # create weight and bias
         if weight is None:
             factory_kwargs = {"device": device, "dtype": dtype}
             weight = Parameter(torch.empty(out_features, self.in_features, **factory_kwargs))

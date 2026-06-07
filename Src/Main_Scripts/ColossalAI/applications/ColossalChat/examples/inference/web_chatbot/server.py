@@ -35,7 +35,6 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# set CORS
 origin_spec_from_env = os.environ.get("CORS_ORIGIN", None)
 
 if origin_spec_from_env is not None:
@@ -56,7 +55,6 @@ app.add_middleware(
 
 def generate_streamingly(prompt, max_length, max_new_tokens, top_k, top_p, temperature):
     input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
-    # TODO(ver217): streaming generation does not support repetition_penalty now
     model_kwargs = {
         "max_new_tokens": max_new_tokens,
         "early_stopping": True,

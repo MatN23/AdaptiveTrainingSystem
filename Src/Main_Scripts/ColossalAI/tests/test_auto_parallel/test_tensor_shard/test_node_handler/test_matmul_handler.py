@@ -31,10 +31,10 @@ class MatMulModule(nn.Module):
 @parameterize(
     "tensor_shapes",
     [
-        [[8], [8]],  # dot product
+        [[8], [8]],
         [[4, 8], [8]],  # mat-vec product
-        [[4, 8], [8, 16]],  # mat-mat product
-        [[8], [8, 16]],  # mat-mat product
+        [[4, 8], [8, 16]],
+        [[8], [8, 16]],
         [[8], [4, 8, 16]],  # batched mat-mat product with padding + broadcasting
         [[4, 8, 16], [16]],  # batched mat-mat product with padding + broadcasting
         [[4, 8, 16], [16, 32]],  # batched mat-mat product with broadcasting
@@ -55,7 +55,6 @@ def test_matmul_node_handler(tensor_shapes):
     x2 = torch.rand(*other_shape)
     output_shape = list(torch.matmul(x1, x2).shape)
 
-    # get matmul type
     matmul_type = get_matmul_type(x1.dim(), x2.dim())
 
     model = MatMulModule()
@@ -76,7 +75,6 @@ def test_matmul_node_handler(tensor_shapes):
     # build handler
     handler = MatMulHandler(node=mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -97,21 +95,18 @@ def test_matmul_node_handler(tensor_shapes):
     else:
         logical_input_shape = input_shape
 
-    # check input operation data
     assert mapping["input"].name == "x1"
     assert mapping["input"].data.is_meta
     assert mapping["input"].data.shape == torch.Size(input_shape)
     assert mapping["input"].type == OperationDataType.ARG
     assert mapping["input"].logical_shape == torch.Size(logical_input_shape)
 
-    # check other operation data
     assert mapping["other"].name == "x2"
     assert mapping["other"].data.is_meta
     assert mapping["other"].data.shape == torch.Size(other_shape)
     assert mapping["other"].type == OperationDataType.ARG
     assert mapping["other"].logical_shape == torch.Size(logical_other_shape)
 
-    # check output
     assert mapping["output"].name == "matmul"
     assert mapping["output"].data.is_meta
     assert mapping["output"].data.shape == torch.Size(output_shape)

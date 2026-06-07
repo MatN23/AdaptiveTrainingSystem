@@ -44,7 +44,6 @@ class VocabParallelEmbedding(torch.nn.Module):
         # Position embedding (serial).
         self.position_embeddings = torch.nn.Embedding(max_sequence_length, self.hidden_size, dtype=dtype)
         self._position_embeddings_key = "position_embeddings"
-        # Initialize the position embeddings.
         # self.init_method(self.position_embeddings.weight)
 
         # Token type embedding.
@@ -54,7 +53,6 @@ class VocabParallelEmbedding(torch.nn.Module):
         self._tokentype_embeddings_key = "tokentype_embeddings"
         if self.num_tokentypes > 0:
             self.tokentype_embeddings = torch.nn.Embedding(self.num_tokentypes, self.hidden_size, dtype=dtype)
-            # Initialize the token-type embeddings.
             # self.init_method(self.tokentype_embeddings.weight)
         else:
             self.tokentype_embeddings = None
@@ -83,7 +81,6 @@ class VocabParallelEmbedding(torch.nn.Module):
             print("adding embedding for {} tokentypes".format(num_tokentypes), flush=True)
         self.num_tokentypes = num_tokentypes
         self.tokentype_embeddings = torch.nn.Embedding(num_tokentypes, self.hidden_size)
-        # Initialize the token-type embeddings.
         # self.init_method(self.tokentype_embeddings.weight)
 
     def forward(self, input_ids, position_ids=None, tokentype_ids=None):
@@ -129,7 +126,6 @@ class VocabParallelEmbedding(torch.nn.Module):
         if self._word_embeddings_key in state_dict:
             state_dict_ = state_dict[self._word_embeddings_key]
         else:
-            # for backward compatibility.
             state_dict_ = {}
             for key in state_dict.keys():
                 if "word_embeddings" in key:
@@ -140,7 +136,6 @@ class VocabParallelEmbedding(torch.nn.Module):
         if self._position_embeddings_key in state_dict:
             state_dict_ = state_dict[self._position_embeddings_key]
         else:
-            # for backward compatibility.
             state_dict_ = {}
             for key in state_dict.keys():
                 if "position_embeddings" in key:
@@ -153,7 +148,6 @@ class VocabParallelEmbedding(torch.nn.Module):
             if self._tokentype_embeddings_key in state_dict:
                 state_dict_ = state_dict[self._tokentype_embeddings_key]
             else:
-                # for backward compatibility.
                 for key in state_dict.keys():
                     if "tokentype_embeddings" in key:
                         state_dict_[key.split("tokentype_embeddings.")[1]] = state_dict[key]
@@ -259,7 +253,6 @@ class _VocabParallelCrossEntropy(torch.autograd.Function):
         world_size = gpc.tensor_parallel_size
         vocab_start_index, vocab_end_index = get_vocab_range(partition_vocab_size, rank, world_size)
 
-        # Create a mask of valid vocab ids (1 means it needs to be masked).
         target_mask = (target < vocab_start_index) | (target >= vocab_end_index)
         masked_target = target.clone() - vocab_start_index
         masked_target[target_mask] = 0
@@ -287,7 +280,6 @@ class _VocabParallelCrossEntropy(torch.autograd.Function):
             sum_exp_logits, op=torch.distributed.ReduceOp.SUM, group=gpc.get_group(ParallelMode.PARALLEL_1D)
         )
 
-        # Loss = log(sum(exp(logits))) - predicted-logit.
         loss = torch.log(sum_exp_logits) - predicted_logits
         loss = loss.mean()
         # Store softmax, target-mask and masked-target for backward pass.
@@ -351,7 +343,6 @@ class VocabParallelGPTLMHead1D(ParallelLayer):
         return x
 
 
-###################################
 
 
 class HiddenParallelEmbedding(torch.nn.Module):
@@ -390,7 +381,6 @@ class HiddenParallelEmbedding(torch.nn.Module):
         # Position embedding (serial).
         self.position_embeddings = torch.nn.Embedding(max_sequence_length, self.hidden_size)
         self._position_embeddings_key = "position_embeddings"
-        # Initialize the position embeddings.
         # self.init_method(self.position_embeddings.weight)
 
         # Token type embedding.
@@ -400,7 +390,6 @@ class HiddenParallelEmbedding(torch.nn.Module):
         self._tokentype_embeddings_key = "tokentype_embeddings"
         if self.num_tokentypes > 0:
             self.tokentype_embeddings = torch.nn.Embedding(self.num_tokentypes, self.hidden_size)
-            # Initialize the token-type embeddings.
             # self.init_method(self.tokentype_embeddings.weight)
         else:
             self.tokentype_embeddings = None
@@ -429,7 +418,6 @@ class HiddenParallelEmbedding(torch.nn.Module):
             print("adding embedding for {} tokentypes".format(num_tokentypes), flush=True)
         self.num_tokentypes = num_tokentypes
         self.tokentype_embeddings = torch.nn.Embedding(num_tokentypes, self.hidden_size)
-        # Initialize the token-type embeddings.
         # self.init_method(self.tokentype_embeddings.weight)
 
     def forward(self, input_ids, position_ids=None, tokentype_ids=None):
@@ -474,7 +462,6 @@ class HiddenParallelEmbedding(torch.nn.Module):
         if self._word_embeddings_key in state_dict:
             state_dict_ = state_dict[self._word_embeddings_key]
         else:
-            # for backward compatibility.
             state_dict_ = {}
             for key in state_dict.keys():
                 if "word_embeddings" in key:
@@ -485,7 +472,6 @@ class HiddenParallelEmbedding(torch.nn.Module):
         if self._position_embeddings_key in state_dict:
             state_dict_ = state_dict[self._position_embeddings_key]
         else:
-            # for backward compatibility.
             state_dict_ = {}
             for key in state_dict.keys():
                 if "position_embeddings" in key:
@@ -498,7 +484,6 @@ class HiddenParallelEmbedding(torch.nn.Module):
             if self._tokentype_embeddings_key in state_dict:
                 state_dict_ = state_dict[self._tokentype_embeddings_key]
             else:
-                # for backward compatibility.
                 for key in state_dict.keys():
                     if "tokentype_embeddings" in key:
                         state_dict_[key.split("tokentype_embeddings.")[1]] = state_dict[key]

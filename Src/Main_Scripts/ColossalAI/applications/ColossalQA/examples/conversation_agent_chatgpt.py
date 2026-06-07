@@ -28,12 +28,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Setup openai key
     # Set env var OPENAI_API_KEY or load from a file
     openai_key = open(args.open_ai_key_path).read()
     os.environ["OPENAI_API_KEY"] = openai_key
 
-    # Load data served on sql
     print("Select files for constructing sql database")
     tools = []
 
@@ -50,7 +48,6 @@ if __name__ == "__main__":
         )
         sql_path = table_loader.get_sql_path()
 
-        # Create sql database
         db = SQLDatabase.from_uri(sql_path)
         print(db.get_table_info())
 
@@ -71,7 +68,6 @@ if __name__ == "__main__":
     # VectorDB
     embedding = OpenAIEmbeddings()
 
-    # Load data serve on sql
     print("Select files for constructing retriever")
     while True:
         file = input("Select a file to load or press Enter to exit:")
@@ -80,13 +76,10 @@ if __name__ == "__main__":
         data_name = input("Enter a short description of the data:")
         retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
-        # Split
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=0)
         splits = text_splitter.split_documents(retriever_data)
 
-        # Create vector store
         vectordb = Chroma.from_documents(documents=splits, embedding=embedding)
-        # Create retriever
         retriever = vectordb.as_retriever(
             search_type="similarity_score_threshold", search_kwargs={"score_threshold": 0.5, "k": 5}
         )

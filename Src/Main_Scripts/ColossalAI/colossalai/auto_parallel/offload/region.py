@@ -105,7 +105,6 @@ class Region:
     def free_cuda_data(self):
         free_storage(self.fp16_data)
 
-        # torch.cuda.empty_cache()
 
     def copy_grad_to_region_slice(self, param: torch.nn.Parameter, data_slice: torch.Tensor) -> None:
         """

@@ -58,7 +58,6 @@ def _get_attention_mask(
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         elif self._use_sdpa and head_mask is None and not output_attentions:
-            # output_attentions=True & head_mask can not be supported when using SDPA.
             attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                 attention_mask, input_shape, hidden_states, past_key_values_length
             )
@@ -84,16 +83,12 @@ def get_whisper_flash_attention_forward():
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """Input shape: Batch x Time x Channel"""
         assert layer_head_mask is None, "layer_head_mask is not supported for FlashAttention"
-        # for encoder, attention_mask is None
         if attention_mask is None:
             attention_mask = {}
-        # if key_value_states are provided this layer is used as a cross-attention layer
-        # for the decoder
         is_cross_attention = key_value_states is not None
 
         bsz, tgt_len, _ = hidden_states.size()
 
-        # get query proj
         query_states = self.q_proj(hidden_states)
         # get key, value proj
         # `past_key_value[0].shape[2] == key_value_states.shape[1]`
@@ -123,13 +118,10 @@ def get_whisper_flash_attention_forward():
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
         if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention
             # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-            # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_states, value_states)
 
         query_states = self._shape(query_states, tgt_len, bsz)
@@ -189,7 +181,6 @@ def get_whisper_decoder_forward_for_flash_attention(shard_config: ShardConfig):
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-        # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
         if inputs_embeds is None:
@@ -218,7 +209,6 @@ def get_whisper_decoder_forward_for_flash_attention(shard_config: ShardConfig):
         all_cross_attentions = () if (output_attentions and encoder_hidden_states is not None) else None
         next_decoder_cache = () if use_cache else None
 
-        # check if head_mask/cross_attn_head_mask has a correct number of layers specified if desired
         for attn_mask, mask_name in zip([head_mask, cross_attn_head_mask], ["head_mask", "cross_attn_head_mask"]):
             if attn_mask is not None:
                 assert attn_mask.size()[0] == (len(self.layers)), (
@@ -401,7 +391,6 @@ def get_jit_fused_whisper_decoder_layer_forward():
         # Self Attention
         # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
         self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
-        # add present self-attn cache to positions 1,2 of present_key_value tuple
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             past_key_value=self_attn_past_key_value,
@@ -430,7 +419,6 @@ def get_jit_fused_whisper_decoder_layer_forward():
             )
             hidden_states = self.dropout_add(hidden_states, residual, self.dropout, self.training)
 
-            # add cross-attn to positions 3,4 of present_key_value tuple
             present_key_value = present_key_value + cross_attn_present_key_value
 
         # Fully Connected
@@ -528,7 +516,6 @@ class WhisperPipelineForwards:
             encoder_states = () if output_hidden_states else None
             all_attentions = () if output_attentions else None
 
-            # check if head_mask has a correct number of layers specified if desired
             if head_mask is not None:
                 assert head_mask.size()[0] == (
                     len(self.layers)
@@ -684,7 +671,6 @@ class WhisperPipelineForwards:
         all_cross_attentions = () if (output_attentions and encoder_hidden_states is not None) else None
         next_decoder_cache = () if use_cache else None
 
-        # check if head_mask/cross_attn_head_mask has a correct number of layers specified if desired
         for attn_mask, mask_name in zip([head_mask, cross_attn_head_mask], ["head_mask", "cross_attn_head_mask"]):
             if attn_mask is not None:
                 assert attn_mask.size()[0] == (len(self.layers)), (
@@ -692,7 +678,6 @@ class WhisperPipelineForwards:
                     f" {head_mask.size()[0]}."
                 )
 
-        # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
         if at_first_stage:

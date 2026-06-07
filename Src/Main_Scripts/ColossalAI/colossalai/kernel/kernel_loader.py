@@ -73,7 +73,6 @@ class KernelLoader:
         assert len(usable_exts) != 0, f"No usable kernel found for {self.__class__.__name__} on the current machine."
 
         if len(usable_exts) > 1:
-            # if more than one usable kernel is found, we will try to load the kernel with the highest priority
             usable_exts = sorted(usable_exts, key=lambda ext: ext.priority, reverse=True)
             warnings.warn(
                 f"More than one kernel is available, loading the kernel with the highest priority - {usable_exts[0].__class__.__name__}"

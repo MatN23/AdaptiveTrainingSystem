@@ -1,4 +1,3 @@
-# Copyright (c) 2025 Matias Nielsen. All rights reserved.
 # Licensed under the Custom License below.
 
 import yaml
@@ -242,7 +241,6 @@ class Config:
         if self.num_workers == 2:
             self.num_workers = min(os.cpu_count() or 4, 16)
         
-        # Setup cache directories
         Path(self.data_cache_dir).mkdir(parents=True, exist_ok=True)
         Path(self.tokenizer_cache_dir).mkdir(parents=True, exist_ok=True)
     
@@ -301,7 +299,6 @@ class Config:
         if not torch.cuda.is_available():
             return "fp32"
         
-        # Check GPU architecture for CUDA
         try:
             compute_capability = torch.cuda.get_device_capability()[0]
             
@@ -442,7 +439,6 @@ class Config:
         
         primary_device = report['device_detection']['primary_device']
         
-        # Check feature support
         if primary_device == 'mps':
             report['feature_support'] = {
                 'deepspeed': False,
@@ -453,7 +449,6 @@ class Config:
                 'gradient_checkpointing': True,
             }
             
-            # Check for compatibility issues
             if self.use_deepspeed:
                 report['compatibility_issues'].append("DeepSpeed is not supported on MPS")
                 report['recommendations'].append("Set use_deepspeed=False")
@@ -488,7 +483,6 @@ class Config:
                 'gradient_checkpointing': True,
             }
             
-            # Check GPU-specific issues
             try:
                 compute_cap = torch.cuda.get_device_capability()[0]
                 if compute_cap < 7 and self.precision in ['fp16', 'mixed_fp16']:
@@ -636,7 +630,6 @@ class Config:
         config_dict.pop('_batch_size_set', None)
         config_dict.pop('_device_optimizations_applied', None)
         
-        # Add metadata
         config_dict["_metadata"] = {
             "created": datetime.now().isoformat(),
             "lumina_version": "2.0",
@@ -948,7 +941,6 @@ class ConfigPresets:
             zero_stage=0,
             cpu_offload=False,
 
-            # Memory
             max_memory_usage=0.9,
             streaming_threshold_gb=1.5,
         )
@@ -989,7 +981,6 @@ class ConfigPresets:
             load_balancing_weight=0.01,
             expert_parallel_size=1,
 
-            # Deepspeed
             use_deepspeed=True,
             zero_stage=1,
             cpu_offload=False,
@@ -1945,7 +1936,6 @@ class ConfigManager:
         # Apply device-specific optimizations
         config.apply_device_optimizations(device_type)
         
-        # Get memory estimate
         memory_est = config.get_memory_estimate_gb()
         required_memory = memory_est['total']
         

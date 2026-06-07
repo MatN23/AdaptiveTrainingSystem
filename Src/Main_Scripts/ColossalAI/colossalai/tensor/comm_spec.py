@@ -420,7 +420,6 @@ class CommSpec:
             else:
                 self.device_meshes = self.sharding_spec.device_mesh.flatten_device_meshes
                 self.device_mesh = self.sharding_spec.device_mesh.flatten_device_mesh
-                # Create a new member `logical_process_axes` to distinguish from original flatten
                 self.logical_process_axes = logical_process_axis
         else:
             self.device_mesh = self.sharding_spec.device_mesh

@@ -190,7 +190,6 @@ def cai_gptq_matmul_248_kernel(
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
-    # offs_bk = offs_k + qkv_offset * NK
     a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)  # (BLOCK_SIZE_M, BLOCK_SIZE_K)
 
     a_mask = offs_am[:, None] < M
@@ -200,7 +199,6 @@ def cai_gptq_matmul_248_kernel(
         + qkv_offset * N * NK // infearure_per_bits
         + ((offs_k[:, None] // infearure_per_bits) * stride_bk + offs_bn[None, :] * stride_bn)
     )  # (BLOCK_SIZE_K, BLOCK_SIZE_N)
-    # g_ptrs = g_ptr + offs_k
     # shifter is used to extract the N bits of each element in the 32-bit word from B
     scales_ptrs = scales_ptr + qkv_offset * NK * N // gptq_group_size + offs_bn[None, :]
     zeros_ptrs = (
@@ -217,15 +215,13 @@ def cai_gptq_matmul_248_kernel(
     g_idx = g_idx_base
     # tl.device_print("gidx, ", g_idx)
 
-    scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
+    scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)
     zeros = tl.load(zeros_ptrs + g_idx[:, None] * stride_zeros)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
     zeros = (zeros >> zeros_shifter[None, :]) & maxq
     zeros = zeros + 1
 
     for k in range(0, num_pid_k):
-        # g_idx = tl.load(g_ptrs)
-        # if (k + 1) * BLOCK_SIZE_K > currend_group_end:
-        scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
+        scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)
         zeros = tl.load(zeros_ptrs + g_idx[:, None] * stride_zeros)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
         zeros = (zeros >> zeros_shifter[None, :]) & maxq
         zeros = zeros + 1
@@ -240,7 +236,6 @@ def cai_gptq_matmul_248_kernel(
         a_ptrs += BLOCK_SIZE_K
         b_ptrs += (BLOCK_SIZE_K // infearure_per_bits) * stride_bk
         g_idx = g_idx_base + ((k + 1) * BLOCK_SIZE_K) // gptq_group_size
-        # if (k + 2) * BLOCK_SIZE_K > currend_group_end:
 
     c_ptrs = c_ptr + qkv_offset * M * N + stride_cm * offs_am[:, None] + stride_cn * offs_bn[None, :]
     c_mask = (offs_am[:, None] < M) & (offs_bn[None, :] < N)
@@ -349,11 +344,7 @@ def cai_gptq_idx_matmul_248_kernel(
     pid = tl.program_id(axis=0)
     NK = K
 
-    # if QKV_FUSED:
-    #     NK = K//3
     # else:
-    #     NK = K
-    # NK = K
 
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -370,7 +361,6 @@ def cai_gptq_idx_matmul_248_kernel(
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_k = tl.arange(0, BLOCK_SIZE_K)
-    # offs_bk = offs_k + qkv_offset * NK
     a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)  # (BLOCK_SIZE_M, BLOCK_SIZE_K)
 
     a_mask = offs_am[:, None] < M
@@ -380,7 +370,6 @@ def cai_gptq_idx_matmul_248_kernel(
         + qkv_offset * N * NK // infearure_per_bits
         + ((offs_k[:, None] // infearure_per_bits) * stride_bk + offs_bn[None, :] * stride_bn)
     )  # (BLOCK_SIZE_K, BLOCK_SIZE_N)
-    # g_ptrs = g_ptr + offs_k
     # shifter is used to extract the N bits of each element in the 32-bit word from B
     scales_ptrs = scales_ptr + qkv_offset * NK * N // gptq_group_size + offs_bn[None, :]
     zeros_ptrs = (
@@ -401,7 +390,7 @@ def cai_gptq_idx_matmul_248_kernel(
 
     for k in range(0, num_pid_k):
         g_idx = tl.load(g_ptrs)
-        scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
+        scales = tl.load(scales_ptrs + g_idx[:, None] * stride_scales)
         zeros = tl.load(zeros_ptrs + g_idx[:, None] * stride_zeros)  # (BLOCK_SIZE_K, BLOCK_SIZE_N,)
 
         zeros = (zeros >> zeros_shifter[None, :]) & maxq
@@ -460,7 +449,6 @@ def gptq_fused_linear_triton(
     g_idx=None,
     act_type=0,
 ):
-    # print("gptq fused ", qkv_fused, add_bias, add_residual)
     assert input.is_cuda, "input is not in cuda"
     assert qweight.is_cuda, "qweight is not in cuda"
     assert scales.is_cuda, "scales is not in cuda"
@@ -479,7 +467,6 @@ def gptq_fused_linear_triton(
                 triton.cdiv(input.shape[0], META["BLOCK_SIZE_M"]) * triton.cdiv(qweight.shape[1], META["BLOCK_SIZE_N"]),
             )
             output = torch.empty((input.shape[0], qweight.shape[1]), device=input.device, dtype=torch.float16)
-        # print("dtype, ", qweight.dtype, output.dtype, scales.dtype, qzeros.dtype, bias.dtype, residual.dtype)
         if g_idx is None:
             cai_gptq_matmul_248_kernel[grid](
                 input,

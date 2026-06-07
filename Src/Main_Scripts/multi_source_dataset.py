@@ -35,9 +35,7 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-# ============================================
 # HARDCODED SETTINGS - Edit these as needed
-# ============================================
 
 # Output settings
 OUTPUT_DIR = 'datasets'
@@ -95,7 +93,6 @@ PUBMED_SEARCH_TERMS = [
     "big data",
     "predictive modeling",
 
-    # MEDICINE (BROAD)
     "cancer",
     "cardiology",
     "neurology",
@@ -271,7 +268,6 @@ PUBMED_SEARCH_TERMS = [
 ]
 PUBMED_PAPERS_PER_TERM = 500
 
-# ============================================
 
 
 class WikipediaProcessor:
@@ -438,7 +434,6 @@ class WikipediaProcessor:
                                 current_title = None
                                 continue
                             
-                            # Clean the text
                             cleaned_text = self.clean_wiki_text(current_text)
                             
                             # Quality filter
@@ -956,7 +951,7 @@ class PubMedProcessor:
                 batch_pmids = pmids[i:i+batch_size]
                 articles = self.fetch_abstracts(batch_pmids)
                 all_articles.extend(articles)
-                time.sleep(0.5)  # Rate limiting
+                time.sleep(0.5)
             
             time.sleep(1)  # Rate limiting between terms
         

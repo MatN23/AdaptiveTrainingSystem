@@ -1,4 +1,3 @@
-# Copyright (c) 2025 Matias Nielsen. All rights reserved.
 # Licensed under the Custom License below.
 
 import json
@@ -106,7 +105,6 @@ def validate_data_comprehensive(data_path: str, tokenizer, max_check: int = 5000
         stats['errors'].append(f"File access error: {e}")
         return stats
     
-    # Initialize counters
     conversation_lengths = []
     token_lengths = []
     role_counts = {'user': 0, 'assistant': 0, 'system': 0, 'other': 0}
@@ -127,7 +125,6 @@ def validate_data_comprehensive(data_path: str, tokenizer, max_check: int = 5000
             try:
                 conversation = json.loads(line.strip())
                 
-                # Validate structure
                 if 'messages' not in conversation:
                     quality_issues.append(f"Line {line_no}: Missing 'messages' field")
                     continue
@@ -170,7 +167,6 @@ def validate_data_comprehensive(data_path: str, tokenizer, max_check: int = 5000
                     else:
                         role_counts['other'] += 1
                 
-                # Check conversation quality
                 if not (has_user and has_assistant):
                     quality_issues.append(f"Line {line_no}: Missing user or assistant messages")
                     continue

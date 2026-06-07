@@ -4,7 +4,6 @@ from collections import deque
 import sys
 import os
 
-# Add the project path to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), 'Src/Main_Scripts')))
 
 # Mock torch if needed? No, torch is likely installed.
@@ -70,7 +69,6 @@ def test_scaler_with_tensors():
     print("Running initial update with tensors...")
     scaler.update_metrics(step, epoch, loss, grad_norm, lr, tokens)
     
-    # Check if metrics are stored as scalars
     m = scaler.metrics_history[0]
     assert isinstance(m.loss, float)
     assert isinstance(m.grad_norm, float)
@@ -89,7 +87,6 @@ def test_scaler_with_tensors():
             torch.tensor(1024)
         )
     
-    # Check if history deques are clean
     assert all(isinstance(x, float) for x in scaler.compute_tracker.efficiency_history)
     assert all(isinstance(x, float) for x in scaler.convergence_detector.loss_history)
     

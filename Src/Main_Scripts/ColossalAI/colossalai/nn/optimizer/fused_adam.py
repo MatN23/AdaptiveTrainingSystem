@@ -116,7 +116,6 @@ class FusedAdam(torch.optim.Optimizer):
             else:
                 group["step"] = 1
 
-            # create lists for multi-tensor apply
             g_l, p_l, m_l, v_l = [], [], [], []
 
             for p in group["params"]:

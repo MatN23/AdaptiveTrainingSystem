@@ -54,8 +54,6 @@ class PreTrainingDataset:
         tokens_a = raw_text_list
         assert len(tokens_a) == len(instance)
         # tokens_a, tokens_b, is_next = instance.get_values()
-        # print(f'is_next label:{is_next}')
-        # Create mapper
         tokens = []
         original_tokens = []
         segment_ids = []
@@ -71,7 +69,6 @@ class PreTrainingDataset:
         original_tokens.append("[SEP]")
         segment_ids.append(0)
 
-        # for token in tokens_b:
         #     tokens.append(token)
         #     segment_ids.append(1)
 
@@ -91,7 +88,6 @@ class PreTrainingDataset:
         elif self.backend == "python":
             output_tokens, masked_lm_output = self.create_whole_masked_lm_predictions(tokens)
 
-        # Convert to Ids
         input_ids = self.tokenizer.convert_tokens_to_ids(output_tokens)
         input_mask = [1] * len(input_ids)
 
@@ -199,7 +195,6 @@ class PreTrainingDataset:
             # WordPieces, the first token does not have any marker and any subsequence
             # tokens are prefixed with ##. So whenever we see the ## token, we
             # append it to the previous set of word indexes.
-            #
             # Note that Whole Word Masking does *not* change the training code
             # at all -- we still predict each WordPiece independently, softmaxed
             # over the entire vocabulary.

@@ -32,7 +32,7 @@ class ImageNetBase(Dataset):
         if not type(self.config) == dict:
             self.config = OmegaConf.to_container(self.config)
         self.keep_orig_class_label = self.config.get("keep_orig_class_label", False)
-        self.process_images = True  # if False we skip loading & processing images and self.data contains filepaths
+        self.process_images = True
         self._prepare()
         self._prepare_synset_to_human()
         self._prepare_idx_to_synset()
@@ -164,7 +164,6 @@ class ImageNetTrain(ImageNetBase):
         self.expected_length = 1281167
         self.random_crop = retrieve(self.config, "ImageNetTrain/random_crop", default=True)
         if not tdu.is_prepared(self.root):
-            # prep
             print("Preparing dataset {} in {}".format(self.NAME, self.root))
 
             datadir = self.datadir
@@ -229,7 +228,6 @@ class ImageNetValidation(ImageNetBase):
         self.expected_length = 50000
         self.random_crop = retrieve(self.config, "ImageNetValidation/random_crop", default=False)
         if not tdu.is_prepared(self.root):
-            # prep
             print("Preparing dataset {} in {}".format(self.NAME, self.root))
 
             datadir = self.datadir

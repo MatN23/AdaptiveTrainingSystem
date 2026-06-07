@@ -21,20 +21,13 @@ from colossalai.nn.optimizer import HybridAdam
 
 
 def train(args):
-    # check lora compatibility
     if "gemini" in args.plugin and args.lora_rank > 0:
         raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
     if args.plugin == "gemini_auto" and args.accumulation_steps > 1:
         raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
-    # ==============================
-    # Initialize Distributed Training
-    # ==============================
     colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
 
-    # ==============================
-    # Initialize Booster
-    # ==============================
     if args.plugin == "ddp":
         """
         Default torch ddp plugin without any acceleration, for
@@ -85,12 +78,7 @@ def train(args):
 
     booster = Booster(plugin=plugin)
 
-    # ======================================================
-    # Initialize Model, Objective, Optimizer and LR Scheduler
-    # ======================================================
     # Temp Fix: Disable lazy init due to version conflict
-    # init_ctx = (
-    #     LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
     # )
 
     init_ctx = nullcontext()
@@ -114,7 +102,6 @@ def train(args):
     elif args.lora_rank > 0:
         coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
 
-    # configure tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_dir or args.pretrain, use_fast=False, trust_remote_code=True
     )
@@ -135,7 +122,6 @@ def train(args):
     coordinator.print_on_master(f"Configuration file will be saved at: {args.config_file}")
     coordinator.print_on_master(f"Model checkpoint will be saved at: {args.save_path}")
 
-    # configure optimizer
     optim = HybridAdam(
         model_params=model.parameters(),
         lr=args.lr,
@@ -144,7 +130,6 @@ def train(args):
         adamw_mode=True,
     )
 
-    # configure dataset
     coordinator.print_on_master(
         f"Max CUDA memory before data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
     )
@@ -185,7 +170,6 @@ def train(args):
         lr_scheduler=lr_scheduler,
         dataloader=train_dataloader,
     )
-    # model = model.to(get_current_device())
     torch.set_default_dtype(torch.float)
 
     coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
@@ -252,7 +236,6 @@ def train(args):
         # NOTE: set model to eval to merge LoRA weights
         LORA_MANAGER.merge_weights = True
         model.eval()
-    # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final model checkpoint")
 
     booster.save_model(model, os.path.join(args.save_path, "modeling"), shard=True)
@@ -262,9 +245,7 @@ def train(args):
 
 
 if __name__ == "__main__":
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--plugin",

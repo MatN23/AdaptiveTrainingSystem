@@ -58,11 +58,9 @@ class InputValidator:
         if not isinstance(messages, list):
             return ValidationResult(False, None, ["Messages must be a list"], [])
         
-        # Validate message count
         if len(messages) > self.max_messages_per_conversation:
             errors.append(f"Too many messages: {len(messages)} > {self.max_messages_per_conversation}")
         
-        # Validate individual messages
         sanitized_messages = []
         for i, message in enumerate(messages):
             msg_result = self._validate_message(message)
@@ -77,7 +75,6 @@ class InputValidator:
         if errors:
             return ValidationResult(False, None, errors, warnings)
         
-        # Create sanitized conversation
         sanitized_conversation = conversation.copy()
         sanitized_conversation['messages'] = sanitized_messages
         
@@ -91,7 +88,6 @@ class InputValidator:
         if not isinstance(message, dict):
             return ValidationResult(False, None, ["Message must be a dictionary"], [])
         
-        # Validate role
         role = message.get('role', '').lower().strip()
         valid_roles = ['user', 'assistant', 'system', 'prompter']
         
@@ -101,7 +97,6 @@ class InputValidator:
             warnings.append(f"Unknown role '{role}', treating as 'user'")
             role = 'user'
         
-        # Validate content
         content = message.get('content', '')
         if not isinstance(content, str):
             errors.append("Content must be a string")
@@ -116,7 +111,6 @@ class InputValidator:
         if errors:
             return ValidationResult(False, None, errors, warnings)
         
-        # Create sanitized message
         sanitized_message = {
             'role': role,
             'content': content
@@ -157,7 +151,6 @@ class InputValidator:
     
     def _sanitize_content(self, content: str) -> str:
         """Sanitize content while preserving readability."""
-        # HTML escape
         sanitized = html.escape(content)
         
         # Remove or escape potentially dangerous characters
@@ -184,13 +177,11 @@ class InputValidator:
         if len(user_input) > self.max_message_length:
             errors.append(f"Input too long: {len(user_input)} > {self.max_message_length}")
         
-        # Check for suspicious patterns
         for pattern in self.suspicious_patterns:
             if pattern.search(user_input):
                 warnings.append("Input contains suspicious patterns")
                 break
         
-        # Sanitize
         sanitized = self._sanitize_content(user_input)
         
         if errors:

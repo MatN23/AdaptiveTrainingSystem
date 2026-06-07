@@ -251,7 +251,6 @@ class Randomizer:
                 if gathered_index[i] > index_tensor:
                     index_tensor = gathered_index[i]
 
-            # set the index
             Randomizer._INDEX = index_tensor.item()
 
 
@@ -277,7 +276,6 @@ def create_randomizer_with_offset(
         base_seed += rank
 
     if offset_by_index:
-        # check if the randomizer index is synchronized
         is_synchronized = Randomizer.is_randomizer_index_synchronized(process_group)
         assert is_synchronized, (
             "We detect that the randomizer index is not synchronized across processes."

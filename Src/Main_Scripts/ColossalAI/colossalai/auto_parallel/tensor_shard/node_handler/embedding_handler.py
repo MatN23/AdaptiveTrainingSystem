@@ -47,7 +47,6 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(
     # logical 1D non-matrix dimension, the logical non-matrix dimension can belong to the 0th to Nth dimension of the
     # physical input shape. Thus, we enumerate to get all possible cases.
     if input_sharding_spec.dim_partition_dict:
-        # if bool(input_sharding_spec.dim_partition_dict), it means that the
         # the generated sharding strategy does shard the non-matrix dimension,
         # in this case, we need to do enumeration
         num_input_dims = input_op_data.data.dim()
@@ -164,7 +163,6 @@ class EmbeddingModuleHandler(ModuleHandler):
         """
         Convert the sharding spec from the logical shape to the physical shape.
         """
-        # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at logical dim 0 to one of the first few dimensions of the input and output
         strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(
@@ -199,7 +197,6 @@ class EmbeddingFunctionHandler(NodeHandler):
             logical_shape=input_logical_shape,
         )
 
-        # check if the other operand is a parameter
         if isinstance(self.node.args[1]._meta_data, torch.nn.parameter.Parameter):
             data_type = OperationDataType.PARAM
         else:
@@ -231,7 +228,6 @@ class EmbeddingFunctionHandler(NodeHandler):
         """
         Convert the sharding spec from the logical shape to the physical shape.
         """
-        # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at logical dim 0 to one of the first few dimensions of the input and output
         strategies = _convert_logical_sharding_to_physical_sharding_spec_for_embedding(

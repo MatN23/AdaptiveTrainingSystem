@@ -89,7 +89,6 @@ def new_from_pretrained(
         logger.info("Offline mode: forcing local_files_only=True")
         local_files_only = True
 
-    # Load config if we don't provide a configuration
     if not isinstance(config, PretrainedConfig):
         config_path = config if config is not None else pretrained_model_name_or_path
         config, model_kwargs = cls.config_class.from_pretrained(
@@ -123,28 +122,24 @@ def new_from_pretrained(
             if use_safetensors is not False and os.path.isfile(
                 os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_NAME, variant))
             ):
-                # Load from a safetensors checkpoint
                 archive_file = os.path.join(
                     pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_NAME, variant)
                 )
             elif use_safetensors is not False and os.path.isfile(
                 os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant))
             ):
-                # Load from a sharded safetensors checkpoint
                 archive_file = os.path.join(
                     pretrained_model_name_or_path, subfolder, _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
                 )
             elif os.path.isfile(
                 os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_NAME, variant))
             ):
-                # Load from a PyTorch checkpoint
                 archive_file = os.path.join(
                     pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_NAME, variant)
                 )
             elif os.path.isfile(
                 os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant))
             ):
-                # Load from a sharded PyTorch checkpoint
                 archive_file = os.path.join(
                     pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)
                 )
@@ -167,7 +162,6 @@ def new_from_pretrained(
                 filename = _add_variant(WEIGHTS_NAME, variant)
 
             try:
-                # Load from URL or cache if already cached
                 cached_file_kwargs = {
                     "cache_dir": cache_dir,
                     "force_download": force_download,

@@ -10,16 +10,12 @@ import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Paths
-# ---------------------------------------------------------------------------
 _THIS_DIR  = os.path.dirname(os.path.abspath(__file__))
 _CU_FILE   = os.path.join(_THIS_DIR, "fused_grad_clip.cu")
 _SO_FILE   = os.path.join(_THIS_DIR, "fused_grad_clip.so")
 
-# ---------------------------------------------------------------------------
 # Compile if needed
-# ---------------------------------------------------------------------------
 def _compile_so() -> bool:
     if not os.path.exists(_CU_FILE):
         logger.error("  Source not found: %s", _CU_FILE)
@@ -53,9 +49,6 @@ def _compile_so() -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Load & bind
-# ---------------------------------------------------------------------------
 _lib        = None
 _NORM_BYTES = 32          # 8-byte aligned, covers double + 2 floats + padding
 
@@ -72,17 +65,16 @@ def _load_lib() -> bool:
         logger.error("  Failed to dlopen %s: %s", _SO_FILE, exc)
         return False
 
-    # fused_grad_clip_launcher(void** ptrs, int* sizes, int n,
     #                          float max_norm, void* buf, int fp16, void* stream)
     _lib.fused_grad_clip_launcher.restype  = ctypes.c_int
     _lib.fused_grad_clip_launcher.argtypes = [
-        ctypes.c_void_p,                   # grad_ptrs_device  (device ptr to ptr array)
+        ctypes.c_void_p,
         ctypes.POINTER(ctypes.c_int),       # grad_sizes_device
         ctypes.c_int,                       # num_tensors
         ctypes.c_float,                     # max_norm
         ctypes.c_void_p,                    # norm_buffer
         ctypes.c_int,                       # use_fp16
-        ctypes.c_void_p,                    # stream (cudaStream_t)
+        ctypes.c_void_p,
     ]
 
     _lib.fused_grad_clip_get_results.restype  = None
@@ -96,9 +88,7 @@ def _load_lib() -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
 # Per-session buffer cache  (one buffer per CUDA device)
-# ---------------------------------------------------------------------------
 _norm_buffers: dict[int, torch.Tensor] = {}
 
 def _get_norm_buffer(device: torch.device) -> torch.Tensor:
@@ -109,9 +99,7 @@ def _get_norm_buffer(device: torch.device) -> torch.Tensor:
     return _norm_buffers[idx]
 
 
-# ---------------------------------------------------------------------------
 # Build device pointer arrays
-# ---------------------------------------------------------------------------
 def _make_ptr_array(tensors: list[torch.Tensor]) -> torch.Tensor:
     """Returns a 1-D int64 tensor on the same device as tensors[0]
        whose values are the data_ptrs of each tensor."""
@@ -126,9 +114,7 @@ def _make_size_array(tensors: list[torch.Tensor]) -> torch.Tensor:
     return torch.tensor(sizes, dtype=torch.int32, device=device)
 
 
-# ---------------------------------------------------------------------------
 # Public API
-# ---------------------------------------------------------------------------
 _CUDA_KERNELS_AVAILABLE = _load_lib()
 CUSTOM_KERNELS_AVAILABLE = _CUDA_KERNELS_AVAILABLE and torch.cuda.is_available()
 

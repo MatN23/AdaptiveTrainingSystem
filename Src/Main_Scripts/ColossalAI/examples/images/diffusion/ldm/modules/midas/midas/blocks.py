@@ -37,7 +37,7 @@ def _make_encoder(
         )  # ViT-B/16 - 84.6% Top1 (backbone)
     elif backbone == "resnext101_wsl":
         pretrained = _make_pretrained_resnext101_wsl(use_pretrained)
-        scratch = _make_scratch([256, 512, 1024, 2048], features, groups=groups, expand=expand)  # efficientnet_lite3
+        scratch = _make_scratch([256, 512, 1024, 2048], features, groups=groups, expand=expand)
     elif backbone == "efficientnet_lite3":
         pretrained = _make_pretrained_efficientnet_lite3(use_pretrained, exportable=exportable)
         scratch = _make_scratch([32, 48, 136, 384], features, groups=groups, expand=expand)  # efficientnet_lite3
@@ -261,7 +261,6 @@ class ResidualConvUnit_custom(nn.Module):
 
         return self.skip_add.add(out, x)
 
-        # return out + x
 
 
 class FeatureFusionBlock_custom(nn.Module):
@@ -303,7 +302,6 @@ class FeatureFusionBlock_custom(nn.Module):
         if len(xs) == 2:
             res = self.resConfUnit1(xs[1])
             output = self.skip_add.add(output, res)
-            # output += res
 
         output = self.resConfUnit2(output)
 

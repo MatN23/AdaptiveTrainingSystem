@@ -27,7 +27,6 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
         vocab_start_index = partition_vocab_size * rank
         vocab_end_index = vocab_start_index + partition_vocab_size
 
-        # Create a mask of valid vocab ids (1 means it needs to be masked).
         target_mask = (targets < vocab_start_index) | (targets >= vocab_end_index)
         masked_target = targets.clone() - vocab_start_index
         masked_target[target_mask] = 0
@@ -50,7 +49,6 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
         sum_exp_logits = exp_logits.sum(dim=-1)
         torch.distributed.all_reduce(sum_exp_logits, op=torch.distributed.ReduceOp.SUM, group=process_group)
 
-        # Loss = log(sum(exp(logits))) - predicted-logit.
         loss = torch.log(sum_exp_logits) - predicted_logits
         # Store softmax, target-mask and masked-target for backward pass.
         exp_logits.div_(sum_exp_logits.unsqueeze(dim=-1))

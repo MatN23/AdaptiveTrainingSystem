@@ -145,7 +145,6 @@ def parse_args():
     parser.add_argument(
         "--extra_dp_size", type=int, default=1, help="ep_zero plugin's moe dp size. Recommended to be 2 or 4."
     )
-    # hybrid plugin
     parser.add_argument("--pp_size", type=int, default=2, help="pp size for hybrid plugin")
     parser.add_argument("--dp_size", type=int, default=1, help="dp size for hybrid plugin")
     parser.add_argument("--ep_size", type=int, default=2, help="ep size for hybrid plugin")
@@ -181,7 +180,6 @@ def parse_args():
         "--z_loss_factor", type=float, default=0.0001, help="The final outputs' classification z loss factor."
     )
 
-    # load balance
     parser.add_argument(
         "--load_balance", action="store_true", help="Expert load balance. Defaults to False. Recommend to enable."
     )
@@ -206,7 +204,6 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
     test_mode = args.model_name == "test"
@@ -292,7 +289,6 @@ def main():
         model = OpenMoeForCausalLM(config)
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
-    # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
@@ -308,10 +304,8 @@ def main():
         dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=collate_fn
     )
 
-    # Set optimizer
     optimizer = HybridAdam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     if not test_mode:
         load_ckpt(repo_name, model, booster)
@@ -320,7 +314,6 @@ def main():
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     coordinator.print_on_master(f"Finish init booster")
 
-    # Start finetuning
     coordinator.print_on_master(f"Start finetuning")
     for epoch in range(args.num_epoch):
         model.train()
@@ -351,7 +344,6 @@ def main():
                     data = move_to_cuda(data, torch.cuda.current_device())
                     outputs = model(**data)
                     loss = outputs["loss"]
-                    # Backward
                     booster.backward(loss, optimizer)
                     pbar.set_postfix({"loss": loss.item()})
 
@@ -366,16 +358,13 @@ def main():
                 ):
                     coordinator.print_on_master(f"Apply load balance")
                     apply_load_balance(model, optimizer)
-                # save checkpoint
                 if (step + 1) % args.save_interval == 0:
                     coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
                     booster.save_model(model, args.output_path, shard=True)
 
-        # save checkpoint at the end of each epochs
         booster.save_model(model, args.output_path, shard=True)
         coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
 
-    # Finish training
     coordinator.print_on_master(f"Finish training")
 
 

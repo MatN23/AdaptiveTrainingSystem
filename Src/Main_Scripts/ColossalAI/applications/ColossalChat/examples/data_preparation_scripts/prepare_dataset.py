@@ -233,7 +233,6 @@ def main():
             lambda data: data["chosen_input_ids" if args.type == "preference" else "input_ids"] is not None
         )
 
-        # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
         output_name = f"part-{output_index}"
         output_jsonl_path = os.path.join(args.data_jsonl_output_dir, output_name + ".jsonl")
@@ -250,7 +249,6 @@ def main():
             f"Data size: {len(dataset)}; "
             f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
         )
-        # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
         logger.info(f"Start to save {output_arrow_path}")
         dataset = load_dataset(

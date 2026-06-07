@@ -3,7 +3,6 @@ import sys
 import os
 import types
 
-# Create dummy config module
 config = types.ModuleType('config')
 config_manager = types.ModuleType('config.config_manager')
 
@@ -17,7 +16,6 @@ config.config_manager = config_manager
 sys.modules['config'] = config
 sys.modules['config.config_manager'] = config_manager
 
-# Now load checkpoint
 checkpoint = torch.load('checkpoints/final.pt', map_location='cpu', weights_only=False)
 config = checkpoint['config']
 

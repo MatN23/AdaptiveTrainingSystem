@@ -28,21 +28,14 @@ logger = get_dist_logger()
 
 
 def train(args):
-    # check lora compatibility
     if "gemini" in args.plugin and args.lora_rank > 0:
         raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
     if args.plugin == "gemini_auto" and args.accumulation_steps > 1:
         raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
 
-    # ==============================
-    # Initialize Distributed Training
-    # ==============================
     colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
 
-    # ==============================
-    # Initialize Booster
-    # ==============================
     if args.plugin == "ddp":
         """
         Default torch ddp plugin without any acceleration, for
@@ -93,12 +86,7 @@ def train(args):
     booster = Booster(plugin=plugin)
     ref_booster = Booster(plugin=plugin)
 
-    # ======================================================
-    # Initialize Model, Objective, Optimizer and LR Scheduler
-    # ======================================================
     # Temp Fix: Disable lazy init due to version conflict
-    # init_ctx = (
-    #     LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
     # )
 
     init_ctx = nullcontext()
@@ -135,7 +123,6 @@ def train(args):
     elif args.lora_rank > 0:
         coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
 
-    # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=False, trust_remote_code=True)
     if hasattr(tokenizer, "pad_token") and hasattr(tokenizer, "eos_token") and tokenizer.eos_token is not None:
@@ -152,7 +139,6 @@ def train(args):
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
 
-    # configure optimizer
     optim = HybridAdam(
         model_params=model.parameters(),
         lr=args.lr,
@@ -161,7 +147,6 @@ def train(args):
         adamw_mode=True,
     )
 
-    # configure dataset
     coordinator.print_on_master(f"Load dataset: {args.dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train", mode_map=mode_map)
@@ -266,7 +251,6 @@ def train(args):
         # NOTE: set model to eval to merge LoRA weights
         LORA_MANAGER.merge_weights = True
         model.eval()
-    # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final model checkpoint")
     booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
     coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_dir}")
@@ -275,9 +259,7 @@ def train(args):
 
 
 if __name__ == "__main__":
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--plugin",

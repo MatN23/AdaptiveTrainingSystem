@@ -55,7 +55,6 @@ class UniversalRetrievalConversation:
                 chunk_size=text_splitter_chunk_size, chunk_overlap=text_splitter_chunk_overlap
             ),
         )
-        # Create retriever
         self.information_retriever_zh = CustomRetriever(
             k=3, sql_file_path=sql_file_path.replace(".db", "_zh.db"), verbose=True
         )
@@ -70,7 +69,6 @@ class UniversalRetrievalConversation:
                 chunk_size=text_splitter_chunk_size, chunk_overlap=text_splitter_chunk_overlap
             ),
         )
-        # Create retriever
         self.information_retriever_en = CustomRetriever(
             k=3, sql_file_path=sql_file_path.replace(".db", "_en.db"), verbose=True
         )
@@ -108,7 +106,6 @@ class UniversalRetrievalConversation:
                 separator = separator if separator != "" else "\n\n"
                 retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
-                # Split
                 splits = text_splitter.split_documents(retriever_data)
                 documents.extend(splits)
         return documents

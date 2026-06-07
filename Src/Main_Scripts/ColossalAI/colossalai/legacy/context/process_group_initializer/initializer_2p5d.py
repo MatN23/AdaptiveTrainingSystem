@@ -14,7 +14,6 @@ from .process_group_initializer import ProcessGroupInitializer
 
 
 def _check_tesseract_env_var(tesseract_dim: int, tesseract_dep: int):
-    # check global variable for TESSERACT
     env_tesseract_dim = env.tesseract_dim
     env_tesseract_dep = env.tesseract_dep
 

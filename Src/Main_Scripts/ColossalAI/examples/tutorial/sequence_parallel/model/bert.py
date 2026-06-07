@@ -79,15 +79,12 @@ class BertForPretrain(nn.Module):
         output_init_normal(tensor, sigma=self.init_std, num_layers=self.num_layers)
 
     def reset_parameters(self):
-        # initialize embedding
         self._init_normal(self.embedding.word_embedding_weight)
         self._init_normal(self.embedding.position_embeddings.weight)
         if self.embedding.tokentype_embeddings:
             self._init_normal(self.embedding.tokentype_embeddings.weight)
 
-        # initialize bert layer
         for layer in self.bert_layers:
-            # initialize self attention
             self._init_normal(layer.self_attention.query_key_value.weight)
             self._output_init_normal(layer.self_attention.dense.weight)
             self._init_normal(layer.mlp.dense_h_to_4h.weight)
@@ -205,16 +202,13 @@ class PipelineBertForPretrain(nn.Module):
         output_init_normal(tensor, sigma=self.init_std, num_layers=self.num_layers)
 
     def reset_parameters(self):
-        # initialize embedding
         if self.first_stage:
             self._init_normal(self.embedding.word_embedding_weight)
             self._init_normal(self.embedding.position_embeddings.weight)
             if self.embedding.tokentype_embeddings:
                 self._init_normal(self.embedding.tokentype_embeddings.weight)
 
-        # initialize bert layer
         for layer in self.bert_layers:
-            # initialize self attention
             self._init_normal(layer.self_attention.query_key_value.weight)
             self._output_init_normal(layer.self_attention.dense.weight)
             self._init_normal(layer.mlp.dense_h_to_4h.weight)

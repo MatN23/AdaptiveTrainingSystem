@@ -63,13 +63,11 @@ class AlphaBetaProfiler:
             self.alpha_beta_dict = alpha_beta_dict
 
     def _init_profiling(self):
-        # Create process group list based on its global rank
         process_group_list = []
         for f_index in range(self.world_size - 1):
             for b_index in range(f_index + 1, self.world_size):
                 process_group_list.append((self.physical_devices[f_index], self.physical_devices[b_index]))
 
-        # Create process group dict which maps process group to its handler
         process_group_dict = {}
         for process_group in process_group_list:
             pg_handler = dist.new_group(process_group)
@@ -87,7 +85,6 @@ class AlphaBetaProfiler:
         buf = torch.randn(nbytes // 4).to(device)
 
         torch.cuda.synchronize()
-        # warmup
         for _ in range(self.warmup):
             if self.ctype == "a":
                 dist.all_reduce(buf, op=dist.ReduceOp.SUM, group=pg_handler)
@@ -199,7 +196,6 @@ class AlphaBetaProfiler:
             dist.broadcast_object_list(broadcast_list, src=process_group[0])
             alpha_beta_dict[process_group] = tuple(broadcast_list)
 
-        # add symmetry pair to the alpha_beta_dict
         symmetry_ab_dict = {}
         for process_group, alpha_beta_pair in alpha_beta_dict.items():
             symmetry_process_group = (process_group[1], process_group[0])
@@ -337,7 +333,6 @@ class AlphaBetaProfiler:
             for _ in range(homogeneous_types - 1):
                 lowest_beta = beta_list.pop()
                 best_homogeneous_group = homogeneous_device_dict[lowest_beta]
-                # if the best homogeneous group contains all physical devices,
                 # we will build the logical device mesh based on it. Otherwise,
                 # we will check next level homogeneous group.
                 if _check_contain_all_devices(best_homogeneous_group):

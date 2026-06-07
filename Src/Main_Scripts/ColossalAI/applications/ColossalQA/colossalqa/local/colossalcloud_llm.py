@@ -107,11 +107,9 @@ class ColossalCloudLLM(LLM):
         # Optional Parameters
         optional_params = ["top_k", "top_p", "temperature", "repetition_penalty"]  # Self.optional
         gen_config = {key: gen_config[key] for key in optional_params if key in gen_config}
-        # Define the data payload
         data = {"max_new_tokens": max_new_tokens, "history": [{"instruction": prompt, "response": ""}], **gen_config}
         headers = {"Content-Type": "application/json", **auth_config}  # 'Host',
         # Make the POST request
         response = requests.post(endpoint, headers=headers, data=json.dumps(data))
         response.raise_for_status()  # raise error if return code is not 200(success)
-        # Check the response
         return response.text

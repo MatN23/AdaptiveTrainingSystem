@@ -40,7 +40,6 @@ class _Extension(ABC):
         import colossalai
         from colossalai.accelerator import get_accelerator
 
-        # get torch version
         torch_version_major = torch.__version__.split(".")[0]
         torch_version_minor = torch.__version__.split(".")[1]
 

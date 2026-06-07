@@ -121,7 +121,6 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
 
     tstart = time.time()
     n_saved = len(glob.glob(os.path.join(logdir, "*.png"))) - 1
-    # path = logdir
     if model.cond_stage_model is None:
         all_images = []
 
@@ -232,10 +231,8 @@ if __name__ == "__main__":
     if not os.path.exists(opt.resume):
         raise ValueError("Cannot find {}".format(opt.resume))
     if os.path.isfile(opt.resume):
-        # paths = opt.resume.split("/")
         try:
             logdir = "/".join(opt.resume.split("/")[:-1])
-            # idx = len(paths)-paths[::-1].index("logs")+1
             print(f"Logdir is {logdir}")
         except ValueError:
             paths = opt.resume.split("/")

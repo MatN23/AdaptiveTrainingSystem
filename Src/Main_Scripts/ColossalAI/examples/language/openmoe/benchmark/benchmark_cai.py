@@ -131,7 +131,6 @@ def parse_args():
     # bench
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--active", type=int, default=20)
-    # load balance
     parser.add_argument("--load_balance", action="store_true")
 
     # overlap communication
@@ -145,7 +144,6 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
 
@@ -222,7 +220,6 @@ def main():
         model = OpenMoeForCausalLM(config)
     coordinator.print_on_master(f"Finish init model with config:\n{config}")
 
-    # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
 
     # Prepare tokenizer and dataloader
@@ -234,7 +231,6 @@ def main():
     )
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size)
 
-    # Set optimizer
     optimizer = HybridAdam(model.parameters(), weight_decay=0.01, lr=1e-5)
 
     model_numel = get_model_numel(model)
@@ -245,7 +241,6 @@ def main():
         dp_world_size=dp_size,
     )
 
-    # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     load_ckpt(repo_name, model, booster)
     model, optimizer, _, dataloader, _ = booster.boost(model=model, optimizer=optimizer, dataloader=dataloader)
@@ -253,7 +248,6 @@ def main():
     is_pp_last_stage = use_pipeline and booster.plugin.stage_manager.is_last_stage()
     coordinator.print_on_master(f"Finish init booster")
 
-    # Start finetuning
     coordinator.print_on_master(f"Start training")
     model.train()
     train_dataloader_iter = iter(dataloader)
@@ -281,7 +275,6 @@ def main():
                 data = move_to_cuda(data, torch.cuda.current_device())
                 outputs = model(**data)
                 loss = outputs["loss"]
-                # Backward
                 booster.backward(loss, optimizer)
                 pbar.set_postfix({"loss": loss.item()})
 

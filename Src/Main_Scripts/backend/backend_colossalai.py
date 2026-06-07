@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Drop-in Colossal-AI replacement for DeepSpeed
 
 import os
@@ -9,7 +8,6 @@ import torch.nn as nn
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-# Add ColossalAI parent directory to path
 # Structure: ColossalAI/colossalai/__init__.py
 COLOSSALAI_PATH = Path(__file__).parent.parent / "ColossalAI"
 if str(COLOSSALAI_PATH) not in sys.path:
@@ -47,7 +45,6 @@ class ColossalAIEngine:
         cpu_offload = getattr(config, 'cpu_offload', False)
         max_norm = getattr(config, 'max_grad_norm', 1.0)
         
-        # Create plugin (ZeRO-3 uses Gemini, ZeRO-1/2 uses LowLevel)
         if zero_stage == 3:
             plugin = GeminiPlugin(
                 placement_policy='cpu' if cpu_offload else 'cuda',
@@ -61,7 +58,6 @@ class ColossalAIEngine:
                 max_norm=max_norm,
             )
         
-        # Create booster
         self.booster = Booster(plugin=plugin)
         
         # Wrap model and optimizer
@@ -153,7 +149,6 @@ def create_colossalai_backend(model, config, expert_registry=None):
         # NEW: backend = create_colossalai_backend(model, config)
     """
     
-    # Create optimizer
     optimizer = HybridAdam(
         model.parameters(),
         lr=config.learning_rate,
@@ -161,7 +156,6 @@ def create_colossalai_backend(model, config, expert_registry=None):
         weight_decay=getattr(config, 'weight_decay', 0.01)
     )
     
-    # Create engine
     engine = ColossalAIEngine(model, optimizer, config)
     
     return engine

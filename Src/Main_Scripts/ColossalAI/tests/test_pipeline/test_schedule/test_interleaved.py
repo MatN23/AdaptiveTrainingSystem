@@ -60,7 +60,6 @@ def run_pp(
     """
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
 
-    # create model
     seed_all(1453)
     torch_model = MlpModel().cuda()
     pp_model = copy.deepcopy(torch_model).cuda()
@@ -86,11 +85,9 @@ def run_pp(
             sharded_model.append(sub_model.cuda())
     assert len(sharded_model) == num_model_chunk, "num_model_chunk is not correct"
 
-    # create optimizer
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1e-5)
     pp_optimizer = OptimizerWrapper(torch.optim.SGD(sharded_model.parameters(), lr=1e-5))
 
-    # create data
     seed_all(115)
     input_list = [torch.rand(batch_size, DIM).cuda()]
     dist.all_reduce(input_list[0])
@@ -105,22 +102,18 @@ def run_pp(
 
     pp_ret = schedule.forward_backward_step(sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True)
 
-    # check loss
     if stage_manager.is_last_stage(ignore_chunk=True):
         assert torch.allclose(torch_loss, pp_ret["loss"])
 
-    # check gradients
     for i in range(num_model_chunk):
         idx = world_size * i + rank
         assert torch.allclose(torch_model.layers[idx].weight.grad, sharded_model[i].weight.grad)
         assert torch.allclose(torch_model.layers[idx].bias.grad, sharded_model[i].bias.grad)
 
-    # step
     torch_optimizer.step()
     pp_optimizer.step()
     pp_optimizer.zero_grad()
 
-    # check updated param
     for i in range(num_model_chunk):
         idx = world_size * i + rank
         assert torch.allclose(torch_model.layers[idx].weight, sharded_model[i].weight)

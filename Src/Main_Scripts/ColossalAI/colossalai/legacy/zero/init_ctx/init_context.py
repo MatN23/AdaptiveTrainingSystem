@@ -225,7 +225,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             param.colo_attr.is_replicated = self.is_replicated
 
             # mark whether the param should keep not sharded
-            # if True, the param is used as Zero stage 2
             param.colo_attr.keep_not_shard = not self.shard_param
 
             self.param_list.append(param)

@@ -250,7 +250,6 @@ class ColoAttention:
                     and kv_indices is not None
                 )
         else:
-            # if attention_mask is None, attention_mask_type should be the default value
             assert attention_mask_type == AttnMaskType.CUSTOM
         # kernel dispatch
         mask_type = attention_mask_type if attention_mask is not None else None

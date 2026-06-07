@@ -45,8 +45,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     else:
         atol, rtol = 2e-2, 2e-2
 
-    # Check grads
-    # Save gradient tensors for comparison between the original model and the sharded model.
     grads_to_check = {}
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         col_layer_grads = get_grad_tensors_for_check(
@@ -59,7 +57,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         grads_to_check.update(row_layer_grads)
     check_all_grad_tensors(grads_to_check)
 
-    # Check grad norm
     param_gradient_pairs = [
         (p, p.grad) for group in sharded_optimizer.param_groups for p in group["params"] if p.grad is not None
     ]
@@ -74,7 +71,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
 
-    # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
@@ -88,7 +84,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    # check weights
     if test_config["precision"] == "fp32":
         atol, rtol = 5e-3, 1e-3
     else:

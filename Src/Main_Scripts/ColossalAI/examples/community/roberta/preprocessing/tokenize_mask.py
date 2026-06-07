@@ -19,9 +19,7 @@ def get_raw_instance(document, max_sequence_length=512):
     :param max_sequence_length:
     :return: a list. each element is a sequence of text
     """
-    # document = self.documents[index]
     max_sequence_length_allowed = max_sequence_length - 2
-    # document = [seq for seq in document if len(seq)<max_sequence_length_allowed]
     sizes = [len(seq) for seq in document]
 
     result_list = []
@@ -44,13 +42,7 @@ def get_raw_instance(document, max_sequence_length=512):
     if len(curr_seq) > max_sequence_length_allowed / 2:  # /2
         result_list.append(curr_seq)
 
-    # num_instance=int(len(big_list)/max_sequence_length_allowed)+1
-    # print("num_instance:",num_instance)
 
-    # result_list=[]
-    # for j in range(num_instance):
-    #     index=j*max_sequence_length_allowed
-    #     end_index=index+max_sequence_length_allowed if j!=num_instance-1 else -1
     #     result_list.append(big_list[index:end_index])
     return result_list
 
@@ -64,8 +56,6 @@ def split_numpy_chunk(path, tokenizer, pretrain_data, host):
         document = []
         for i, line in enumerate(tqdm(fd)):
             line = line.strip()
-            # document = line
-            # if len(document.split("<sep>")) <= 3:
             #     continue
             if len(line) > 0 and line[:2] == "]]":  # This is end of document
                 documents.append(document)
@@ -76,10 +66,6 @@ def split_numpy_chunk(path, tokenizer, pretrain_data, host):
             documents.append(document)
     print("read_file ", time.time() - s)
 
-    # documents = [x for x in documents if x]
-    # print(len(documents))
-    # print(len(documents[0]))
-    # print(documents[0][0:10])
 
     ans = []
     for docs in tqdm(documents):
@@ -236,24 +222,10 @@ if __name__ == "__main__":
             print("-" * 100)
             print("")
 
-    # if you have multiple server, you can use code below or modify code to openmpi
 
-    # host = int(socket.gethostname().split('GPU')[-1])
-    # for i in range(data_len // args.server_num + 1):
-    #     h = args.server_num * i + host - 1
-    #     input_path = os.path.join(args.input_path, f'{h}.txt')
-    #     if os.path.exists(input_path):
-    #         start = time.time()
-    #         print(f'I am server {host}, process {input_path}')
-    #         split_numpy_chunk_pool(input_path,
     #                                 args.output_path,
     #                                 pretrain_data,
     #                                 args.worker,
     #                                 args.dupe_factor,
     #                                 args.seq_len,
     #                                 h)
-    #         end_ = time.time()
-    #         print(u'memory%.4f GB' % (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024) )
-    #         print(f'has cost {(end_ - start) / 60}')
-    #         print('-' * 100)
-    #         print('')

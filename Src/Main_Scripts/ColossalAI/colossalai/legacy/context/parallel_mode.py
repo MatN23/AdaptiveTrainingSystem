@@ -27,14 +27,11 @@ class ParallelMode(Enum):
     SEQUENCE = "sequence"
     SEQUENCE_DP = "sequence_dp"
 
-    # 1D Parallel
     PARALLEL_1D = "1d"
 
-    # 2D parallel
     PARALLEL_2D_ROW = "2d_row"
     PARALLEL_2D_COL = "2d_col"
 
-    # 3D parallel
     PARALLEL_3D_INPUT = "3d_input"
     PARALLEL_3D_WEIGHT = "3d_weight"
     PARALLEL_3D_OUTPUT = "3d_output"

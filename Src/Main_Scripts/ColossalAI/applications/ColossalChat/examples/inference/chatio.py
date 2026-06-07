@@ -70,7 +70,6 @@ class RichChatIO(ChatIO):
 
     def stream_output(self, output_stream):
         """Stream output from a role."""
-        # Create a Live context for updating the console output
         with Live(console=self._console, refresh_per_second=60) as live:
             # Read lines from the stream
             for outputs in output_stream:
@@ -129,7 +128,6 @@ class DummyChatIO(ChatIO):
 
     def stream_output(self, output_stream):
         """Stream output from a role."""
-        # Create a Live context for updating the console output
         with Live(console=self._console, refresh_per_second=60) as live:
             # Read lines from the stream
             for outputs in output_stream:

@@ -100,7 +100,6 @@ def recover_sharding_spec_for_broadcast_shape(
         logical_shape (torch.Size): logical shape is the broadcast shape of a tensor
         physical_shape (torch.Size): the shape of the tensor before broadcasting
     """
-    # if the two shapes are the same, no broadcast occurs
     # we directly return the current sharding spec
 
     # recording the sharding dimensions removed during logical shape converting to physical one
@@ -146,7 +145,6 @@ def comm_actions_for_oprands(
     during convert logical shape to physical shape.
     """
     if len(removed_dims) == 1:
-        # if list length is 1, extract element from list to avoid using flatten device mesh
         removed_dims = removed_dims[0]
     comm_spec = CommSpec(
         comm_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,

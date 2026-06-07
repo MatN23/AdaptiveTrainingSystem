@@ -47,7 +47,6 @@ class ColossalAPI:
             self.model.load_state_dict(state_dict)
         self.model.to(torch.cuda.current_device())
 
-        # Configure tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
         self.model.eval()
@@ -87,7 +86,6 @@ class ColossalAPI:
 
 class VllmAPI:
     def __init__(self, host: str = "localhost", port: int = 8077) -> None:
-        # Configure api for model served through web
         self.host = host
         self.port = port
         self.url = f"http://{self.host}:{self.port}/generate"

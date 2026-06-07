@@ -35,7 +35,6 @@ class RateLimiter:
             while bucket and bucket[0] <= now - window:
                 bucket.popleft()
             
-            # Check limit
             if len(bucket) >= limit:
                 logging.warning(f"Rate limit exceeded for {identifier}:{action}")
                 return False
@@ -142,7 +141,6 @@ class SecureConversationalChat:
                                 client_ip: str) -> Dict[str, Any]:
         """Generate response with full security checks."""
         try:
-            # Validate session
             session_info = self.validate_session(session_token)
             if not session_info:
                 return {
@@ -153,7 +151,6 @@ class SecureConversationalChat:
             
             username = session_info['username']
             
-            # Check permissions
             if not self.security_manager.check_permission(session_info, 'chat:basic'):
                 logging.warning(f"Permission denied for user {username}")
                 return {
@@ -183,10 +180,8 @@ class SecureConversationalChat:
                         'error_code': 'INVALID_INPUT'
                     }
                 
-                # Use sanitized input
                 user_input = validation_result.sanitized_input
                 
-                # Log warnings
                 for warning in validation_result.warnings:
                     logging.warning(f"Input warning for {username}: {warning}")
             
@@ -198,7 +193,6 @@ class SecureConversationalChat:
                     'error_code': 'GENERATION_RATE_LIMITED'
                 }
             
-            # Log interaction
             if self.log_all_interactions:
                 logging.info(f"Chat interaction: {username} from {client_ip}")
             

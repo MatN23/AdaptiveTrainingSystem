@@ -96,7 +96,6 @@ class ConcreteInfoProp(torch.fx.Interpreter):
 
         return result
 
-    # Main Node running APIs
     @compatibility(is_backward_compatible=True)
     def placeholder(self, target: "Target", args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
         """

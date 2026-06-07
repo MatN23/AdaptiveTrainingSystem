@@ -48,7 +48,6 @@ def shuffle_by_round_robin(tensor_list, num_partitions):
     return new_tensor_list, tensor_index_mapping
 
 
-# create a flat tensor aligned at the alignment boundary
 def flatten_dense_tensors_with_padding(tensor_list, unit_size):
     num_elements = count_numel(tensor_list)
     padding = calculate_padding(num_elements, unit_size=unit_size)
@@ -74,7 +73,6 @@ def get_grad_accumulate_object(tensor):
     # grad_fn reference:
     # https://discuss.pytorch.org/t/in-the-grad-fn-i-find-a-next-functions-but-i-dont-understand-the-meaning-of-the-attribute/24463
     # expand_as reference: https://pytorch.org/docs/stable/generated/torch.Tensor.expand.html#torch.Tensor.expand
-    #
     # `next_functions` will return the backward graph where
     # the first element is the AccumulateGrad of the leaf nodes.
     # we want to get the AccumulateGrad of the input tensor instead of the leaf
@@ -139,7 +137,6 @@ def reduce_tensor_dp_group(
     world_size = dist.get_world_size(group=group)
     tensor_to_reduce.div_(world_size)
 
-    # if rank is None, all reduce will be used
     # else, reduce is used
     use_all_reduce = dst_local_rank is None
 
@@ -159,12 +156,10 @@ def reduce_tensor_dp_group(
 
 def has_inf_or_nan(tensor):
     try:
-        # if tensor is half, the .float() incurs an additional deep copy, but it's necessary if
         # Pytorch's .sum() creates a one-element tensor of the same type as tensor
         # (which is true for some recent version of pytorch).
         tensor_sum = float(tensor.float().sum())
         # More efficient version that can be used if .sum() returns a Python scalar
-        # tensor_sum = float(tensor.sum())
     except RuntimeError as instance:
         # We want to check if inst is actually an overflow exception.
         # RuntimeError could come from a different error.

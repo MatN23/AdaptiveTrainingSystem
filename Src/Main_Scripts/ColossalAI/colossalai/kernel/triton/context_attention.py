@@ -53,7 +53,6 @@ if HAS_TRITON:
             cur_head = tl.program_id(1)
             start_m = tl.program_id(2)
 
-            # initialize offsets
             offs_n = tl.arange(0, BLOCK_N)
             offs_d = tl.arange(0, BLOCK_DMODEL)
             offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -111,10 +110,8 @@ if HAS_TRITON:
                 beta = tl.exp(m_ij - m_i_new)
                 l_i_new = alpha * l_i + beta * l_ij
                 # -- update output accumulator --
-                # scale p
                 p_scale = beta / l_i_new
                 p = p * p_scale[:, None]
-                # scale acc
                 acc_scale = l_i / l_i_new * alpha
                 tl.store(t_ptrs, acc_scale)
                 acc_scale = tl.load(t_ptrs)
@@ -182,7 +179,6 @@ if HAS_TRITON:
 
             block_start_loc = BLOCK_M * start_m
 
-            # initialize offsets
             offs_n = tl.arange(0, BLOCK_N)
             offs_d = tl.arange(0, BLOCK_DMODEL)
             offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -240,10 +236,8 @@ if HAS_TRITON:
                 beta = tl.exp(m_ij - m_i_new)
                 l_i_new = alpha * l_i + beta * l_ij
                 # -- update output accumulator --
-                # scale p
                 p_scale = beta / l_i_new
                 p = p * p_scale[:, None]
-                # scale acc
                 acc_scale = l_i / l_i_new * alpha
                 acc = acc * acc_scale[:, None]
                 # update acc
@@ -258,7 +252,6 @@ if HAS_TRITON:
                 # update m_i and l_i
                 l_i = l_i_new
                 m_i = m_i_new
-            # initialize pointers to output
             off_o = (
                 (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
                 + cur_head * stride_oh
@@ -366,7 +359,6 @@ if HAS_TRITON:
 
         tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
         num_warps = 4 if Lk <= 64 else 8
-        # num_warps = 4
 
         if triton.__version__ < "2.1.0":
             _context_flash_attention_kernel[grid](

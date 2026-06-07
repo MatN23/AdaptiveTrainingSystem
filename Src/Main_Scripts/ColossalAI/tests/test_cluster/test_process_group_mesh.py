@@ -13,21 +13,18 @@ def check_process_group_mesh_with_gpc():
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     pg_mesh = ProcessGroupMesh(1, 2, 2)
 
-    # check world size
     assert gpc.get_world_size(ParallelMode.TENSOR) == pg_mesh.size(
         TP_DIM
     ), f"{gpc.get_world_size(ParallelMode.TENSOR)} != {pg_mesh.size(TP_DIM)}"
     assert gpc.get_world_size(ParallelMode.PIPELINE) == pg_mesh.size(PP_DIM)
     assert gpc.get_world_size(ParallelMode.DATA) == pg_mesh.size(DP_DIM)
 
-    # check locak rank (coordinate)
     assert gpc.get_local_rank(ParallelMode.TENSOR) == pg_mesh.coordinate(
         TP_DIM
     ), f"{gpc.get_local_rank(ParallelMode.TENSOR)} != {pg_mesh.coordinate(TP_DIM)}"
     assert gpc.get_local_rank(ParallelMode.PIPELINE) == pg_mesh.coordinate(PP_DIM)
     assert gpc.get_local_rank(ParallelMode.DATA) == pg_mesh.coordinate(DP_DIM)
 
-    # check ranks in group
     tp_group = pg_mesh.get_group_along_axis(TP_DIM)
     assert gpc.get_ranks_in_group(ParallelMode.TENSOR) == pg_mesh.get_ranks_in_group(tp_group)
     pp_group = pg_mesh.get_group_along_axis(PP_DIM)
@@ -35,7 +32,6 @@ def check_process_group_mesh_with_gpc():
     dp_group = pg_mesh.get_group_along_axis(DP_DIM)
     assert gpc.get_ranks_in_group(ParallelMode.DATA) == pg_mesh.get_ranks_in_group(dp_group)
 
-    # check prev rank
     coord = pg_mesh.coordinate()
     if not gpc.is_first_rank(ParallelMode.TENSOR):
         assert coord[TP_DIM] != 0
@@ -46,7 +42,6 @@ def check_process_group_mesh_with_gpc():
         prev_coord = coord[:PP_DIM] + (coord[PP_DIM] - 1,) + coord[PP_DIM + 1 :]
         assert gpc.get_prev_global_rank(ParallelMode.PIPELINE) == pg_mesh.ravel(prev_coord, pg_mesh.shape)
 
-    # check next rank
     if not gpc.is_last_rank(ParallelMode.TENSOR):
         assert coord[TP_DIM] != pg_mesh.size(TP_DIM) - 1
         next_coord = coord[:TP_DIM] + (coord[TP_DIM] + 1,) + coord[TP_DIM + 1 :]
@@ -114,17 +109,14 @@ def check_process_group_mesh_with_cases():
     rank = dist.get_rank()
     assert rank == pg_mesh.rank
 
-    # check world size
     assert pg_mesh.size(TP_DIM) == 2
     assert pg_mesh.size(PP_DIM) == 2
     assert pg_mesh.size(DP_DIM) == 1
 
-    # check coordinate
     assert pg_mesh.coordinate(TP_DIM) == RANK_TO_COORDINATE[rank][TP_DIM]
     assert pg_mesh.coordinate(PP_DIM) == RANK_TO_COORDINATE[rank][PP_DIM]
     assert pg_mesh.coordinate(DP_DIM) == RANK_TO_COORDINATE[rank][DP_DIM]
 
-    # check ranks in group
     tp_group = pg_mesh.get_group_along_axis(TP_DIM)
     assert pg_mesh.get_ranks_in_group(tp_group) == TP_RANKS_IN_GROUP[rank]
     pp_group = pg_mesh.get_group_along_axis(PP_DIM)
@@ -138,7 +130,6 @@ def check_process_group_mesh_with_cases():
     tpxpp_group_partial = pg_mesh.create_group_along_axis([TP_DIM, PP_DIM], TPxPP_PARTIAL_INDICES[rank])
     assert pg_mesh.get_ranks_in_group(tpxpp_group_partial) == TPxPP_RANKS_IN_GROUP_PARTIAL[rank]
 
-    # check prev rank
     if RANK_TO_COORDINATE[rank][TP_DIM] != 0:
         prev_coord = (
             RANK_TO_COORDINATE[rank][:TP_DIM]
@@ -156,7 +147,6 @@ def check_process_group_mesh_with_cases():
         prev_rank = PP_RANKS_IN_GROUP[rank][PP_RANKS_IN_GROUP[rank].index(rank) - 1]
         assert pg_mesh.ravel(prev_coord, pg_mesh.shape) == prev_rank
 
-    # check next rank
     if RANK_TO_COORDINATE[rank][TP_DIM] != TP_SIZE - 1:
         next_coord = (
             RANK_TO_COORDINATE[rank][:TP_DIM]
@@ -183,8 +173,6 @@ def run_dist(rank, world_size, port):
         port=port,
         host="localhost",
     )
-    # TODO(ver217): this function should be removed when gpc is removed
-    # check_process_group_mesh_with_gpc()
     check_process_group_mesh_with_cases()
 
 

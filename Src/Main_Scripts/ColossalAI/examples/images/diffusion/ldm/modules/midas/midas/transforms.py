@@ -28,7 +28,6 @@ def apply_min_size(sample, size, image_interpolation_method=cv2.INTER_AREA):
     shape[0] = math.ceil(scale * shape[0])
     shape[1] = math.ceil(scale * shape[1])
 
-    # resize
     sample["image"] = cv2.resize(sample["image"], tuple(shape[::-1]), interpolation=image_interpolation_method)
 
     sample["disparity"] = cv2.resize(sample["disparity"], tuple(shape[::-1]), interpolation=cv2.INTER_NEAREST)
@@ -107,26 +106,20 @@ class Resize(object):
             if self.__resize_method == "lower_bound":
                 # scale such that output size is lower bound
                 if scale_width > scale_height:
-                    # fit width
                     scale_height = scale_width
                 else:
-                    # fit height
                     scale_width = scale_height
             elif self.__resize_method == "upper_bound":
                 # scale such that output size is upper bound
                 if scale_width < scale_height:
-                    # fit width
                     scale_height = scale_width
                 else:
-                    # fit height
                     scale_width = scale_height
             elif self.__resize_method == "minimal":
                 # scale as least as possbile
                 if abs(1 - scale_width) < abs(1 - scale_height):
-                    # fit width
                     scale_height = scale_width
                 else:
-                    # fit height
                     scale_width = scale_height
             else:
                 raise ValueError(f"resize_method {self.__resize_method} not implemented")
@@ -148,7 +141,6 @@ class Resize(object):
     def __call__(self, sample):
         width, height = self.get_size(sample["image"].shape[1], sample["image"].shape[0])
 
-        # resize sample
         sample["image"] = cv2.resize(
             sample["image"],
             (width, height),

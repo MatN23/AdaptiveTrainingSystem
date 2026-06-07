@@ -81,7 +81,6 @@ def run_zero_optim_test(local_rank, world_size, stage=1):
     with torch.no_grad():
         origin_out = zero_model(data)
 
-    # load balance
     apply_load_balance(zero_model, zero_optimizer)
 
     # run again to test
@@ -140,14 +139,12 @@ def run_hybrid_zero_optim_test(local_rank, world_size, stage=1):
     run_fwd_bwd(torch_model, data, label, criterion, None)
     torch_optimizer.step()
 
-    # run zero
     run_fwd_bwd(zero_model, data, label, criterion, zero_optimizer)
     zero_optimizer.step()
     zero_optimizer.zero_grad()
     with torch.no_grad():
         origin_out = zero_model(data)
 
-    # load balance
     apply_load_balance(zero_model, zero_optimizer)
 
     # assert out

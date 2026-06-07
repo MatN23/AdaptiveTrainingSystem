@@ -69,7 +69,6 @@ class GPT2Attention(nn.Module):
         if self.scale_attn_by_inverse_layer_idx:
             attn_weights = attn_weights / float(self.layer_idx + 1)
 
-        # if only "normal" attention layer implements causal mask
         query_length, key_length = query.size(-2), key.size(-2)
         causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool)
         attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
@@ -161,7 +160,6 @@ class GPT2Model(GPT2PreTrainedModel):
         self.h = nn.ModuleList([GPT2Block(config, layer_idx=i) for i in range(config.num_hidden_layers)])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def forward(
@@ -216,7 +214,6 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         self.transformer = GPT2Model(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def forward(

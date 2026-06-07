@@ -137,7 +137,6 @@ def benchmark_autochunk_unet(batch=1, height=448, width=448):
 
 
 if __name__ == "__main__":
-    # launch colossalai
     colossalai.launch(
         config={},
         rank=0,

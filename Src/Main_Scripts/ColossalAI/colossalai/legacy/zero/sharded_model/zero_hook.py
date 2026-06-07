@@ -32,7 +32,6 @@ class ZeroHook(BaseOpHook):
         self.shard_strategy = shard_strategy
         self.process_group = process_group
 
-        # NOTE(jiaruifang) Now the computing device of FWD and BWD is always on GPU
         self.computing_device = get_accelerator().get_current_device()
 
         self._memstarts_collector = memstarts_collector

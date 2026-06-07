@@ -40,10 +40,8 @@ def check_ln_module_handler(rank, world_size, port):
         meta_arg_names=meta_arg_names,
     )
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %_0 : [#users=1] = call_module[target=0](args = (%input_1,), kwargs = {})
-    #     return _0
     meta_args = {"input": torch.rand(4, 16).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -55,7 +53,6 @@ def check_ln_module_handler(rank, world_size, port):
     # build handler
     handler = LayerNormModuleHandler(node=ln_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -86,14 +83,11 @@ def check_ln_module_handler(rank, world_size, port):
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # SR = SR x R
     assert "[S0, R] = [S0, R] x [R]" in strategy_name_list
     assert "[S1, R] = [S1, R] x [R]" in strategy_name_list
 
-    # RR = RR x R
     assert "RR = RR x R" in strategy_name_list
 
-    # S01R = S01R x R
     assert "[S01, R] = [S01, R] x [R]" in strategy_name_list
 
 

@@ -11,7 +11,6 @@ def main(args):
         args.model_name_list
     ), "The number of answer files and model names should be equal!"
 
-    # load config
     config = jload(args.config_file)
 
     if config["language"] in ["cn", "en"]:
@@ -44,7 +43,6 @@ def main(args):
                 "GPT evaluation with reference is not supported for text-davinci-003. You should specify chat models such as gpt-3.5-turbo or gpt-4."
             )
 
-        # initialize evaluator
         evaluator = Evaluator(
             metrics_per_category,
             battle_prompt,

@@ -33,7 +33,6 @@ if Version(torch.__version__) < Version("2.0.0"):
     ]
 else:
     TEST_CONFIGS = [
-        # TODO(ver217): other configs lead to hang
         {"tp_size": 1, "pp_size": 2, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
     ]
 
@@ -99,7 +98,6 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         check_state_dict_equal(optimizer.unwrap().state_dict(), new_optimizer.unwrap().state_dict(), False)
         dist.barrier()
 
-    # Check whether the loaded model & optimizer works smoothly.
     model.train()
     new_model.train()
     data_for_shard = data_gen_fn()
@@ -122,7 +120,6 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     optimizer.step()
     new_optimizer.step()
 
-    # Check updated weights.
     for p1, p2 in zip(model.unwrap().parameters(), new_model.unwrap().parameters()):
         assert_close_loose(p1, p2, atol=5e-3, rtol=5e-3)
 

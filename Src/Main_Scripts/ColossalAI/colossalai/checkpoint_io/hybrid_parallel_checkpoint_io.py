@@ -91,7 +91,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         state_dict_sharder = StateDictSharder(size_per_shard)
 
-        # Save parameters.
         for name, param in model.named_parameters():
             if param is None:
                 continue
@@ -103,7 +102,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Save buffers.
         for name, buf in model.named_buffers():
             if buf is not None and name not in model._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
@@ -111,7 +109,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 if block is not None:
                     yield block, block_size
 
-        # Save extra states.
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
         if (
             getattr(model.__class__, "get_extra_state", torch.nn.Module.get_extra_state)
@@ -122,7 +119,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Return the last block in sharder.
         yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
     @staticmethod
@@ -164,7 +160,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Return the last block in sharder.
         yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
     def save_sharded_model(
@@ -306,7 +301,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         model_before_wrapping = model  # backup for model before wrapping
         model = model.unwrap()
 
-        # Check whether the checkpoint uses safetensors.
         use_safetensors = False
         if "safetensors" in checkpoint_index_file.name:
             use_safetensors = True
@@ -320,7 +314,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         weight_map = ckpt_index_file.weight_map
         strict = False
 
-        # Load params & buffers to model.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
         loaded_file = set()
 
@@ -345,11 +338,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             )
             loaded_file.add(filename)
 
-        # Load parameters.
         for name, _ in model.named_parameters():
             _load(name)
 
-        # Load buffers.
         non_persistent_buffers = set()
         for n, m in model.named_modules():
             non_persistent_buffers |= set(".".join((n, b)) for b in m._non_persistent_buffers_set)
@@ -357,7 +348,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if buf is not None and name not in non_persistent_buffers:
                 _load(name)
 
-        # Load extra states.
         extra_state_key = _EXTRA_STATE_KEY_SUFFIX
         if (
             getattr(model.__class__, "get_extra_state", torch.nn.Module.get_extra_state)
@@ -570,7 +560,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         weight_map = ckpt_index_file.weight_map
         weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
 
-        # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
             raise RuntimeError(
@@ -587,7 +576,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
-        # Load saved states to optimizer.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
         loaded_file = set()
         for pg in optimizer.optim.param_groups:
@@ -683,9 +671,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         model_before_wrapping = model
         model = model.unwrap()
 
-        # Load from checkpoint. Since the logic of breaking parameter shards along tp degree
         # has been implemented by _load_from_state_dict method of ParallelModule in Shardformer,
-        # model.load_state_dict can be directly called.
         state_dict = load_state_dict(checkpoint)
         model.load_state_dict(state_dict, strict=strict)
 
@@ -786,7 +772,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Complete optimizer state_dict loaded from checkpoint, need to be processed later.
         state_dict = load_state_dict(checkpoint)
 
-        # Load param_groups.
         updated_groups = []
         saved_groups = state_dict["param_groups"]
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
@@ -795,7 +780,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
-        # Load saved states to optimizer. First discard those states not belonging to current pipeline stage.
         master_to_working_map = optimizer.get_master_to_working_map()
         id_map = {}
         for pg in optimizer.optim.param_groups:

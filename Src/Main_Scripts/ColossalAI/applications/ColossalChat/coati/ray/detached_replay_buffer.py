@@ -4,7 +4,6 @@ import torch
 from coati.experience_buffer.utils import BufferItem, make_experience_batch, split_experience_batch
 from coati.experience_maker.base import Experience
 
-# from torch.multiprocessing import Queue
 from ray.util.queue import Queue
 
 

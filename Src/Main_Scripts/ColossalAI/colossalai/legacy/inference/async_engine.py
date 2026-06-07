@@ -47,7 +47,6 @@ class RequestTracker:
 
     async def __anext__(self) -> RequestOutput:
         result = await self._finished_requests.get()
-        # print("result of ", result)
         if result is StopIteration:
             raise StopAsyncIteration
         return result

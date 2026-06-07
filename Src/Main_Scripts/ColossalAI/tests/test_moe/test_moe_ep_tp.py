@@ -74,7 +74,6 @@ def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: 
             dist.all_gather(grad_list, ep_param.grad, group=get_ep_group(ep_param))
             all_grad = torch.cat(grad_list, dim=0)
 
-        # get tp param
         tp_dim = [i for i, (d1, d2) in enumerate(zip(tp_param.shape[1:], all_param.shape[1:])) if d1 != d2][0] + 1
         tp_rank = get_ep_rank(tp_param)
         tp_slice = [slice(None)] * tp_dim + [
@@ -151,7 +150,6 @@ def run_test(rank: int, world_size: int, port: int, num_experts: int, batch_size
     tp_model = tp_model.to(get_accelerator().get_current_device())
     local_model = local_model.to(get_accelerator().get_current_device())
 
-    # sync ep param
     sync_moe_model_param(ep_model)
     dist_dict = MOE_MANAGER.parallel_info_dict
     assert_equal_in_group(ep_model.experts.wi.data, dist_dict[world_size].dp_group)

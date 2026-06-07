@@ -24,10 +24,8 @@ def drop_table(engine: Engine) -> None:
 
 def create_empty_sql_database(database_uri):
     try:
-        # Create an SQLAlchemy engine to connect to the database
         engine = create_engine(database_uri)
 
-        # Create the database
         engine.connect()
 
         logger.info(f"Database created at {database_uri}")

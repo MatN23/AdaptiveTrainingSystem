@@ -120,7 +120,6 @@ def distribute_tensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_sp
     assert not is_distributed_tensor(tensor), "The input tensor is already a distributed tensor."
     dist_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec, global_shape=tensor.shape)
 
-    # shard tensor
     sharded_tensor = _apply_layout(tensor, dist_layout)
 
     # hack some tensor methods
@@ -203,7 +202,6 @@ def shard_rowwise(
     Returns:
         torch.Tensor: The sharded tensor.
     """
-    # if the group_or_device_mesh is None, we shard the tensor with respect to the global process group
     if group_or_device_mesh is None:
         group_or_device_mesh = dist.GroupMember.WORLD
 
@@ -232,7 +230,6 @@ def shard_colwise(tensor: torch.Tensor, group_or_device_mesh: Union[ProcessGroup
     Returns:
         torch.Tensor: The sharded tensor.
     """
-    # if the group_or_device_mesh is None, we shard the tensor with respect to the global process group
     if group_or_device_mesh is None:
         group_or_device_mesh = dist.GroupMember.WORLD
 
@@ -337,11 +334,9 @@ def get_sharding_spec(dtensor: torch.Tensor) -> ShardingSpec:
     return dtensor.dist_layout.sharding_spec
 
 
-# ======================================================
 # Some sharding does not obey the SPMD style
 # e.g. Fused QKV layer in GPT2
 # we support customize sharding with the following APIs
-# ======================================================
 def is_customized_distributed_tensor(tensor: torch.Tensor):
     """
     Check whether the given tensor is a customized distributed tensor.

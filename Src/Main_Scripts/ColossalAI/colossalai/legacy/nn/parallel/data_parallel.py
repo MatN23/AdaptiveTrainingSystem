@@ -124,7 +124,6 @@ class ColoDDP(torch.nn.Module):
             return empty_grad
 
         else:
-            # TODO(jiaruifang) fixme
             self.process_group.set_cpu_groups()
             dist.all_reduce(grad, group=self.process_group.cpu_dp_process_group())
             return grad

@@ -188,7 +188,6 @@ class ModelSharder(object):
                 native_sub_module, target_module
             ), f"The module with suffix {suffix} has been replaced, please check the policy"
 
-            # if it is None and we are allowed to ignore this module
             # just skip
             if description.ignore_if_not_exist and native_sub_module is None:
                 continue

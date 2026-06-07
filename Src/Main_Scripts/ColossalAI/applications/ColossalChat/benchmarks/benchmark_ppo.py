@@ -63,21 +63,14 @@ def get_gpt_config(model_name: str) -> OPTConfig:
 
 
 def benchmark_train(args):
-    # ==============================
-    # Initialize Distributed Training
-    # ==============================
     colossalai.launch_from_torch({})
     coordinator = DistCoordinator()
 
-    # ======================================================
-    # Initialize Model, Objective, Optimizer and LR Scheduler
-    # ======================================================
     init_ctx = LazyInitContext(default_device=get_current_device()) if "gemini" in args.plugin else nullcontext()
 
     booster_policy = None
     with init_ctx:
         actor = OPTForCausalLM(config=get_gpt_config(args.pretrain))
-        # Disable dropout
         disable_dropout(actor)
         ref_model = OPTForCausalLM(config=get_gpt_config(args.pretrain))
         reward_model = RewardModel(config=get_gpt_config("350m"))
@@ -142,7 +135,6 @@ def benchmark_train(args):
         replace_with_flash_attention(model=critic)
         coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
-    # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
     if os.path.exists(args.conversation_template_config):
@@ -169,12 +161,10 @@ def benchmark_train(args):
     tokenizer.add_eos_token = False
     tokenizer.padding_side = "left"  # left padding for generation (online learning)
 
-    # configure generation config
     actor.generation_config.update(
         pad_token_id=tokenizer.eos_token_id, bos_token_id=tokenizer.bos_token_id, eos_token_id=tokenizer.eos_token_id
     )
 
-    # configure optimizer
     coordinator.print_on_master(f"setting up optimizer for actor: lr={args.lr}, weight_decay={args.weight_decay}")
     actor_optim = HybridAdam(
         model_params=actor.parameters(),
@@ -193,7 +183,6 @@ def benchmark_train(args):
         adamw_mode=True,
     )
 
-    # configure dataset
     coordinator.print_on_master(f"Load dataset: {args.prompt_dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_prompt_dataset = load_tokenized_dataset(dataset_paths=args.prompt_dataset, mode="train", mode_map=mode_map)
@@ -242,9 +231,6 @@ def benchmark_train(args):
         eta_min=0.1 * args.lr,
     )
 
-    # ==============================
-    # Initialize Booster
-    # ==============================
     if args.plugin == "gemini":
         plugin = GeminiPlugin(
             precision=args.mixed_precision,
@@ -399,7 +385,6 @@ def benchmark_train(args):
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
-    # configure trainer
     trainer = PPOTrainer(
         actor_booster,
         critic_booster,
@@ -449,7 +434,6 @@ def benchmark_train(args):
         LORA_MANAGER.merge_weights = True
         actor.eval()
         critic.eval()
-    # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final actor model checkpoint")
     actor_booster.save_model(actor, os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(

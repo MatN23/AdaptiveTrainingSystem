@@ -50,7 +50,6 @@ def binary_elementwise_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, Train
         parameter=param_mem_cost,
     )
 
-    # total cost
     total_mem_cost = MemoryCost(
         activation=fwd_mem_cost.activation + bwd_mem_cost.activation,
         parameter=fwd_mem_cost.parameter + bwd_mem_cost.parameter,

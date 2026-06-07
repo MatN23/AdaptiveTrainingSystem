@@ -60,7 +60,6 @@ class BertPipelineForwards:
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
     ):
-        # TODO(jianghai): add explaination of the output here.
         r"""
         encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
             Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
@@ -117,7 +116,6 @@ class BertPipelineForwards:
             batch_size, seq_length = input_shape
             device = hidden_states.device
 
-        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
@@ -128,7 +126,6 @@ class BertPipelineForwards:
             logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
 
-        # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
         if attention_mask is None:
@@ -180,7 +177,6 @@ class BertPipelineForwards:
         next_decoder_cache = () if use_cache else None
 
         start_idx, end_idx = stage_index[0], stage_index[1]
-        # layer_outputs
         layer_outputs = hidden_states if hidden_states is not None else None
 
         # split the input tensor along sequence dimension
@@ -249,14 +245,12 @@ class BertPipelineForwards:
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        # end of a stage loop
         sequence_output = hidden_states if hidden_states is not None else None
 
         if stage_manager.is_last_stage():
             pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
             if not return_dict:
                 return (sequence_output, pooled_output) + layer_outputs[1:]
-            # return dict is not supported at this moment
             else:
                 return BaseModelOutputWithPoolingAndCrossAttentions(
                     last_hidden_state=sequence_output,
@@ -296,7 +290,6 @@ class BertPipelineForwards:
         logger = logging.get_logger(__name__)
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # TODO(jianghai) left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
@@ -1051,13 +1044,10 @@ def get_bert_flash_attention_forward():
 
         use_cache = past_key_value is not None
         if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention
             # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-            # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_layer, value_layer)
 
         final_attention_mask = None
@@ -1198,7 +1188,6 @@ def bert_sequence_parallel_forward_fn(shard_config: ShardConfig):
         batch_size, seq_length = input_shape
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
-        # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
         if attention_mask is None:

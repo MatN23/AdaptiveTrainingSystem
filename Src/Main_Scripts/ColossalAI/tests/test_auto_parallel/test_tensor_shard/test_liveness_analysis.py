@@ -40,7 +40,6 @@ def test_liveness_analysis():
     liveness_list = graph_analyser.liveness_analysis()
     stage_count = len(liveness_list)
 
-    # if a LiveStage is covered by another LiveStage, we just keep the larger one.
     assert stage_count == 1
 
     # a variable named `relu` must exist

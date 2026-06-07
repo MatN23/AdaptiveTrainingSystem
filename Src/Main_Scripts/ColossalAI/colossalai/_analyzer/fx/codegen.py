@@ -64,7 +64,6 @@ def _find_input_and_output_nodes(nodes: List[Node]):
     input_nodes = []
     output_nodes = []
 
-    # if a node has an input node which is not in the node list
     # we treat that input node as the input of the checkpoint function
     for node in nodes:
         for input_node in node._input_nodes.keys():
@@ -72,7 +71,6 @@ def _find_input_and_output_nodes(nodes: List[Node]):
             if input_node not in nodes and node_repr not in input_nodes:
                 input_nodes.append(node_repr)
 
-    # if a node has a user node which is not in the node list
     # we treat that user node as the node receiving the current node output
     for node in nodes:
         for output_node in node.users.keys():
@@ -103,7 +101,6 @@ def _find_nested_ckpt_regions(node_list: List[Node], ckpt_level: int = 0):
                 current_region = act_ckpt_label
                 start = idx
 
-            # if activation checkpoint has changed
             # we restart the tracking
             # e.g. node ckpt states = [ckpt1, ckpt2, ckpt2, ckpt2]
             if act_ckpt_label != current_region:
@@ -156,7 +153,6 @@ def emit_ckpt_func(
     ckpt_fn_def = _gen_ckpt_fn_def(label, inputs)
     ckpt_func.append(f"{ckpt_fn_def}\n")
 
-    # if there is more level to fetch
     if ckpt_level + 1 < max(map(lambda node: len(node.meta["info"].activation_checkpoint), node_list)):
         ckpt_regions = _find_nested_ckpt_regions(node_list, ckpt_level + 1)
         start_idx = [item[0] for item in ckpt_regions]

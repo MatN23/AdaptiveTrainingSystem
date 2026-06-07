@@ -84,7 +84,6 @@ def _run_act_ckpt_codegen(rank, world_size, port):
     codegen = ActivationCheckpointCodeGen()
     graph.set_codegen(codegen)
 
-    # check ops are annotated with ckpt
     # also annotate the selected node for offloading
     ckpt_nodes = ["mlp1_linear1", "mlp1_linear2", "relu_relu", "relu"]
     offload_starts = ["mlp1_linear1"]
@@ -147,7 +146,6 @@ def _run_act_ckpt_python_code_torch11(rank, world_size, port):
     # replace a bound method of an object
     graph._python_code = python_code_with_activation_checkpoint.__get__(graph)
 
-    # check ops are annotated with ckpt
     ckpt_nodes = ["mlp1_linear1", "mlp1_linear2", "relu_relu", "relu"]
     offload_starts = ["mlp1_linear1"]
     for node in graph.nodes:

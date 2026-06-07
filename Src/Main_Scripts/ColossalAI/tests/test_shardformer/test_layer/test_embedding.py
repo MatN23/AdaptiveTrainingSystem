@@ -27,13 +27,11 @@ def check_embedding_1d(lazy_init: bool):
     embedding.load_state_dict(embedding_1d.state_dict())
     embedding_1d.load_state_dict(embedding.state_dict())
 
-    # check computation correctness
     x = torch.randint(low=0, high=32, size=(4, 32)).cuda()
     out = embedding(x)
     gather_out = embedding_1d(x)
     assert_close(out, gather_out)
 
-    # check backward correctness
     out.sum().backward()
     gather_out.sum().backward()
 

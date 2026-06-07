@@ -1,5 +1,4 @@
 # This code has been adapted from the DeepSpeed library.
-# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
 import functools

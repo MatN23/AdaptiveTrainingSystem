@@ -107,7 +107,6 @@ class DDPM(pl.LightningModule):
         self.unet_config = unet_config
         self.conditioning_key = conditioning_key
         self.model = DiffusionWrapper(unet_config, conditioning_key)
-        # count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
             self.model_ema = LitEma(self.model)
@@ -135,11 +134,7 @@ class DDPM(pl.LightningModule):
         """
         Uncomment if you Use DDP Strategy
         """
-        # if ckpt is not None:
         #     self.init_from_ckpt(ckpt, ignore_keys=ignore_keys, only_model=load_only_unet)
-        #     if reset_ema:
-        #         assert self.use_ema
-        #         rank_zero_info(f"Resetting ema to pure model weights. This is useful when restoring from an ema-only checkpoint.")
         #         self.model_ema = LitEma(self.model)
 
         if reset_num_ema_updates:
@@ -467,7 +462,6 @@ class DDPM(pl.LightningModule):
 
     def forward(self, x, *args, **kwargs):
         # b, c, h, w, device, img_size, = *x.shape, x.device, self.image_size
-        # assert h == img_size and w == img_size, f'height and width of image must be {img_size}'
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
         return self.p_losses(x, t, *args, **kwargs)
 
@@ -538,7 +532,6 @@ class DDPM(pl.LightningModule):
         x = x.to(self.device)[:N]
         log["inputs"] = x
 
-        # get diffusion row
         diffusion_row = list()
         x_start = x[:n_row]
 
@@ -600,7 +593,6 @@ class LatentDiffusion(DDPM):
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
         self.scale_by_std = scale_by_std
         assert self.num_timesteps_cond <= kwargs["timesteps"]
-        # for backwards compatibility after implementation of DiffusionWrapper
         if conditioning_key is None:
             conditioning_key = "concat" if concat_mode else "crossattn"
         if cond_stage_config == "__is_unconditional__" and not self.force_null_conditioning:
@@ -630,12 +622,8 @@ class LatentDiffusion(DDPM):
         Uncomment if you Use DDP Strategy
         """
         # self.restarted_from_ckpt = False
-        # if self.ckpt is not None:
         #     self.init_from_ckpt(self.ckpt, self.ignore_keys)
         #     self.restarted_from_ckpt = True
-        #     if self.reset_ema:
-        #         assert self.use_ema
-        #         rank_zero_info(
         #             f"Resetting ema to pure model weights. This is useful when restoring from an ema-only checkpoint.")
         #         self.model_ema = LitEma(self.model)
         if self.reset_num_ema_updates:
@@ -1045,7 +1033,6 @@ class LatentDiffusion(DDPM):
         logvar_t = self.logvar[t].to(self.device)
 
         loss = loss_simple / torch.exp(logvar_t) + logvar_t
-        # loss = loss_simple / torch.exp(self.logvar) + self.logvar
         if self.learn_logvar:
             loss_dict.update({f"{prefix}/loss_gamma": loss.mean()})
             loss_dict.update({"logvar": self.logvar.data.mean()})
@@ -1433,7 +1420,6 @@ class LatentDiffusion(DDPM):
                 log["original_conditioning"] = self.to_rgb(xc)
 
         if plot_diffusion_rows:
-            # get diffusion row
             diffusion_row = list()
             z_start = z[:n_row]
             for t in range(self.num_timesteps):
@@ -1474,7 +1460,6 @@ class LatentDiffusion(DDPM):
                         cond=c, batch_size=N, ddim=use_ddim, ddim_steps=ddim_steps, eta=ddim_eta, quantize_denoised=True
                     )
                     # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True,
-                    #                                      quantize_denoised=True)
                 x_samples = self.decode_first_stage(samples.to(self.device))
                 log["samples_x0_quantized"] = x_samples
 
@@ -1548,7 +1533,6 @@ class LatentDiffusion(DDPM):
 
         opt = HybridAdam(params, lr=lr)
 
-        # opt = torch.optim.AdamW(params, lr=lr)
         if self.use_scheduler:
             scheduler = LambdaLinearScheduler(**self.scheduler_config)
 
@@ -1703,7 +1687,6 @@ class LatentUpscaleDiffusion(LatentDiffusion):
                 log["original_conditioning"] = self.to_rgb(xc)
 
         if plot_diffusion_rows:
-            # get diffusion row
             diffusion_row = list()
             z_start = z[:n_row]
             for t in range(self.num_timesteps):
@@ -1789,7 +1772,6 @@ class LatentFinetuneDiffusion(LatentDiffusion):
             "model_ema.diffusion_modelinput_blocks00weight",
         ),
         keep_finetune_dims=4,
-        # if model was trained without concat mode before and we would like to keep these channels
         c_concat_log_start=None,  # to log reconstruction of c_concat codes
         c_concat_log_end=None,
         *args,
@@ -1890,7 +1872,6 @@ class LatentFinetuneDiffusion(LatentDiffusion):
             log["c_concat_decoded"] = self.decode_first_stage(c_cat[:, self.c_concat_log_start : self.c_concat_log_end])
 
         if plot_diffusion_rows:
-            # get diffusion row
             diffusion_row = list()
             z_start = z[:n_row]
             for t in range(self.num_timesteps):

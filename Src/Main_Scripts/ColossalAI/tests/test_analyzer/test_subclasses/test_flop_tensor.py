@@ -16,7 +16,7 @@ except:
 @pytest.mark.parametrize("m", tm_models + tmm_models)
 def test_flop_count_module(m):
     x = torch.rand(2, 3, 224, 224)
-    with MetaTensorMode():  # save time for testing
+    with MetaTensorMode():
         module = m()
     rs_fwd, rs_bwd = flop_count(module, x, verbose=True)
     assert rs_fwd > 0, f"fwd flop count of {m.__name__} is {rs_fwd}"

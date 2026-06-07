@@ -18,7 +18,7 @@ from tests.kit.model_zoo import model_zoo, run_fwd, run_fwd_bwd
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
+    {"placement_policy": "static", "shard_param_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
     {"placement_policy": "auto"},
 ]
@@ -33,7 +33,6 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
         key = key[7:]
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
-        # debug_print([0], "max range: ", key, torch.max(torch.abs(value - temp_zero_value)))
         assert_close(value, temp_zero_value, rtol=1e-3, atol=4e-3)
 
 

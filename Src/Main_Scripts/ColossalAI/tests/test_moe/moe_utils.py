@@ -90,7 +90,6 @@ def assert_not_equal_in_group(tensor, process_group=None):
     tensor_list = [torch.empty_like(tensor) for _ in range(world_size)]
     dist.all_gather(tensor_list, tensor, group=process_group)
 
-    # check if they are equal one by one
     for i in range(world_size - 1):
         a = tensor_list[i]
         b = tensor_list[i + 1]

@@ -202,7 +202,6 @@ class PPOTrainer(OLTrainer):
         """
         prompts = self.prompt_dataloader.next()
         if self.offload_inference_models:
-            # TODO(ver217): this may be controlled by strategy if they are prepared by strategy
             self.experience_maker.initial_model.to(self.device)
             self.experience_maker.reward_model.to(self.device)
         return self.experience_maker.make_experience(

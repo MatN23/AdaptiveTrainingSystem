@@ -109,7 +109,6 @@ def seq_parallel_attn(seq_len, hidden_dim, head_num, batch_size):
     # Multi-head Attention forward
     mha_out = mha(x_unshard)
 
-    # Sequence parallel Attention
     sp_attn = SequenceParallelAttention(head_num, hidden_dim, True).cuda()
     sp_attn.load_state_dict(copy.deepcopy(mha.state_dict()))
     # Sequence parallel Attention forward

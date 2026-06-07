@@ -43,8 +43,6 @@ class RotaryEmbedding(nn.Module):
 
     def forward(self, max_seq_len, *, device):
         seq = torch.arange(max_seq_len, device=device)
-        # freqs = einsum("i , j -> i j", seq.type_as(self.inv_freq), self.inv_freq)
-        # freqs = torch.outer(seq.type_as(self.inv_freq), self.inv_freq)
         i, j = len(seq.type_as(self.inv_freq)), len(self.inv_freq)
         freqs = matmul(seq.type_as(self.inv_freq).reshape(i, 1), self.inv_freq.reshape(1, j))
         return torch.cat((freqs, freqs), dim=-1)
@@ -81,7 +79,6 @@ def FeedForward(dim, mult=4):
     )
 
 
-# attention
 class Attention(nn.Module):
     def __init__(self, dim, dim_head=64, heads=8):
         super().__init__()
@@ -95,7 +92,6 @@ class Attention(nn.Module):
         self.to_kv = nn.Linear(dim, dim_head * 2, bias=False)
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
-        # for caching causal mask and rotary embeddings
 
         self.register_buffer("mask", None, persistent=False)
         self.register_buffer("pos_emb", None, persistent=False)
@@ -147,7 +143,6 @@ class Attention(nn.Module):
         positions = self.get_rotary_embedding(n, device)
         q, k = map(lambda t: apply_rotary_pos_emb(positions, t), (q, k))
 
-        # scale
 
         q = q * self.scale
 
@@ -155,11 +150,9 @@ class Attention(nn.Module):
 
         # similarity
 
-        # sim = einsum("b h i d, b j d -> b h i j", q, k)
         sim = matmul(q.reshape(b, h * i, d), k.transpose(1, 2))
         sim = sim.reshape(b, h, i, j)
 
-        # causal mask
 
         causal_mask = self.get_mask(n, device)
         sim = sim.masked_fill(causal_mask, -torch.finfo(sim.dtype).max)
@@ -173,7 +166,6 @@ class Attention(nn.Module):
 
         # aggregate values
 
-        # out = einsum("b h i j, b j d -> b h i d", attn, v)
         out = matmul(attn.reshape(b_, h_ * i_, j_), v)
         out = out.reshape(b_, h_, i_, d_)
 

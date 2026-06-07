@@ -40,7 +40,6 @@ def _benchmark(rank, world_size, port, args):
         gm, loss, data_gen, num_steps=5, sample_points=15, free_memory=free_memory, start_factor=start_factor
     )
 
-    # print summary
     print("==============benchmark summary==============")
     for budget, peak, step in zip(budgets, peak_hist, step_hist):
         print(f"memory budget: {budget:.3f} MB, peak memory: {peak:.3f} MB, step time: {step:.3f} MS")
@@ -64,7 +63,6 @@ def _benchmark(rank, world_size, port, args):
     axs[1].set_title("Step Time vs. Peak Memory")
     axs[1].set_ylim(0.8, 1.5)
 
-    # save plot
     fig.savefig(f"{args.model}_benchmark.png")
 
 

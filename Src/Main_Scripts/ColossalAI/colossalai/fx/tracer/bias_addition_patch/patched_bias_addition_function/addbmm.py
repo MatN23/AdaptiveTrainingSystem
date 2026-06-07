@@ -25,7 +25,6 @@ class Addbmm(LinearBasedBiasFunc):
         node_target = self.substitute_func
 
         node_args = (input_proxy, other_proxy)
-        # torch.bmm does not have any kwargs
         node_kwargs = {}
         non_bias_func_proxy = self.tracer.create_proxy(node_kind, node_target, node_args, node_kwargs)
         return non_bias_func_proxy

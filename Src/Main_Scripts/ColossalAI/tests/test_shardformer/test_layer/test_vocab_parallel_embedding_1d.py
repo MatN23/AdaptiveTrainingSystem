@@ -29,13 +29,11 @@ def check_vocab_embedding_1d(lazy_init: bool):
     embedding.load_state_dict(dist_embedding_1d.state_dict())
     dist_embedding_1d.load_state_dict(embedding.state_dict())
 
-    # check embedding correctness
     x = torch.randint(0, 128, (4, 32)).to("cuda")
     org_out = embedding(x)
     dist_out = dist_embedding_1d(x)
     assert_close(org_out, dist_out)
 
-    # check backward correctness
     org_out.sum().backward()
     dist_out.sum().backward()
 

@@ -94,7 +94,6 @@ class FusedSGD(Optimizer):
         first_run = True
         for p in params:
             param_state = self.state[p]
-            # torch.optim.SGD initializes momentum in the main loop, we have
             # to do it here, and track whether or not we've done so, so that
             # momentum application can be skipped in the main kernel.
             if "momentum_buffer" not in param_state:

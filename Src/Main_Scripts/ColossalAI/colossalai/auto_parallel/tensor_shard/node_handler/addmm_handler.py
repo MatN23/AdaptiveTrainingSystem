@@ -49,7 +49,6 @@ class ADDMMFunctionHandler(NodeHandler):
             logical_shape=bias_logical_shape,
         )
 
-        # output
         physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
 
         mapping = {

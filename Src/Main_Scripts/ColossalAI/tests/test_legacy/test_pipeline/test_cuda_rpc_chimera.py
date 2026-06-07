@@ -59,7 +59,6 @@ def run_master(args):
     test_model = nn.Sequential(
         *[partition(pp_rank, chunk, actual_stage_num) for pp_rank in range(actual_stage_num)]
     ).to(device)
-    # input_sample = input_sample[len(input_sample) // 2:]
     input_sample = input_sample.requires_grad_()
     out_val = test_model(input_sample).sum()
     autograd.backward(out_val)
@@ -67,14 +66,8 @@ def run_master(args):
     for p in test_model.parameters():
         single_result.append(p.grad)
 
-    # print("my")
-    # print(cuda_rpc_result[1])
-    # print("answer:")
-    # print(single_result[1])
 
     # assert len(cuda_rpc_result) == len(single_result)
-    # for r_c, r_s in zip(cuda_rpc_result, single_result):
-    #     assert_close(r_c, r_s, 0.001, 0.001)
 
 
 if __name__ == "__main__":

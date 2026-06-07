@@ -416,7 +416,6 @@ class TopKRouter(MoeRouter):
         # Shape: [num_groups, num_selected_experts * tokens_per_group]
         expert_index = expert_index.reshape(num_groups, -1)
 
-        # Create mask out of indices.
         # Shape: [num_groups, tokens_per_group * num_selected_experts, num_experts].
         expert_mask = F.one_hot(expert_index, num_experts).to(torch.int32)
 

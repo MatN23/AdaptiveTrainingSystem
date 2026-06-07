@@ -90,7 +90,6 @@ def init_colo_module(
 ):
     compute_pattern = compute_spec.compute_pattern
     if is_colo_module(module):
-        # for each param
         # set its process_group, dist_spec and compute_spec
         colo_module = get_colo_module(module)
         colo_module.register(compute_pattern, pg)

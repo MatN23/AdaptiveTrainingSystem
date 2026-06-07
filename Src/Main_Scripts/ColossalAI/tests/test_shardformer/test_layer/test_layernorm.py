@@ -27,13 +27,11 @@ def check_layernorm(lazy_init: bool):
     norm.load_state_dict(norm1d.state_dict())
     norm1d.load_state_dict(norm.state_dict())
 
-    # check computation correctness
     x = torch.rand(4, 128).cuda()
     out = norm(x)
     gather_out = norm1d(x)
     assert_close(out, gather_out)
 
-    # check backward correctness
     out.sum().backward()
     gather_out.sum().backward()
 

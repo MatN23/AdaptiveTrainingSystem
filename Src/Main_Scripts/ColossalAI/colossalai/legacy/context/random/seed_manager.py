@@ -52,7 +52,6 @@ class SeedManager:
             parallel_mode (:class:`colossalai.legacy.context.ParallelMode`): The chosen parallel mode.
         """
         if self.current_mode:
-            # save the current state for current mode
             self._seed_states[self._current_mode] = torch.cuda.get_rng_state()
 
         # set the new state for new mode

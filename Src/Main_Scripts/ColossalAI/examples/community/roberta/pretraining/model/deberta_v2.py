@@ -1,12 +1,8 @@
-# coding=utf-8
 # Copyright 2020 Microsoft and the Hugging Face Inc. team.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -420,7 +416,6 @@ class DebertaV2Encoder(nn.Module):
             if self.position_buckets > 0:
                 pos_ebd_size = self.position_buckets * 2
 
-            # rel = nn.Parameter(torch.empty((pos_ebd_size, config.hidden_size)))
             # self.rel_embeddings = nn.init.normal_(rel, mean=0.0, std=config.initializer_range)
             self.rel_embeddings = nn.Embedding(pos_ebd_size, config.hidden_size)
 
@@ -436,8 +431,6 @@ class DebertaV2Encoder(nn.Module):
         att_span = self.position_buckets
         rel_index = torch.arange(0, att_span * 2).long().to(self.rel_embeddings.weight.device)
         rel_embeddings = self.rel_embeddings(rel_index)
-        # rel_embeddings = self.rel_embeddings.weight if self.relative_attention else None
-        # rel_embeddings = self.rel_embeddings if self.relative_attention else None
         if rel_embeddings is not None and ("layer_norm" in self.norm_rel_ebd):
             rel_embeddings = self.LayerNorm(rel_embeddings)
         return rel_embeddings
@@ -754,11 +747,7 @@ class DisentangledSelfAttention(nn.Module):
         att_span = self.pos_ebd_size
         relative_pos = relative_pos.long().to(query_layer.device)
 
-        # rel_index = torch.arange(0, att_span * 2).long().to(query_layer.device)
-        # rel_embeddings = rel_embeddings(rel_index).unsqueeze(0)
         rel_embeddings = rel_embeddings.unsqueeze(0)
-        # rel_embeddings = rel_embeddings.unsqueeze(0)
-        # rel_embeddings = rel_embeddings[0 : att_span * 2, :].unsqueeze(0)
         if self.share_att_key:
             pos_query_layer = self.transpose_for_scores(
                 self.query_proj(rel_embeddings), self.num_attention_heads
@@ -844,7 +833,6 @@ class DebertaV2Embeddings(nn.Module):
         self.dropout = StableDropout(config.hidden_dropout_prob)
         self.config = config
 
-        # position_ids (1, len position emb) is contiguous in memory and exported when serialized
         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
 
     def forward(self, input_ids=None, token_type_ids=None, position_ids=None, mask=None, inputs_embeds=None):
@@ -999,7 +987,6 @@ class DebertaV2Model(DebertaV2PreTrainedModel):
         self.encoder = DebertaV2Encoder(config)
         self.z_steps = 0
         self.config = config
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_input_embeddings(self):
@@ -1114,7 +1101,6 @@ class DebertaV2ForMaskedLM(DebertaV2PreTrainedModel):
         self.deberta = DebertaV2Model(config)
         self.cls = DebertaV2OnlyMLMHead(config)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_output_embeddings(self):
@@ -1256,7 +1242,6 @@ class DebertaV2ForSequenceClassification(DebertaV2PreTrainedModel):
         drop_out = self.config.hidden_dropout_prob if drop_out is None else drop_out
         self.dropout = StableDropout(drop_out)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_input_embeddings(self):
@@ -1371,7 +1356,6 @@ class DebertaV2ForTokenClassification(DebertaV2PreTrainedModel):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     @add_start_docstrings_to_model_forward(DEBERTA_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
@@ -1447,7 +1431,6 @@ class DebertaV2ForQuestionAnswering(DebertaV2PreTrainedModel):
         self.deberta = DebertaV2Model(config)
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     @add_start_docstrings_to_model_forward(DEBERTA_INPUTS_DOCSTRING.format("batch_size, sequence_length"))

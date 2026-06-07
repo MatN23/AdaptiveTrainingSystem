@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Unified Operations Module - Auto-selects Best Backend - FIXED VERSION
 
 """
@@ -20,18 +19,12 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-# SETUP IMPORT PATHS
-# ============================================================================
 
-# Add current directory to path for direct imports
 CURRENT_DIR = Path(__file__).parent
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
-# ============================================================================
 # BACKEND DETECTION
-# ============================================================================
 
 # Detect hardware
 HAS_CUDA = torch.cuda.is_available()
@@ -135,9 +128,7 @@ if IS_MACOS and HAS_MPS:
             logger.debug(f"Metal MoE operations not available: {e}")
             HAS_METAL_MOE = False
 
-# ============================================================================
 # BACKEND SELECTION
-# ============================================================================
 
 def select_backend():
     """
@@ -173,9 +164,7 @@ else:
     else:
         logger.info(f"  Backend: PyTorch (CPU mode)")
 
-# ============================================================================
 # PYTORCH FALLBACK IMPLEMENTATIONS
-# ============================================================================
 
 class PyTorchRMSNorm(nn.Module):
     """Pure PyTorch RMSNorm implementation"""
@@ -192,7 +181,6 @@ class PyTorchRMSNorm(nn.Module):
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
         #  FIX: Clone output to prevent CUDAGraph buffer overwrite.
-        # torch.compile (reduce-overhead/CUDAGraphs) reuses static memory across
         # replays. Without .clone(), step N+1 forward overwrites step N backward's
         # input before autograd reads it.
         return (self.weight * x.to(input_dtype)).clone()
@@ -338,9 +326,7 @@ class PyTorchMoEOps:
         return combined
 
 
-# ============================================================================
 # UNIFIED API
-# ============================================================================
 
 def get_rms_norm(hidden_size: int, eps: float = 1e-6, use_fused: bool = True):
     """Get RMSNorm implementation for current backend"""
@@ -382,9 +368,7 @@ def get_moe_ops(use_fused: bool = True):
         return PyTorchMoEOps
 
 
-# ============================================================================
 # BACKEND INFO
-# ============================================================================
 
 @dataclass
 class BackendInfo:
@@ -496,9 +480,7 @@ def get_recommended_device():
         return 'cpu'
 
 
-# ============================================================================
 # EXPORTS
-# ============================================================================
 
 __all__ = [
     # Backend info
@@ -523,9 +505,6 @@ __all__ = [
 ]
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
 
 if __name__ == "__main__":
     print_backend_info()

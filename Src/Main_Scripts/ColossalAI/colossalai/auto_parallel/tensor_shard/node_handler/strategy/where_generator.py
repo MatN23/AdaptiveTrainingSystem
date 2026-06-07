@@ -39,12 +39,10 @@ class WhereGenerator(StrategyGenerator):
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
-        # fwd_cost = condition + x + y + output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items()])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=0)
 
         # compute bwd cost incurred
-        # bwd_cost = condition_grad + x_grad + y_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items()])
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=0)
 

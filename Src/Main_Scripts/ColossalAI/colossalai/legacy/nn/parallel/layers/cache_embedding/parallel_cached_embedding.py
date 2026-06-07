@@ -20,7 +20,6 @@ def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:
     )
     chunk_size = embedding_dim // world_size
     threshold = embedding_dim % world_size
-    # if embedding dim is divisible by world size
     if threshold == 0:
         return rank * chunk_size, (rank + 1) * chunk_size, True
 

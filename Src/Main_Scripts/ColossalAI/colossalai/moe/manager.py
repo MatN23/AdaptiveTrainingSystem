@@ -20,7 +20,6 @@ class MoEManager(metaclass=SingletonMeta):
         self.world_size = None
         self._parallel_info_dict = dict()
 
-        # router
         self.router_aux_loss = []
         self.router_z_loss = []
 
@@ -111,8 +110,8 @@ class MoEManager(metaclass=SingletonMeta):
         """
 
         if self.mode == "dynamic":
-            gt_flag = num_experts % self.max_ep_size == 0  # check whether num_experts is greater
-            lt_flag = self.max_ep_size % num_experts == 0  # check whether num_experts is less
+            gt_flag = num_experts % self.max_ep_size == 0
+            lt_flag = self.max_ep_size % num_experts == 0
             assert gt_flag or lt_flag, (
                 "Automatic experts placement dose not not support expert number"
                 " is not a multiple of ep size or vice versa."

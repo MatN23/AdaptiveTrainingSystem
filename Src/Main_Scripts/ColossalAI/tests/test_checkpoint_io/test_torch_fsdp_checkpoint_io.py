@@ -71,7 +71,6 @@ def check_torch_fsdp_ckpt():
         booster.save_optimizer(optimizer, optim_ckpt_path, shard=False)
 
         full_msd = fsdp_model.state_dict()
-        # full_osd = FSDP.full_optim_state_dict(fsdp_model, optimizer)
         sharded_osd = optimizer.state_dict()
         import copy
 
@@ -80,7 +79,6 @@ def check_torch_fsdp_ckpt():
         run_model()
 
         full_msd_updated = fsdp_model.state_dict()
-        # full_osd_updated = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
         sharded_osd_updated = optimizer.state_dict()
 
         assert not compare_nested_dict(sharded_osd, sharded_osd_updated)
@@ -92,7 +90,6 @@ def check_torch_fsdp_ckpt():
         booster.load_optimizer(optimizer, optim_ckpt_path)
 
         full_msd_restore = fsdp_model.state_dict()
-        # full_osd_restore = FSDP.full_optim_state_dict(fsdp_model, optimizer, rank0_only=True)
         sharded_osd_restore = optimizer.state_dict()
 
         assert compare_nested_dict(sharded_osd, sharded_osd_restore)

@@ -100,9 +100,7 @@ class TransformerSelfAttentionRing(nn.Module):
         # attention_mask: [batch_size, 1, sub_seq_len, seq_len]
         sub_seq_length, batch_size, hidden_size = hidden_states.size()
 
-        # =====================
         # Query, Key, and Value
-        # =====================
 
         # Attention heads shape change:
         # [sub_seq_len, batch_size, hidden_size] --> [sub_seq_len, batch_size, (3 * head_size * num_heads)]

@@ -375,7 +375,6 @@ def main():
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
-    # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
     if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
         raise ValueError(
             "Gradient accumulation is not supported when training the text encoder in distributed training. "
@@ -447,13 +446,11 @@ def main():
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # Load the tokenizer
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
 
-    # Load models and create wrapper for stable diffusion
     text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
@@ -660,7 +657,6 @@ def main():
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
                 timesteps = timesteps.long()
 
-                # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
@@ -692,7 +688,6 @@ def main():
                     # Compute prior loss
                     prior_loss = F.mse_loss(noise_pred_prior.float(), target_prior.float(), reduction="mean")
 
-                    # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
                     loss = F.mse_loss(noise_pred.float(), target.float(), reduction="mean")
@@ -723,7 +718,6 @@ def main():
 
         accelerator.wait_for_everyone()
 
-    # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,

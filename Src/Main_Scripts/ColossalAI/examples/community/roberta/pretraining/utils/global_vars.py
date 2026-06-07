@@ -61,7 +61,6 @@ class _Timer:
 
     def start(self):
         """Start the timer."""
-        # assert not self.started_, 'timer has already been started'
         torch.cuda.synchronize()
         self.start_time = time.time()
         self.started_ = True
@@ -109,7 +108,6 @@ class Timers:
     def write(self, names, writer, iteration, normalizer=1.0, reset=False):
         """Write timers to a tensorboard writer"""
         # currently when using add_scalars,
-        # torch.utils.add_scalars makes each timer its own run, which
         # pollutes the runs list, so we just add each as a scalar
         assert normalizer > 0.0
         for name in names:

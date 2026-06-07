@@ -38,7 +38,6 @@ def check_linear_1d_col(lazy_init: bool, seq_parallel_mode: bool, overlap: bool)
     linear.load_state_dict(linear_col.state_dict())
     linear_col.load_state_dict(linear.state_dict())
 
-    # check computation correctness
     # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()
     x_for_unshard = x.expand_as(x.clone())
@@ -52,7 +51,6 @@ def check_linear_1d_col(lazy_init: bool, seq_parallel_mode: bool, overlap: bool)
     gather_out = linear_col(x_for_shard)
     assert_close(out, gather_out)
 
-    # check backward correctness
     out.sum().backward()
     gather_out.sum().backward()
 
@@ -60,7 +58,6 @@ def check_linear_1d_col(lazy_init: bool, seq_parallel_mode: bool, overlap: bool)
     target_grad = torch.chunk(linear.weight.grad, 2, dim=0)[rank]
     assert_close(target_grad, linear_col.weight.grad)
 
-    # check the input gradients
     assert x_for_shard.grad is not None
     assert x_for_unshard.grad is not None
     target_unshard_gard = (
@@ -89,7 +86,6 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel_mode: bool):
     linear.load_state_dict(linear_row.state_dict())
     linear_row.load_state_dict(linear.state_dict())
 
-    # check computation correctness
     # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()
     x_for_unshard = x.expand_as(x.clone())
@@ -103,7 +99,6 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel_mode: bool):
     target_out = out if seq_parallel_mode is None else torch.chunk(out.clone(), 2, dim=1)[dist.get_rank()]
     assert_close(target_out, gather_out)
 
-    # check backward correctness
     out.sum().backward()
     gather_out.sum().backward()
 
@@ -111,7 +106,6 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel_mode: bool):
     target_grad = torch.chunk(linear.weight.grad, 2, dim=1)[rank]
     assert_close(target_grad, linear_row.weight.grad)
 
-    # check the input gradients
     assert x_for_shard.grad is not None
     assert x_for_unshard.grad is not None
     assert_close(x_for_unshard.grad, x_for_shard.grad)
@@ -138,7 +132,6 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel_mode: bool, overlap:
     linear_2.load_state_dict(linear_row.state_dict())
     linear_row.load_state_dict(linear_2.state_dict())
 
-    # check computation correctness
     # [batch_size, seq_len, hidden_size]
     x = torch.rand(2, 4, 32).cuda()
     x_for_unshard = x.expand_as(x.clone())
@@ -156,7 +149,6 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel_mode: bool, overlap:
     )
     assert_close(target_out, shard_out)
 
-    # check backward correctness
     unshard_out.sum().backward()
     shard_out.sum().backward()
 
@@ -164,7 +156,6 @@ def check_linear_col_plus_row(lazy_init: bool, seq_parallel_mode: bool, overlap:
     target_1_grad = torch.chunk(linear_1.weight.grad, 2, dim=0)[rank]
     assert_close(target_1_grad, linear_col.weight.grad)
 
-    # check the input gradients
     assert x_for_shard.grad is not None
     assert x_for_unshard.grad is not None
     target_unshard_gard = (

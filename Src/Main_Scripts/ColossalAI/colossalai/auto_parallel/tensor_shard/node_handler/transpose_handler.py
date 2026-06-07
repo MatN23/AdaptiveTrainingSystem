@@ -24,7 +24,6 @@ class TransposeHandler(NodeHandler):
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
-        # check if the input operand is a parameter
         if isinstance(self.node.args[0]._meta_data, torch.nn.parameter.Parameter):
             data_type = OperationDataType.PARAM
         else:
@@ -34,7 +33,6 @@ class TransposeHandler(NodeHandler):
         physical_input_operand = OperationData(name=str(self.node.args[0]), type=data_type, data=input_data)
 
         transpose_dims = []
-        # torch.transpose (input, dim0, dim1)
         for arg in self.node.args:
             if isinstance(arg, torch.fx.Node):
                 if isinstance(arg._meta_data, int):

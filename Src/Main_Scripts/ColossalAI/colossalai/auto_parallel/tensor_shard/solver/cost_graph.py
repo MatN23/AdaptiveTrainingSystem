@@ -150,7 +150,6 @@ class CostGraph:
             if dst_node in self.extra_node_costs:
                 self.extra_node_costs[src_node][src_index] += self.extra_node_costs[dst_node][target_strate_index]
 
-        # add new node pair to cost graph
         for child_node in dst_node.children:
             new_node_pair = (src_node, child_node)
             old_node_pair = (dst_node, child_node)

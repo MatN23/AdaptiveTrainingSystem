@@ -266,7 +266,6 @@ class FalconPipelineForwards:
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         elif self._use_sdpa and not output_attentions:
-            # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
             if alibi is None:
                 attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(

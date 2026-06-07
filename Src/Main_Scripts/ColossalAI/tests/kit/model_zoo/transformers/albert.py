@@ -3,9 +3,7 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-sentence ALBERT
-# ===============================
 BATCH_SIZE = 2
 SEQ_LENGTH = 16
 
@@ -66,9 +64,7 @@ model_zoo.register(
     model_attribute=ModelAttribute(has_control_flow=True),
 )
 
-# ===============================
 # Register multi-sentence ALBERT
-# ===============================
 
 
 def data_gen_for_qa():

@@ -115,7 +115,6 @@ def add_few_shot_to_test(dataset):
     categories = list(dataset["test"].keys())
     for category in categories:
         original_category = category.split("_")[0]
-        # Add a 'few_shot_data' field to each category of the test set
         dataset["test"][category]["inference_kwargs"]["few_shot_data"] = get_few_shot_data(
             dataset["dev"][original_category]["data"]
         )

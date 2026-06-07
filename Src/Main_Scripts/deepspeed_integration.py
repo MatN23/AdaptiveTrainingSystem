@@ -8,7 +8,6 @@ import torch
 from typing import Dict, Any, Optional
 from pathlib import Path
 
-# Import your DeepSpeed components
 from deepspeed_backend.zero_stage_manager import ZeROStageManager, ZeROConfig, create_zero_manager
 from deepspeed_backend.optimizer_wrappers import create_zero_optimizer
 from deepspeed_backend.scheduler_wrappers import create_scheduler
@@ -26,7 +25,6 @@ class DeepSpeedIntegration:
         self.model = model
         self.expert_registry = expert_registry or {}
         
-        # Initialize components
         self.zero_manager = None
         self.optimizer = None
         self.scheduler = None
@@ -198,7 +196,6 @@ def integrate_with_trainer(trainer, config, model, expert_registry=None):
     trainer.optimizer = integration.optimizer
     trainer.scheduler = integration.scheduler
     
-    # Add DeepSpeed methods to trainer
     trainer.deepspeed_integration = integration
     trainer.use_deepspeed = True
     

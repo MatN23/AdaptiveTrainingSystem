@@ -51,7 +51,6 @@ class GraphInfo:
         bwd_mem_out (int): See the above illustration.
     """
 
-    # TODO(super-dainiu): removed redundant items, currently all of them are necessary for development
 
     fwd_flop: int = 0
     fwd_time: float = 0.0

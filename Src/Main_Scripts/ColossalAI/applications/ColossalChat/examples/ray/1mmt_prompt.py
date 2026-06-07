@@ -57,7 +57,6 @@ def main(args):
         "master_addr": master_addr,
     }
 
-    # configure tokenizer
     tokenizer = get_tokenizer_from_args(args.model)
 
     def trainer_model_fn():
@@ -65,7 +64,6 @@ def main(args):
         critic = get_critic_from_args(args.model, args.critic_pretrain).half().cuda()
         return actor, critic
 
-    # configure Trainer
     trainer_refs = [
         DetachedPPOTrainer.options(name=f"trainer{i}", num_gpus=1, max_concurrency=2).remote(
             experience_maker_holder_name_list=["maker1"],
@@ -101,7 +99,6 @@ def main(args):
             initial_model = get_actor_from_args(args.model, args.pretrain).requires_grad_(False).half().cuda()
         return actor, critic, reward_model, initial_model
 
-    # configure Experience Maker
     experience_holder_ref = ExperienceMakerHolder.options(name="maker1", num_gpus=1, max_concurrency=2).remote(
         detached_trainer_name_list=[f"trainer{i}" for i in range(args.num_trainers)],
         strategy_fn=partial(get_strategy_from_args, args.maker_strategy),
@@ -111,7 +108,6 @@ def main(args):
         kl_coef=0.1,
         debug=args.debug,
         update_lora_weights=not (args.lora_rank == 0),
-        # sync_models_from_trainers=True,
         # generation kwargs:
         max_length=512,
         do_sample=True,
@@ -126,7 +122,6 @@ def main(args):
     # uncomment this function if sync_models_from_trainers is True
     # ray.get([
     #     trainer_ref.sync_models_to_remote_makers.remote()
-    #     for trainer_ref in trainer_refs
     # ])
 
     wait_tasks = []

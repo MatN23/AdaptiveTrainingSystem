@@ -3,19 +3,11 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-sentence T5
-# ===============================
 
 
-# define data gen function
 def data_gen_for_encoder_only():
     # Generated from following code snippet
-    #
-    # from transformers import T5Config, T5Tokenizer
-    # config = T5Config(decoder_start_token_id=0)
-    # tokenizer = T5Tokenizer.from_pretrained("t5-small")
-    # input_ids = tokenizer("translate English to German: The house is wonderful.", return_tensors="pt").input_ids
     input_ids = torch.Tensor([[13959, 1566, 12, 2968, 10, 37, 629, 19, 1627, 5, 1, 12, 1627, 5, 1, 12]]).long()
     attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]]).long()
     return dict(input_ids=input_ids, attention_mask=attention_mask)
@@ -23,8 +15,6 @@ def data_gen_for_encoder_only():
 
 def data_gen_for_conditional_generation():
     # labels is generated with the following code
-    #
-    # labels = tokenizer("Das Haus ist wunderbar.", return_tensors="pt").input_ids
     data = data_gen_for_encoder_only()
     labels = torch.Tensor([[644, 4598, 229, 19250, 5, 1, 644, 4598, 229, 19250, 5, 1, 229, 19250, 5, 1]]).long()
     data["labels"] = labels
@@ -33,7 +23,6 @@ def data_gen_for_conditional_generation():
 
 def data_gen_for_t5_model():
     # decoder_inputs_ids is obtained with the following code
-    # decoder_input_ids = model._shift_right(input_ids)
     data = data_gen_for_encoder_only()
     decoder_input_ids = torch.Tensor([[0, 13959, 1566, 12, 2968, 10, 37, 629, 19, 1627, 5, 5, 19, 1627, 5, 5]]).long()
     data["decoder_input_ids"] = decoder_input_ids
@@ -43,12 +32,10 @@ def data_gen_for_t5_model():
 # output transform function
 output_transform_fn = lambda x: x
 
-# define loss function
 loss_fn_for_t5_model = lambda x: x["last_hidden_state"].mean()
 loss_fn_for_encoder_only = lambda x: x["last_hidden_state"].mean()
 loss_fn_for_conditional_generation = lambda x: x["loss"]
 
-# define model config
 config = transformers.T5Config(d_model=128, num_layers=2, dropout_rate=0, decoder_start_token_id=0)
 
 # register the following models

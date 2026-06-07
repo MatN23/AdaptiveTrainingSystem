@@ -39,7 +39,6 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
     origin_shape.reverse()
     tgt_shape.reverse()
 
-    # initialize arguments
     reshape_mapping_dict = {}
     origin_len = len(origin_shape)
     tgt_len = len(tgt_shape)
@@ -54,11 +53,9 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
     while origin_index != len(origin_shape) or tgt_index != len(tgt_shape):
         if original_dimension_size == tgt_dimension_size:
             reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
-            # if the origin_dims has no element, it means the original tensor has been fully matched.
             # Therefore, we do not have to increase the origin_index for that case.
             if len(origin_dims) > 0:
                 origin_index += 1
-            # if the tgt_dims has no element, it means the original tensor has been fully matched.
             # Therefore, we do not have to increase the tgt_index for that case.
             if len(tgt_dims) > 0:
                 tgt_index += 1
@@ -92,7 +89,6 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
             tgt_index += 1
 
             if previous_label == PreviousStatus.TGT:
-                # if the target dimension size is larger in the previous comparison, which means
                 # the origin dimension size has already accumulated larger than target dimension size, so
                 # we need to offload the origin dims and tgt dims into the reshape_mapping_dict.
                 reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
@@ -112,7 +108,6 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
             origin_index += 1
 
             if previous_label == PreviousStatus.ORIGIN:
-                # if the origin element is larger in the previous comparison, which means
                 # the target element has already accumulated larger than origin element, so
                 # we need to offload the origin dims and tgt dims into the reshape_mapping_dict.
                 reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
@@ -164,7 +159,6 @@ def check_keep_sharding_status(
     """
     sharded_dims = list(input_dim_partition_dict.keys())
     for input_dims in reshape_mapping_dict.keys():
-        # if input_dims has no element, we could just skip this iteration.
         if len(input_dims) == 0:
             continue
         min_element = min(input_dims)

@@ -80,8 +80,6 @@ class Lamb(Optimizer):
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
                 # Paper v3 does not use debiasing.
-                # bias_correction1 = 1 - beta1 ** state['step']
-                # bias_correction2 = 1 - beta2 ** state['step']
                 # Apply bias to lr to avoid broadcast.
                 # * math.sqrt(bias_correction2) / bias_correction1
                 step_size = group["lr"]

@@ -17,16 +17,13 @@ def run_torch_amp():
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    # create layer
     test_models = ["torchvision_resnet18", "custom_simple_net"]
     for test_name in test_models:
         model_builder, data_gen_fn, *_ = next(iter(model_zoo.get_sub_registry(test_name).values()))
 
-        # create model
         torch_amp_model = model_builder().cuda()
         apex_amp_model = copy.deepcopy(torch_amp_model)
 
-        # create optimizer
         # we use SGD here, since the correctness of gradient clipping can't be tested with Adam
         torch_amp_optimizer = torch.optim.SGD(torch_amp_model.parameters(), lr=1e-3)
         apex_amp_optimizer = torch.optim.SGD(apex_amp_model.parameters(), lr=1e-3)
@@ -39,7 +36,6 @@ def run_torch_amp():
         apex_amp_config = dict(opt_level="O1", loss_scale=128)
         apex_amp_model, apex_amp_optimizer = convert_to_apex_amp(apex_amp_model, apex_amp_optimizer, apex_amp_config)
 
-        # create data
         data = data_gen_fn()
         data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
 
@@ -51,12 +47,10 @@ def run_torch_amp():
         for torch_amp_param, apex_amp_param in zip(torch_amp_model.parameters(), apex_amp_model.parameters()):
             assert_close_loose(torch_amp_param, apex_amp_param)
 
-        # backward
         # use sum() to get big gradient
         torch_amp_optimizer.backward(torch_amp_output.sum())
         apex_amp_optimizer.backward(apex_amp_output.sum())
 
-        # check grad
         # In apex amp, grad is not scaled before backward, but torch amp does
         for torch_amp_param, apex_amp_param in zip(torch_amp_model.parameters(), apex_amp_model.parameters()):
             assert_close_loose(torch_amp_param.grad, apex_amp_param.grad * apex_amp_config["loss_scale"])
@@ -65,11 +59,9 @@ def run_torch_amp():
         apex_amp_optimizer.clip_grad_norm(model=apex_amp_model, max_norm=1.0)
         torch_amp_optimizer.clip_grad_norm(model=torch_amp_model, max_norm=1.0)
 
-        # step
         torch_amp_optimizer.step()
         apex_amp_optimizer.step()
 
-        # check updated param and grad
         for torch_amp_param, apex_amp_param in zip(torch_amp_model.parameters(), apex_amp_model.parameters()):
             assert_close_loose(torch_amp_param.grad, apex_amp_param.grad)
             assert_close_loose(torch_amp_param, apex_amp_param)

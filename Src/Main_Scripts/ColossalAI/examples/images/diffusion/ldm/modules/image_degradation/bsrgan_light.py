@@ -164,7 +164,6 @@ def gen_kernel(k_size=np.array([15, 15]), scale_factor=np.array([4, 4]), min_var
     MU = k_size // 2 - 0.5 * (scale_factor - 1)  # - 0.5 * (scale_factor - k_size % 2)
     MU = MU[None, None, :, None]
 
-    # Create meshgrid for Gaussian
     [X, Y] = np.meshgrid(range(k_size[0]), range(k_size[1]))
     Z = np.stack([X, Y], 2)[:, :, :, None]
 
@@ -174,10 +173,8 @@ def gen_kernel(k_size=np.array([15, 15]), scale_factor=np.array([4, 4]), min_var
     raw_kernel = np.exp(-0.5 * np.squeeze(ZZ_t @ INV_SIGMA @ ZZ)) * (1 + noise)
 
     # shift the kernel so it will be centered
-    # raw_kernel_centered = kernel_shift(raw_kernel, scale_factor)
 
     # Normalize the kernel and return
-    # kernel = raw_kernel_centered / np.sum(raw_kernel_centered)
     kernel = raw_kernel / np.sum(raw_kernel)
     return kernel
 
@@ -289,7 +286,6 @@ def classical_degradation(x, k, sf=3):
         downsampled LR image
     """
     x = ndimage.convolve(x, np.expand_dims(k, axis=2), mode="wrap")
-    # x = filters.correlate(x, np.expand_dims(np.flip(k), axis=2))
     st = 0
     return x[st::sf, st::sf, ...]
 
@@ -352,21 +348,11 @@ def add_resize(img, sf=4):
     return img
 
 
-# def add_Gaussian_noise(img, noise_level1=2, noise_level2=25):
-#     noise_level = random.randint(noise_level1, noise_level2)
-#     rnum = np.random.rand()
-#     if rnum > 0.6:  # add color Gaussian noise
 #         img += np.random.normal(0, noise_level / 255.0, img.shape).astype(np.float32)
 #     elif rnum < 0.4:  # add grayscale Gaussian noise
 #         img += np.random.normal(0, noise_level / 255.0, (*img.shape[:2], 1)).astype(np.float32)
 #     else:  # add  noise
-#         L = noise_level2 / 255.
-#         D = np.diag(np.random.rand(3))
-#         U = orth(np.random.rand(3, 3))
-#         conv = np.dot(np.dot(np.transpose(U), D), U)
 #         img += np.random.multivariate_normal([0, 0, 0], np.abs(L ** 2 * conv), img.shape[:2]).astype(np.float32)
-#     img = np.clip(img, 0.0, 1.0)
-#     return img
 
 
 def add_Gaussian_noise(img, noise_level1=2, noise_level2=25):
@@ -376,7 +362,7 @@ def add_Gaussian_noise(img, noise_level1=2, noise_level2=25):
         img = img + np.random.normal(0, noise_level / 255.0, img.shape).astype(np.float32)
     elif rnum < 0.4:  # add grayscale Gaussian noise
         img = img + np.random.normal(0, noise_level / 255.0, (*img.shape[:2], 1)).astype(np.float32)
-    else:  # add  noise
+    else:
         L = noise_level2 / 255.0
         D = np.diag(np.random.rand(3))
         U = orth(np.random.rand(3, 3))
@@ -509,7 +495,6 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
             img = np.clip(img, 0.0, 1.0)
 
         elif i == 4:
-            # add Gaussian noise
             img = add_Gaussian_noise(img, noise_level1=2, noise_level2=8)
 
         elif i == 5:
@@ -526,7 +511,6 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
     # add final JPEG compression noise
     img = add_JPEG_noise(img)
 
-    # random crop
     img, hq = random_crop(img, hq, sf_ori, lq_patchsize)
 
     return img, hq
@@ -576,7 +560,6 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None, up=False):
             image = add_blur(image, sf=sf)
 
         # elif i == 1:
-        #     image = add_blur(image, sf=sf)
 
         if i == 0:
             pass
@@ -606,17 +589,14 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None, up=False):
             image = np.clip(image, 0.0, 1.0)
 
         elif i == 4:
-            # add Gaussian noise
             image = add_Gaussian_noise(image, noise_level1=1, noise_level2=2)
 
         elif i == 5:
             # add JPEG noise
             if random.random() < jpeg_prob:
                 image = add_JPEG_noise(image)
-        #
         # elif i == 6:
         #     # add processed camera sensor noise
-        #     if random.random() < isp_prob and isp_model is not None:
         #         with torch.no_grad():
         #             img, hq = isp_model.forward(img.copy(), hq)
 

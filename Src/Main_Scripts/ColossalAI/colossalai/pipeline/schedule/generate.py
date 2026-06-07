@@ -282,7 +282,6 @@ class GenerateSchedule(PipelineSchedule):
 
         whole_timestamp = []
 
-        # run by round
         for _ in range(self.round):
             self.timestamps = [[] for _ in range(self.stage_manager.num_stages)] if self.verbose else None
             self.action_interval_buffer.clear()
@@ -320,7 +319,6 @@ class GenerateSchedule(PipelineSchedule):
 
         whole_timestamp = []
 
-        # run by round
         for _ in range(self.round):
             self.timestamps = (
                 [[] for _ in range(self.stage_manager.num_stages)]
@@ -361,7 +359,6 @@ class GenerateSchedule(PipelineSchedule):
         model.eval()
 
         whole_timestamp = []
-        # run by round
         for _ in range(self.round):
             self.timestamps = (
                 [[] for _ in range(self.stage_manager.num_stages)]
@@ -411,7 +408,6 @@ class GenerateSchedule(PipelineSchedule):
                             output_dict = model_forward(model, inputs_dict, interval_inputs)
                     else:
                         assert hidden_states is not None, "When not first stage, the hidden states should not be None"
-                        # inputs_dict = self._prepare_inputs_for_interval_stage()
                         inputs_dict = None
                         if self.mb_manager.cur_state is Status.PREFILL:
                             inputs_dict = self.load_micro_batch()

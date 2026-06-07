@@ -29,19 +29,15 @@ if __name__ == "__main__":
     colossal_api = ColossalAPI.get_api(args.model_name, args.model_path)
     llm = ColossalLLM(n=1, api=colossal_api)
 
-    # Define the retriever
     information_retriever = CustomRetriever(k=2, sql_file_path=args.sql_file_path, verbose=True)
 
-    # Setup embedding model locally
     embedding = HuggingFaceEmbeddings(
         model_name="moka-ai/m3e-base", model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": False}
     )
 
-    # Load data to vector store
     print("Select files for constructing retriever")
     documents = []
 
-    # define metadata function which is used to format the prompt with value in metadata instead of key,
     # the later is langchain's default behavior
     def metadata_func(data_sample, additional_fields):
         """
@@ -66,15 +62,12 @@ if __name__ == "__main__":
         metadata_func=metadata_func,
     ).all_data
 
-    # Split
     text_splitter = ChineseTextSplitter()
     splits = text_splitter.split_documents(retriever_data)
     documents.extend(splits)
 
-    # Create retriever
     information_retriever.add_documents(docs=documents, cleanup="incremental", mode="by_source", embedding=embedding)
 
-    # Define retrieval chain
     retrieval_chain = RetrievalQA.from_chain_type(
         llm=llm,
         verbose=True,
@@ -85,7 +78,6 @@ if __name__ == "__main__":
     )
     # Set disambiguity handler
 
-    # Start conversation
     while True:
         user_input = input("User: ")
         if "END" == user_input:

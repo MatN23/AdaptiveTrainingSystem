@@ -15,10 +15,10 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},  # zero2-offload
+    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},
+    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.5},  # zero2-offload-half
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
+    {"placement_policy": "static", "shard_param_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
     {
         "placement_policy": "static",
@@ -59,7 +59,6 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dty
         rtol, atol = 2e-3, 6e-3
         if dtype is torch.bfloat16:
             rtol, atol = 4e-3, 8e-3
-        # debug_print([0], "max range: ", key, torch.max(torch.abs(value - temp_zero_value)))
         assert_close(
             value.float(),
             temp_zero_value.float(),

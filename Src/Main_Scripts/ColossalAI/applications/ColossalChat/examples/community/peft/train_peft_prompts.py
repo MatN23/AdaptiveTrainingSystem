@@ -20,7 +20,6 @@ from colossalai.nn.optimizer import HybridAdam
 
 
 def main(args):
-    # configure strategy
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
@@ -35,9 +34,7 @@ def main(args):
     if args.rm_path is not None:
         state_dict = torch.load(args.rm_path, map_location="cpu")
 
-    # configure model
     if args.model == "bloom":
-        # initial_model = BLOOMActor(pretrained=args.pretrain)
         print("Using peft lora to load Bloom model as initial_model")
         initial_model = BLOOMActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
         print("Using peft lora to load Bloom model as initial_model (Done)")
@@ -71,7 +68,6 @@ def main(args):
 
     with strategy.model_init_context():
         if args.model == "bloom":
-            # actor = BLOOMActor(pretrained=args.pretrain, lora_rank=args.lora_rank)
             print("Using peft lora to load Bloom model as Actor")
             actor = BLOOMActor(pretrained=args.pretrain, lora_path=args.sft_lora_path)
             print("Using peft lora to load Bloom model as Actor (Done)")
@@ -100,7 +96,6 @@ def main(args):
         critic.to(torch.float16).to(torch.cuda.current_device())
         actor.to(torch.float16).to(torch.cuda.current_device())
 
-    # configure optimizer
     if args.strategy.startswith("colossalai"):
         actor_optim = HybridAdam(actor.parameters(), lr=1e-7)
         critic_optim = HybridAdam(critic.parameters(), lr=1e-7)
@@ -108,7 +103,6 @@ def main(args):
         actor_optim = Adam(actor.parameters(), lr=1e-7)
         critic_optim = Adam(critic.parameters(), lr=1e-7)
 
-    # configure tokenizer
     if args.model == "gpt2":
         tokenizer = GPT2Tokenizer.from_pretrained(args.rm_pretrain)
         tokenizer.pad_token = tokenizer.eos_token
@@ -157,7 +151,6 @@ def main(args):
 
     (actor, actor_optim), (critic, critic_optim) = strategy.prepare((actor, actor_optim), (critic, critic_optim))
 
-    # configure trainer
     trainer = PPOTrainer(
         strategy,
         actor,
@@ -187,9 +180,7 @@ def main(args):
         num_collect_steps=args.num_collect_steps,
     )
 
-    # save model checkpoint after fitting
     trainer.save_model(args.save_path, only_rank0=True, tokenizer=tokenizer)
-    # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(
             actor_optim, "actor_optim_checkpoint_prompts_%d.pt" % (torch.cuda.current_device()), only_rank0=False

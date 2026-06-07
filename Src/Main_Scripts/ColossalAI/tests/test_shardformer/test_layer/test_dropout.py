@@ -11,7 +11,6 @@ def check_dropout_parallel_input():
     dropout = nn.Dropout().cuda()
     dropout_1d = DropoutForParallelInput.from_native_module(dropout, process_group=None)
 
-    # check computation correctness
     x = torch.rand(4, 128).cuda()
 
     # we set seed so that dropout will generate the same mask
@@ -43,7 +42,6 @@ def check_dropout_replicated_input():
     dropout = nn.Dropout().cuda()
     dropout_replica = DropoutForReplicatedInput.from_native_module(dropout, process_group=None)
 
-    # check computation correctness
     x = torch.rand(4, 128).cuda()
     out_1d = dropout_replica(x)
 

@@ -48,13 +48,11 @@ def exam_zero_1_torch_ddp_ckpt():
     local_rank = torch.distributed.get_rank()
     seed_all(1453)
 
-    # create models
     torch_model = MlpModel().cuda()
     zero_model = copy.deepcopy(torch_model)
 
     torch_model = DDP(torch_model.cuda(), static_graph=True).cuda()
 
-    # create optimizer
     zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
 
     # we only test stage 1 here
@@ -73,11 +71,9 @@ def exam_zero_1_torch_ddp_ckpt():
     zero_output = zero_model(input_data)
     torch_output = torch_model(input_data)
 
-    # backward
     zero_optimizer.backward(zero_output.mean().float())
     torch_output.mean().backward()
 
-    # step
     zero_optimizer.step()
     torch_optimizer.step()
 

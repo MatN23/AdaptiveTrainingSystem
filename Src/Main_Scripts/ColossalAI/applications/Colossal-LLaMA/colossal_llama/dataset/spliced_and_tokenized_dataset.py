@@ -41,7 +41,7 @@ def supervised_tokenize_pretrain(
     if ignore_index is None:
         ignore_index = IGNORE_INDEX
 
-    source_text = data_point["source"]  # `str`
+    source_text = data_point["source"]
     target_text = data_point["target"]  # `str`
     is_null_source = len(source_text) == 0
 
@@ -250,7 +250,6 @@ class ClosedToConstantLengthSplicedDataset(IterableDataset):
             examples = []  # `List[Dict[str, List[int]]]`, save buffered spliced data points.
             spliced_input_ids, spliced_labels = [], []  # `List[int]`, `List[int]`
             for i, data_point in enumerate(buffer):
-                # TODO(2023-09-18) check errors for each unspliced tokenized data point
                 seq_input_ids = data_point[self.input_ids_field]
                 seq_labels = data_point[self.labels_field]
                 # Handle special case:
@@ -296,6 +295,5 @@ class ClosedToConstantLengthSplicedDataset(IterableDataset):
             if self.shuffle:
                 random.shuffle(examples)
             for spliced_data_point in examples:
-                # TODO(2023-09-18): check errors for each spliced tokenized data point.
                 self.current_size += 1
                 yield spliced_data_point

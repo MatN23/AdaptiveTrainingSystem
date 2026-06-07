@@ -86,7 +86,6 @@ def train_searcher(
         reorder_k = 2 * k
 
     # normalize
-    # embeddings =
     searcher = scann.scann_ops_pybind.builder(
         data_pool["embedding"] / np.linalg.norm(data_pool["embedding"], axis=1)[:, np.newaxis], k, metric
     )

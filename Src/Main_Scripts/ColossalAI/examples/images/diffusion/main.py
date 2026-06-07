@@ -28,7 +28,6 @@ LIGHTNING_PACK_NAME = "lightning.pytorch."
 from ldm.data.base import Txt2ImgIterableBaseDataset
 from ldm.util import instantiate_from_config
 
-# from ldm.modules.attention import enable_flash_attentions
 
 
 class DataLoaderX(DataLoader):
@@ -53,7 +52,6 @@ def get_parser(**parser_kwargs):
         else:
             raise argparse.ArgumentTypeError("Boolean value expected.")
 
-    # Create an ArgumentParser object with specifies kwargs
     parser = argparse.ArgumentParser(**parser_kwargs)
 
     # Add various command line arguments with their default values and descriptions
@@ -159,13 +157,11 @@ def get_parser(**parser_kwargs):
 
 # A function that returns the non-default arguments between two objects
 def nondefault_trainer_args(opt):
-    # create an argument parser
     parser = argparse.ArgumentParser()
     # add pytorch lightning trainer default arguments
     parser = Trainer.add_argparse_args(parser)
     # parse the empty arguments to obtain the default values
     args = parser.parse_args([])
-    # return all non-default arguments
     return sorted(k for k in vars(args) if getattr(opt, k) != getattr(args, k))
 
 
@@ -254,14 +250,12 @@ class DataModuleFromConfig(pl.LightningDataModule):
                 self.datasets[k] = WrappedDataset(self.datasets[k])
 
     def _train_dataloader(self):
-        # Check if the train dataset is iterable
         is_iterable_dataset = isinstance(self.datasets["train"], Txt2ImgIterableBaseDataset)
         # Set the worker initialization function of the dataset is iterable or use_worker_init_fn is True
         if is_iterable_dataset or self.use_worker_init_fn:
             init_fn = worker_init_fn
         else:
             init_fn = None
-        # Return a DataLoaderX object for the train dataset
         return DataLoaderX(
             self.datasets["train"],
             batch_size=self.batch_size,
@@ -271,12 +265,10 @@ class DataModuleFromConfig(pl.LightningDataModule):
         )
 
     def _val_dataloader(self, shuffle=False):
-        # Check if the validation dataset is iterable
         if isinstance(self.datasets["validation"], Txt2ImgIterableBaseDataset) or self.use_worker_init_fn:
             init_fn = worker_init_fn
         else:
             init_fn = None
-        # Return a DataLoaderX object for the validation dataset
         return DataLoaderX(
             self.datasets["validation"],
             batch_size=self.batch_size,
@@ -286,7 +278,6 @@ class DataModuleFromConfig(pl.LightningDataModule):
         )
 
     def _test_dataloader(self, shuffle=False):
-        # Check if the test dataset is iterable
         is_iterable_dataset = isinstance(self.datasets["train"], Txt2ImgIterableBaseDataset)
         # Set the worker initialization function if the dataset is iterable or use_worker_init_fn is True
         if is_iterable_dataset or self.use_worker_init_fn:
@@ -316,7 +307,6 @@ class DataModuleFromConfig(pl.LightningDataModule):
 
 
 class SetupCallback(Callback):
-    # Initialize the callback with the necessary parameters
 
     def __init__(self, resume, now, logdir, ckptdir, cfgdir, config, lightning_config):
         super().__init__()
@@ -328,23 +318,18 @@ class SetupCallback(Callback):
         self.config = config
         self.lightning_config = lightning_config
 
-    # Save a checkpoint if training is interrupted with keyboard interrupt
     def on_keyboard_interrupt(self, trainer, pl_module):
         if trainer.global_rank == 0:
             print("Summoning checkpoint.")
             ckpt_path = os.path.join(self.ckptdir, "last.ckpt")
             trainer.save_checkpoint(ckpt_path)
 
-    # Create necessary directories and save configuration files before training starts
-    # def on_pretrain_routine_start(self, trainer, pl_module):
     def on_fit_start(self, trainer, pl_module):
         if trainer.global_rank == 0:
-            # Create logdirs and save configs
             os.makedirs(self.logdir, exist_ok=True)
             os.makedirs(self.ckptdir, exist_ok=True)
             os.makedirs(self.cfgdir, exist_ok=True)
 
-            # Create trainstep checkpoint directory if necessary
             if "callbacks" in self.lightning_config:
                 if "metrics_over_trainsteps_checkpoint" in self.lightning_config["callbacks"]:
                     os.makedirs(os.path.join(self.ckptdir, "trainstep_checkpoints"), exist_ok=True)
@@ -352,7 +337,6 @@ class SetupCallback(Callback):
             print(OmegaConf.to_yaml(self.config))
             OmegaConf.save(self.config, os.path.join(self.cfgdir, "{}-project.yaml".format(self.now)))
 
-            # Save project config and lightning config as YAML files
             print("Lightning config")
             print(OmegaConf.to_yaml(self.lightning_config))
             OmegaConf.save(
@@ -372,10 +356,6 @@ class SetupCallback(Callback):
                 except FileNotFoundError:
                     pass
 
-    # def on_fit_end(self, trainer, pl_module):
-    #     if trainer.global_rank == 0:
-    #         ckpt_path = os.path.join(self.ckptdir, "last.ckpt")
-    #         rank_zero_info(f"Saving final checkpoint in {ckpt_path}.")
     #         trainer.save_checkpoint(ckpt_path)
 
 
@@ -401,7 +381,6 @@ class ImageLogger(Callback):
             # Dictionary of logger classes and their corresponding logging methods
             pl.loggers.CSVLogger: self._testtube,
         }
-        # Create a list of exponentially increasing log steps, starting from 1 and ending at batch_frequency
         self.log_steps = [2**n for n in range(int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
             self.log_steps = [self.batch_freq]
@@ -415,7 +394,7 @@ class ImageLogger(Callback):
     def _testtube(
         self,  # The PyTorch Lightning module
         pl_module,  # A dictionary of images to log.
-        images,  #
+        images,
         batch_idx,  # The batch index.
         split,  # The split (train/val) on which to log the images
     ):
@@ -425,7 +404,6 @@ class ImageLogger(Callback):
             grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
 
             tag = f"{split}/{k}"
-            # Add image grid to logger's experiment
             pl_module.logger.experiment.add_image(tag, grid, global_step=pl_module.global_step)
 
     @rank_zero_only
@@ -450,13 +428,11 @@ class ImageLogger(Callback):
             filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(k, global_step, current_epoch, batch_idx)
             path = os.path.join(root, filename)
             os.makedirs(os.path.split(path)[0], exist_ok=True)
-            # Save image grid as PNG file
             Image.fromarray(grid).save(path)
 
     def log_img(self, pl_module, batch, batch_idx, split="train"):
         # Function for logging images to both the logger and local file system.
         check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        # check if it's time to log an image batch
         if (
             self.check_frequency(check_idx)
             and hasattr(pl_module, "log_images")  # batch_idx % self.batch_freq == 0
@@ -510,7 +486,6 @@ class ImageLogger(Callback):
 
     # Log images on train batch end if logging is not disabled
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        # if not self.disabled and (pl_module.global_step > 0 or self.log_first_step):
         #     self.log_img(pl_module, batch, batch_idx, split="train")
         pass
 
@@ -600,7 +575,6 @@ if __name__ == "__main__":
     # get the current time to create a new logging directory
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 
-    # add cwd for convenience and to make classes in this file available when
     # running as `python main.py`
     # (in particular `main.DataModuleFromConfig`)
     sys.path.append(os.getcwd())
@@ -617,7 +591,6 @@ if __name__ == "__main__":
             "use -n/--name in combination with --resume_from_checkpoint"
         )
 
-    # Check if the "resume" option is specified, resume training from the checkpoint if it is true
     ckpt = None
     if opt.resume:
         rank_zero_info("Resuming from {}".format(opt.resume))
@@ -625,8 +598,6 @@ if __name__ == "__main__":
             raise ValueError("Cannot find {}".format(opt.resume))
         if os.path.isfile(opt.resume):
             paths = opt.resume.split("/")
-            # idx = len(paths)-paths[::-1].index("logs")+1
-            # logdir = "/".join(paths[:idx])
             logdir = "/".join(paths[:-2])
             rank_zero_info("logdir: {}".format(logdir))
             ckpt = opt.resume
@@ -658,13 +629,11 @@ if __name__ == "__main__":
         if opt.ckpt:
             ckpt = opt.ckpt
 
-    # Create the checkpoint and configuration directories within the log directory.
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
     # Sets the seed for the random number generator to ensure reproducibility
     seed_everything(opt.seed)
 
-    # Initialize and save configuration using teh OmegaConf library.
     try:
         # init and save configs
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
@@ -677,7 +646,6 @@ if __name__ == "__main__":
         for k in nondefault_trainer_args(opt):
             trainer_config[k] = getattr(opt, k)
 
-        # Check whether the accelerator is gpu
         if not trainer_config["accelerator"] == "gpu":
             del trainer_config["accelerator"]
             cpu = True
@@ -752,7 +720,6 @@ if __name__ == "__main__":
         if version.parse(pl.__version__) < version.parse("1.4.0"):
             trainer_kwargs["checkpoint_callback"] = ModelCheckpoint(**modelckpt_cfg)
 
-        # Create an empty OmegaConf configuration object
 
         callbacks_cfg = OmegaConf.create()
 
@@ -793,11 +760,9 @@ if __name__ == "__main__":
         trainer_kwargs["callbacks"].append(ModelCheckpoint(**metrics_over_trainsteps_checkpoint_config))
         trainer_kwargs["callbacks"].append(CUDACallback())
 
-        # Create a Trainer object with the specified command-line arguments and keyword arguments, and set the log directory
         trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
         trainer.logdir = logdir
 
-        # Create a data module based on the configuration file
         data = DataModuleFromConfig(**config.data)
 
         # NOTE according to https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
@@ -810,7 +775,6 @@ if __name__ == "__main__":
         for k in data.datasets:
             rank_zero_info(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
 
-        # Configure learning rate based on the batch size, base learning rate and number of GPUs
         # If scale_lr is true, calculate the learning rate based on additional factors
         bs, base_lr = config.data.batch_size, config.model.base_learning_rate
         if not cpu:
@@ -864,7 +828,6 @@ if __name__ == "__main__":
                 raise
         # Print the maximum GPU memory allocated during training
         print(f"GPU memory usage: {torch.cuda.max_memory_allocated() / 1024**2:.0f} MB")
-        # if not opt.no_test and not trainer.interrupted:
         #     trainer.test(model, data)
     except Exception:
         # If there's an exception, debug it if opt.debug is true and the trainer's global rank is 0

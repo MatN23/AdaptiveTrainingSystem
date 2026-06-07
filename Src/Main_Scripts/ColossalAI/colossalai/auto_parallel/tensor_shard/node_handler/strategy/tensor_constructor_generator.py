@@ -27,7 +27,6 @@ class TensorConstructorGenerator(StrategyGenerator):
         forward_size_mapping = {"output": self._compute_size_in_bytes(strategy, "output")}
 
         # compute fwd cost incurred
-        # fwd_cost = input + output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
         fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)

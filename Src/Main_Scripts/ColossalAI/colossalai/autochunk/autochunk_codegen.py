@@ -268,17 +268,14 @@ def emit_code_with_chunk(
     """
     node_list = list(nodes)
 
-    # chunk region
     chunk_starts = [i["region"][0] for i in chunk_infos]
     chunk_ends = [i["region"][1] for i in chunk_infos]
 
-    # chunk inputs
-    chunk_inputs = [i["inputs"] for i in chunk_infos]  # input with chunk
+    chunk_inputs = [i["inputs"] for i in chunk_infos]
     chunk_inputs_non_chunk = [i["inputs_non_chunk"] for i in chunk_infos]  # input without chunk
-    chunk_inputs_dim = [i["inputs_dim"] for i in chunk_infos]  # input chunk dim
+    chunk_inputs_dim = [i["inputs_dim"] for i in chunk_infos]
     chunk_inputs_names = [j.name for i in chunk_inputs for j in i] + [j.name for i in chunk_inputs_non_chunk for j in i]
 
-    # chunk outputs
     chunk_outputs = [i["outputs"] for i in chunk_infos]
     chunk_outputs_non_tensor = [i["outputs_non_tensor"] for i in chunk_infos]
     chunk_outputs_dim = [i["outputs_dim"] for i in chunk_infos]
@@ -294,7 +291,6 @@ def emit_code_with_chunk(
     while node_idx < len(node_list):
         node = node_list[node_idx]
 
-        # if is chunk start, generate for loop start
         if node_idx in chunk_starts:
             within_chunk_region = True
             region_idx = chunk_starts.index(node_idx)
@@ -313,9 +309,7 @@ def emit_code_with_chunk(
             body = _add_node_slice(chunk_inputs, region_idx, chunk_inputs_dim, node_idx, body, node)
             # replace output var with chunk var
             body = _add_node_slice(chunk_outputs, region_idx, chunk_outputs_dim, node_idx, body, node)
-            # new tensor like
             body = _replace_new_tensor_like_shape(search_chunk, chunk_infos, region_idx, node_idx, node, body)
-            # new tensor
             body = _replace_new_tensor_shape(search_chunk, chunk_infos, region_idx, node_idx, node, body)
             # reassign reshape size
             body[-1] = _replace_reshape_size(body[-1], node.name, chunk_infos[region_idx]["reshape_size"])
@@ -574,7 +568,6 @@ if AUTOCHUNK_AVAILABLE:
             # Modified for activation checkpointing
             ckpt_func = []
 
-            # if any node has a list of labels for activation_checkpoint, we
             # will use nested type of activation checkpoint codegen
             emit_code_with_chunk(
                 body, nodes, emit_node, delete_unused_values, self.search_chunk, self.chunk_infos, self.eval_mem
@@ -611,5 +604,4 @@ if AUTOCHUNK_AVAILABLE:
 
 {prologue}
 {code}"""
-            # print(fn_code)
             return PythonCode(fn_code, globals_)

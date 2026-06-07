@@ -46,7 +46,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         atol, rtol = 2e-2, 2e-2
 
     dist.barrier()
-    # Check gradient norm
     origin_norm = clip_grad_norm_(org_model.parameters(), test_config["max_norm"])
 
     # Calculate the gradient norm of the sharded optimizer
@@ -74,7 +73,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
 
-    # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
@@ -87,7 +85,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    # check weights
     if test_config["precision"] == "fp32":
         atol, rtol = 5e-3, 1e-3
     else:

@@ -130,12 +130,10 @@ def layernorm_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem
     bwd_in_args = [input_tensor, output_tensor, [input_tensor.shape[0]]]
     bwd_out_args = [weight_tensor, bias_tensor]
 
-    # compute cost
     fwd_compute_cost = flop_mapping[torch.ops.aten.native_layer_norm.default](fwd_in_args, fwd_out_args)
     bwd_compute_cost = flop_mapping[torch.ops.aten.native_layer_norm_backward.default](bwd_in_args, bwd_out_args)
     compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
 
-    # memory cost
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
     fwd_memory_cost = MemoryCost(
         activation=compute_size_in_bytes([input_tensor, output_tensor, weight_tensor, bias_tensor]),

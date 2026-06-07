@@ -57,12 +57,10 @@ def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
 
     tracer = ColoTracer(bias_addition_split=True)
 
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %other : torch.Tensor [#users=1] = placeholder[target=other]
     #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%input_1, %other), kwargs = {bias: None})
     #     %sum_1 : [#users=1] = call_function[target=torch.sum](args = (%linear,), kwargs = {})
-    #     return sum_1
     meta_args = {
         "input": torch.rand(8, 16, 64, 32).to("meta"),
         "other": torch.rand(64, 32).to("meta"),
@@ -93,7 +91,6 @@ def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
     assert len(sum_strategies_vector) == len(previous_strategies_vector)
     strategy_name_list = [strategy.name for strategy in sum_strategies_vector]
 
-    # check operation data mapping
     mapping = sum_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -112,7 +109,6 @@ def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
     assert mapping["output"].logical_shape == sum_node_shape
     assert mapping["output"].type == OperationDataType.OUTPUT
 
-    # check strategy name
     if sum_dims == (0, 2) and keepdim == False:
         assert "[R, R, R, R] -> [R, R]_0" in strategy_name_list
         assert "[R, S01, R, R] -> [S01, R]_1" in strategy_name_list

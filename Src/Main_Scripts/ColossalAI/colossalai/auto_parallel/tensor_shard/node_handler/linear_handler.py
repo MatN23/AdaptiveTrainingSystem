@@ -79,12 +79,10 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(
     # get logger for debug message
     logger = get_dist_logger()
 
-    # for the input of the linear operation, it can be multi-dimensional. The sharding spec generated is only
     # 2D, where the first dimension is non-matrix dimension and the last dimension is the matrix dimension.
     # the logical non-matrix dimension can belong to the 0th to (N-1)th dimension of the physical input shape.
     # Thus, we enumerate to get all possible cases.
     if 0 in input_sharding_spec.dim_partition_dict:
-        # if 0 is in the dim_partition_dict, it means that the
         # the generated sharding strategy does shard the non-matrix dimension,
         # in this case, we need to do enumeration
         num_input_dims = input_op_data.data.dim()
@@ -211,7 +209,6 @@ class LinearModuleHandler(MetaInfoModuleHandler):
         # switch the dimensions of the transposed weight
         strategy = _update_sharding_spec_for_transposed_weight_for_linear(strategy=strategy, weight_name="weight")
 
-        # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at dim 0 to one of the first few dimensions of the input
         strategies = _convert_logical_sharding_to_physical_sharding_spec_for_linear(
@@ -246,7 +243,6 @@ class LinearFunctionHandler(MetaInfoNodeHandler):
             logical_shape=input_logical_shape,
         )
 
-        # check if the other operand is a parameter
         if isinstance(self.node.args[1]._meta_data, torch.nn.parameter.Parameter):
             data_type = OperationDataType.PARAM
         else:
@@ -270,7 +266,6 @@ class LinearFunctionHandler(MetaInfoNodeHandler):
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
         if "bias" in self.node.kwargs and self.node.kwargs["bias"] is not None:
-            # check if the other operand is a parameter
             if isinstance(self.node.kwargs["bias"]._meta_data, torch.nn.parameter.Parameter):
                 data_type = OperationDataType.PARAM
             else:
@@ -287,7 +282,6 @@ class LinearFunctionHandler(MetaInfoNodeHandler):
         strategy = _update_sharding_spec_for_transposed_weight_for_linear(
             strategy=strategy, weight_name=str(self.node.args[1])
         )
-        # create multiple sharding strategies for the inputs
         # as input can be multi-dimensional and the partition dim is only 2D,
         # we need to map the partition at dim 0 to one of the first few dimensions of the input
         strategies = _convert_logical_sharding_to_physical_sharding_spec_for_linear(

@@ -115,7 +115,6 @@ class OneFOneBPipelineEngine(PipelineEngineBase):
             assert (
                 num_microbatches % stage_num == 0
             ), "if you use interleaving strategy, make sure 'num_microbatches' is a multiple of stage_num!"
-        # assert num_microbatches > stage_num * chunk, "num_microbatches must be greater than stage_num * chunk"
         use_1F1B = True
 
         super().__init__(
@@ -192,7 +191,6 @@ class ChimeraWorker(WorkerBase):
         if pp_rank < stage_num:
             super()._initialize_partition()
         else:
-            # if it is down pipeline, create partition by origin method
             co_up_pp_worker_rref = self.pp_rank_to_worker_rref[pp_rank - stage_num]
             # get the corresponding model state dict and wait for its init
             state_dict = co_up_pp_worker_rref.rpc_sync().get_partition_state_dict()
@@ -248,14 +246,12 @@ class ChimeraWorker(WorkerBase):
         stage_num = self.actual_stage_num
         co_pp_rank = (pp_rank + stage_num) % (2 * stage_num)
 
-        # if current pp_rank is not the first to do step
         # wait its previous pp_rank finish step
         grads = self.get_parameter_gradients()
 
         # send
         co_worker = self.pp_rank_to_worker_rref[co_pp_rank]
         co_grads = co_worker.rpc_sync()._get_lock_gradient()
-        # sync
         self.step_sync_lock.acquire()
         for i in range(len(grads)):
             grads[i] += co_grads[i]

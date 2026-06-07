@@ -85,7 +85,6 @@ class ParallelCachedEmbeddingBagTablewise(CachedEmbeddingBag):
             evict_strategy,
         )
 
-        # for assigned tables reconnection:
         self.idx_offset_list = []
         offset_cumsum = 0
         for table_i, table_num_embeddings in enumerate(self.global_table_num_embeddings_list):

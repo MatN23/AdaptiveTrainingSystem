@@ -99,13 +99,11 @@ class ShardMetaInfo:
             # module
             meta_func = meta_register.get(self._target.__class__)
 
-            # check whether the target in the list that we don't need to save activation
             save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
         else:
             # function
             meta_func = meta_register.get(self._target)
 
-            # check whether the target in the list that we don't need to save activation
             save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
 
         # construct args for meta_func

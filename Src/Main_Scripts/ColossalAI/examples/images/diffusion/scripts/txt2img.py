@@ -203,7 +203,6 @@ def main(opt):
     if opt.use_int8:
         model = replace_module(model)
         # # to compute the model size
-        # getModelSize(model)
 
     if opt.plms:
         sampler = PLMSSampler(model)
@@ -300,4 +299,3 @@ if __name__ == "__main__":
     opt = parse_args()
     main(opt)
     # # to compute the mem allocated
-    # print(torch.cuda.max_memory_allocated() / 1024 / 1024)

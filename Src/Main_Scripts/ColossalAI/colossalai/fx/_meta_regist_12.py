@@ -1,7 +1,6 @@
 # meta patch from https://github.com/pytorch/pytorch/blob/master/torch/_meta_registrations.py
 # should be activated for PyTorch version 1.12.0 and below
 # refer to https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
-# for more meta_registrations
 
 from typing import List, Optional, Union
 

@@ -87,7 +87,6 @@ if HAS_TRITON:
             x_gate2_act = y_grad * x_gate2 * x_gate2_sigmoid
             x_up_grad = x_gate2_act * x_gate1
             x_gate1_grad = x_gate2_act * x_up
-            # grad(x*sigmoid(x)) = sigmoid(x) + x * sigmoid(x) * [1  sigmoid(x)]
             #                    = sigmoid(x) * {1 + x * [(1  sigmoid(x)]}
             x_gate2_grad = (y_grad * x_gate1 * x_up) * x_gate2_sigmoid * (1 + x_gate2 * (1 - x_gate2_sigmoid))
 
@@ -127,7 +126,6 @@ if HAS_TRITON:
             x_gate2 = x_gate2.contiguous()
             if not x_up.is_contiguous():
                 x_up = x_up.contiguous()
-            # assert shape
             assert x_gate1.shape == x_gate2.shape == x_up.shape
 
             # add ctx for backward

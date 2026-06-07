@@ -34,7 +34,6 @@ def get_mem_info(prefix=""):
 
 
 def get_tflops(model_numel, batch_size, seq_len, step_time):
-    # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
     return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12) / 8
 
 

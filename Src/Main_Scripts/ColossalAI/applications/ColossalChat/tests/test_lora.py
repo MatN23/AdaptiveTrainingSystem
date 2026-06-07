@@ -56,7 +56,6 @@ def test_overfit():
             loss.backward()
             optimizer.step()
 
-    # Check if model has overfitted
     outputs = model(X)
     _, predicted = torch.max(outputs.data, 1)
     total = labels.size(0)

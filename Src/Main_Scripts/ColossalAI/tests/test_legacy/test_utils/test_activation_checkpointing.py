@@ -44,7 +44,6 @@ def forward_inplace(x, weight):
 @parameterize("cpu_offload", [True, False])
 def test_activation_checkpointing(cpu_offload, use_reentrant):
     # as seed manager is singleton
-    # if we don't reset seeds here,
     # other tests might affect this test
     reset_seeds()
 
@@ -112,7 +111,6 @@ def test_activation_checkpointing(cpu_offload, use_reentrant):
         torch.cuda.empty_cache()
 
     # as seed manager is singleton
-    # if we don't reset seeds here,
     # other tests will fail if running together with this test
     # as other tests can't overwrite the seed set by this test
     reset_seeds()

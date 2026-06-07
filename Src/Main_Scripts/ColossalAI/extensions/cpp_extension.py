@@ -32,7 +32,6 @@ class _CppExtension(_Extension):
 
         # get the current file path
         # iteratively check the parent directory
-        # if the parent directory is "extensions", then the current file path is the root directory
         # otherwise, the current file path is inside the root directory
         current_file_path = Path(__file__)
         while True:
@@ -74,13 +73,11 @@ class _CppExtension(_Extension):
         build_directory = Path(build_directory)
         build_directory.mkdir(parents=True, exist_ok=True)
 
-        # check if the kernel has been built
         compiled_before = False
         kernel_file_path = build_directory.joinpath(f"{self.name}.o")
         if kernel_file_path.exists():
             compiled_before = True
 
-        # load the kernel
         if compiled_before:
             print(f"[extension] Loading the JIT-built {self.name} kernel during runtime now")
         else:
@@ -127,7 +124,6 @@ class _CppExtension(_Extension):
         try:
             op_kernel = self.import_op()
         except (ImportError, ModuleNotFoundError):
-            # if import error occurs, it means that the kernel is not pre-built
             # so we build it jit
             op_kernel = self.build_jit()
 

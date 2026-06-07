@@ -68,7 +68,6 @@ class DataParallelSampler(Sampler):
             indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
 
         if not self.drop_last:
-            # add extra samples to make it evenly divisible
             padding_size = self.total_size - len(indices)
             if padding_size <= len(indices):
                 indices += indices[:padding_size]

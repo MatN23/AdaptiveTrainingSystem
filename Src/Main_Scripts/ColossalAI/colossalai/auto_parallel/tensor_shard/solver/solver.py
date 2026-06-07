@@ -268,24 +268,13 @@ class Solver:
             pt += prod_length
         assert pt == len(resharding_costs)
 
-        ######################
         # omit alias set now #
-        ######################
 
-        # A = alias_set.reshape((-1, 2))  # noqa
-        # for (i, j) in A:
-        #     prod_length = strategies_len[i] * strategies_len[j]
         #     v.append(alias_convert_costs[pt:pt + prod_length])
         #     pt += prod_length
-        # assert pt == len(alias_convert_costs)
 
-        # L = []  # noqa
-        # pt = node_nums
-        # for i in range(node_nums):
-        #     length = liveness_set[i]
         #     L.append(liveness_set[pt:pt + length])
         #     pt += length
-        # assert pt == len(liveness_set)
         pt = 0
 
         c = []
@@ -304,9 +293,6 @@ class Solver:
 
         # 1. Create variables
 
-        #############################
-        # create variables for node #
-        #############################
         s = []
         num_nodes = 0
         reverse_follow_backpatch = []
@@ -330,9 +316,6 @@ class Solver:
         for i in reverse_follow_backpatch:
             s[i] = s[s_follow[i]]
 
-        #############################
-        # create variables for edge #
-        #############################
         e = []
         num_edges = 0
         map_edge_to_idx = {}
@@ -352,9 +335,7 @@ class Solver:
         for element in s:
             assert len(element) > 0
         # 2. Set initial value
-        ######################################
         # set a initial value for warm start #
-        ######################################
         if s_init_np is not None:
             s_init = s_init_np.reshape((-1, 3))
             for idx, value, fix in s_init:
@@ -365,9 +346,7 @@ class Solver:
 
         # 3. Objective
         prob = LpProblem("myProblem", LpMinimize)
-        ###################################################################
         # computing the node cost(computing cost and communication cost)  #
-        ###################################################################
         obj = 0
         for i in range(node_nums):
             assert len(s[i]) == len(c[i])
@@ -375,9 +354,7 @@ class Solver:
 
             obj += lpDot(s[i], c[i]) + lpDot(s[i], d[i])
 
-        #############################################
         # computing the edge cost(resharding cost)  #
-        #############################################
         for i in range(len(E)):
             assert len(e[i]) == len(r[i])
             obj += lpDot(e[i], r[i])
@@ -388,17 +365,13 @@ class Solver:
         # (a). specified by `cat="Binary"`
 
         # (b)
-        #################################################
         # make sure each node only choose one strategy  #
-        #################################################
         for i in range(node_nums):
             if s_follow[i] < 0:
                 prob += lpSum(s[i]) == 1
 
         # (c)
-        #################################################
         # compute memory consumption with liveness set  #
-        #################################################
         if memory_budget > 0:
             mem = 0
             for node in liveness_set:
@@ -424,28 +397,18 @@ class Solver:
 
             # (g)
             for col in range(len(s[j])):
-                R = len(s[i])  # noqa
+                R = len(s[i])
                 C = len(s[j])  # noqa
                 prob += lpSum(e[idx][row * C + col] for row in range(0, R)) <= s[j][col]
 
         # (h)
-        ######################
         # omit alias set now #
-        ######################
 
-        # alias_set = set()
-        # for (idx, (i, j)) in enumerate(A):
-        #     R = len(s[i])  # noqa
-        #     C = len(s[j])  # noqa
-        #     if (i, j) in alias_set:
         #         raise ValueError(f"Duplicated edges: {(i, j)}")
 
         #     alias_set.add((i, j))
         #     alias_set.add((j, i))
 
-        #     for row in range(len(s[i])):
-        #         for col in range(len(s[j])):
-        #             if v[idx][row * C + col] > 0.5:
         #                 prob += s[i][row] + s[j][col] <= 1
 
         msg = verbose
@@ -455,7 +418,6 @@ class Solver:
         ), "Please install ILP solvers by 'sudo apt install coinor-cbc'"
 
         solver = pulp.COIN_CMD(mip=True, msg=msg, timeLimit=time_limit, threads=multiprocessing.cpu_count())
-        # solver = pulp.GLPK_CMD(mip=True, msg=msg, timeLimit=time_limit)
         prob.solve(solver)
 
         status = prob.status

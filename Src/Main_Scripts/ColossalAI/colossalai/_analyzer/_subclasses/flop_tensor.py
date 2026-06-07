@@ -430,7 +430,6 @@ if version.parse(torch.__version__) >= version.parse("1.12.0"):
         aten.matmul.default: matmul_flop_jit,
         aten.addmm.default: addmm_flop_jit,
         aten.bmm.default: bmm_flop_jit,
-        # convolution
         aten.convolution.default: conv_flop_jit,
         aten._convolution.default: conv_flop_jit,
         aten.convolution_backward.default: conv_backward_flop_jit,
@@ -503,12 +502,10 @@ if version.parse(torch.__version__) >= version.parse("1.12.0"):
         aten.tanh.default,
         aten.tanh_backward.default,
         aten.threshold_backward.default,
-        # dropout
         aten.native_dropout.default,
         aten.native_dropout_backward.default,
         # distribution
         aten.bernoulli_.float,
-        # where
         aten.where.self,
     ]
     for op in ewise_flop_aten:

@@ -109,7 +109,6 @@ class ICTDataset(Dataset):
         block = [self.block_dataset[i] for i in range(start_idx, end_idx)]
         assert len(block) > 1 or self.use_one_sent_docs or self.query_in_block_prob == 1
 
-        # randint() is inclusive for Python rng
         rand_sent_idx = self.rng.randint(0, len(block) - 1)
 
         # keep the query in the context query_in_block_prob fraction of the time.

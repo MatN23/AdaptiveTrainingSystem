@@ -3,7 +3,7 @@ from colossalqa.text_splitter import ChineseTextSplitter
 
 ALL_CONFIG = {
     "embed": {
-        "embed_name": "m3e",  # embedding model name
+        "embed_name": "m3e",
         "embed_model_name_or_path": "moka-ai/m3e-base",  # path to embedding model, could be a local path or a huggingface path
         "embed_model_device": {"device": "cpu"},
     },

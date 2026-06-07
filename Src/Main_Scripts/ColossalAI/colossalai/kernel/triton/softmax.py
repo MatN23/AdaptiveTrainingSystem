@@ -32,7 +32,6 @@ if HAS_TRITON:
         row_minus_max = row - tl.max(row, axis=0)
 
         if mask_ptr is not None:
-            # load mask into SRAM
             mask_ptrs = (mask_ptr + (row_indx * row_stride)) + col_offsets
             mask = tl.load(mask_ptrs, mask=col_offsets < n_cols, other=0).to(tl.float32)
 

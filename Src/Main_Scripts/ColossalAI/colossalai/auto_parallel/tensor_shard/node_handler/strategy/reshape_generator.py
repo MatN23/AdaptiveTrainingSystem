@@ -44,13 +44,11 @@ class ReshapeGenerator(FollowingStrategyGenerator):
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
-        # fwd_cost = input + output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
         fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)
 
         # compute bwd cost incurred
-        # bwd_cost = input_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
         bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
@@ -99,7 +97,6 @@ class ViewGenerator(ReshapeGenerator):
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-            # add index into name to pass the duplicated check
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             if keep_sharding_status:
@@ -107,11 +104,9 @@ class ViewGenerator(ReshapeGenerator):
             else:
                 name = f'{sharding_spec_mapping["input"].sharding_sequence} -> FULLY REPLICATED_{index}'
 
-                # add comm action for converting input to fully replicated
                 total_mesh_dim_list = []
                 for mesh_dim_list in dim_partition_dict_for_input.values():
                     total_mesh_dim_list.extend(mesh_dim_list)
-                # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
                 if len(total_mesh_dim_list) == 1:
                     total_mesh_dim_list = total_mesh_dim_list[0]
                     # the total mesh dim list only has one element, so the shard dim has only one element as well.
@@ -177,7 +172,6 @@ class PermuteGenerator(ReshapeGenerator):
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-            # add index into name to pass the duplicated check
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
@@ -223,7 +217,6 @@ class TransposeGenerator(ReshapeGenerator):
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-            # add index into name to pass the duplicated check
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
@@ -265,14 +258,11 @@ class SplitGenerator(ReshapeGenerator):
                 "output": dim_partition_dict_for_output,
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
-            # add index into name to pass the duplicated check
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             name = f'{sharding_spec_mapping["input"].sharding_sequence}_{index}'
 
-            # add comm action if the input need to be recovered to replica in the split dimension.
             if recover_dims:
-                # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
                 if len(recover_dims) == 1:
                     recover_dims = recover_dims[0]
                     input_comm_action = self.get_communication_action(
@@ -290,7 +280,6 @@ class SplitGenerator(ReshapeGenerator):
                 elif len(recover_dims) >= 2:
                     # original sharding spec
                     source_spec = input_sharding_spec
-                    # target sharding spec
                     target_spec = sharding_spec_mapping["input"]
                     comm_spec = {"src_spec": source_spec, "tgt_spec": target_spec}
                     input_comm_action = CommAction(comm_spec=comm_spec, comm_type=CommType.BEFORE, arg_index=0)
@@ -337,7 +326,6 @@ class DefaultReshapeGenerator(ReshapeGenerator):
                 "output": dim_partition_dict_for_output,
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
-            # add index into name to pass the duplicated check
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             name = f'{sharding_spec_mapping["input"].sharding_sequence} -> FULLY REPLICATED_{index}'
@@ -345,7 +333,6 @@ class DefaultReshapeGenerator(ReshapeGenerator):
             total_mesh_dim_list = []
             for mesh_dim_list in dim_partition_dict_for_input.values():
                 total_mesh_dim_list.extend(mesh_dim_list)
-            # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
             if len(total_mesh_dim_list) == 1:
                 total_mesh_dim_list = total_mesh_dim_list[0]
                 input_comm_action = self.get_communication_action(

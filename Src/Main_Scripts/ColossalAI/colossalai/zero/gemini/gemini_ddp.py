@@ -83,8 +83,8 @@ class GeminiDDP(ModelWrapper):
         offload_param_frac: float = 0.0,  # only for static placement
         warmup_non_model_data_ratio: float = 0.8,  # only for auto placement
         steady_cuda_cap_ratio: float = 0.9,  # only for auto placement
-        search_range_m: int = 32,  # chunk search options
-        hidden_dim: Optional[int] = None,  # chunk search options
+        search_range_m: int = 32,
+        hidden_dim: Optional[int] = None,
         min_chunk_size_m: float = 32,  # chunk search options
         pin_memory: bool = False,
         force_outputs_fp32: bool = False,
@@ -261,7 +261,6 @@ class GeminiDDP(ModelWrapper):
         assert self.chunk_manager.accessed_mem == 0
 
     def forward(self, *args, **kwargs):
-        # check whether we are in a inference mode
         grad_flag = torch.is_grad_enabled()
         if not grad_flag:
             assert (
@@ -390,7 +389,6 @@ class GeminiDDP(ModelWrapper):
                     grad_chunk.cuda_shard.div_(chunk.pg_size)
                     if self.extra_dp_group is not None:
                         grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
-                # check overflow elements
                 self.overflow_counter += grad_chunk.has_inf_or_nan
                 # record l2 norm for gradient clipping. flag is bound to fp16 chunk
                 if chunk.l2_norm_flag:
@@ -445,7 +443,6 @@ class GeminiDDP(ModelWrapper):
         Returns:
             Dict: a dict whose key is param name and value is param with correct payload
         """
-        # save parameters
         chunk_to_save_data = dict()
         temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
 
@@ -489,7 +486,6 @@ class GeminiDDP(ModelWrapper):
         Returns:
             Dict: a dict whose key is param name and value is param with correct payload
         """
-        # save parameters
         param_to_save_data = dict()
         chunk_list = self.chunk_manager.get_chunks(param_list)
         for chunk in chunk_list:
@@ -537,11 +533,9 @@ class GeminiDDP(ModelWrapper):
         del p_mapping
         del param_to_save_data
 
-        # save all buffers
         for name, buf in self.named_buffers():
             if buf is not None and name not in self._non_persistent_buffers_set:
                 destination[prefix + name] = buf if keep_vars else buf.detach()
-        # save extra states
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
         if (
             getattr(self.__class__, "get_extra_state", torch.nn.Module.get_extra_state)
@@ -794,7 +788,6 @@ class GeminiDDP(ModelWrapper):
                 p.data = p.data.to(device=get_accelerator().get_current_device(), dtype=self.mixed_precision)
                 continue
 
-            # create a fp16 parameter
             p.data = p.data.to(self.mixed_precision)
             # register the fp16 parameter
             self.chunk_manager.register_tensor(
@@ -809,7 +802,6 @@ class GeminiDDP(ModelWrapper):
             self.fp16_params.append(p)
 
             if self.master_weights:
-                # create a fp32 parameter
                 fp32_p = p.clone()
                 fp32_p.data = fp32_p.data.float()
                 self.chunk_manager.register_tensor(
@@ -828,7 +820,6 @@ class GeminiDDP(ModelWrapper):
         self.gemini_manager.setup_grads_device(self.fp16_params, self.grads_device)
 
         # move master weights to corresponding device and setup paired chunks
-        # if no master weights, fp32_params should be empty and this loop will be skipped
         for p, fp32_p in zip(self.fp16_params, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
@@ -913,14 +904,12 @@ class GeminiDDP(ModelWrapper):
         del fp16_to_fp32
         del gathered_param_buffer
 
-        # save all buffers
         for name, buf in self.named_buffers():
             if buf is not None and name not in self._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
                 block, block_size = sharder.append_param(prefix + name, buffer)
                 if block is not None:
                     yield block, block_size
-        # save extra states
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
         if (
             getattr(self.__class__, "get_extra_state", torch.nn.Module.get_extra_state)

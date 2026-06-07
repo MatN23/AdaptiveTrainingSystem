@@ -158,7 +158,6 @@ class Recorder:
         if len(self.rank_to_history) == 0:
             return
         self.dump_record()
-        # if this is rank 0, wait for merge
         rank = dist.get_rank()
 
         if rank == 1:

@@ -87,7 +87,6 @@ def benchmark(
     results = {}
     model_device = torch.cuda.current_device()
 
-    # Warm up
     warm_up_fn(
         model,
         booster,
@@ -97,7 +96,6 @@ def benchmark(
         lr_scheduler,
         num_runs=warm_up_steps,
     )
-    # Measure params
     params = measure_params(model)
     if _is_valid(params):
         results["params"] = format_num(params)

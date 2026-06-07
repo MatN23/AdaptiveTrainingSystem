@@ -178,7 +178,6 @@ class EasySFTDataset(Dataset):
             raw_input_ids = []
             for line in f:
                 encoded_ids = tokenizer.encode(line)
-                # if the encoded_ids is longer than max_length, then split it into several parts
                 if len(encoded_ids) > max_length:
                     for i in range(0, len(encoded_ids), max_length):
                         raw_input_ids.append(encoded_ids[i : i + max_length])

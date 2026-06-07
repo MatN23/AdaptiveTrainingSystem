@@ -118,7 +118,6 @@ class SearchChunk(object):
             chunk_region_start (int)
             chunk_region_end (int)
         """
-        # check if peak node already in chunk info
         if chunk_regions is not None:
             for i in chunk_regions:
                 if (
@@ -186,7 +185,6 @@ class SearchChunk(object):
                         start_node, start_dim, start_idx, end_node, end_dim, end_idx
                     ):
                         continue
-                    # flow search
                     chunk_info = self.trace_flow.flow_search(start_idx, start_dim, end_idx, end_dim)
                     if chunk_info is None:
                         continue

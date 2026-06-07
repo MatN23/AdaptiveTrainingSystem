@@ -116,7 +116,6 @@ def main():
     logger.info(
         f"without weight decay param: {len(no_weight_decay_params['params'])}, with weight decay param: {len(weight_decay_params['params'])}"
     )
-    # optimizer
     optimizer = FusedAdam(
         (weight_decay_params, no_weight_decay_params), lr=gpc.config.LR, weight_decay=gpc.config.WEIGHT_DECAY
     )
@@ -135,7 +134,6 @@ def main():
     )
     logger.info(f"LR Scheduler is built with {warmup_steps} warmup steps and {gpc.config.DECAY_ITERS} decay steps")
 
-    # # init
     engine, *dummy = colossalai.legacy.initialize(model, optimizer, criterion, verbose=True)
 
     # build timer

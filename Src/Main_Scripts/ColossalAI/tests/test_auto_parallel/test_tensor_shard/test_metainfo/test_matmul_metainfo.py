@@ -19,9 +19,9 @@ if torch.__version__ >= "1.12.0":
         [[128], [128, 64]],  # vec-mat
         [[64, 64, 128], [128]],  # batched mat-vec
         [[128], [64, 128, 64]],  # vec-batched mat
-        [[64, 128], [128, 192]],  # mat-mat
+        [[64, 128], [128, 192]],
         [[64, 64, 128], [128, 192]],  # batched mat-mat
-        [[64, 128], [64, 128, 192]],  # mat-batched mat
+        [[64, 128], [64, 128, 192]],
         [[64, 64, 128], [64, 128, 192]],  # batched mat-batched mat (matched batch dims)
         [[64, 1, 64, 128], [64, 128, 192]],  # batched mat-batched mat (unmatched batch dims)
     ],

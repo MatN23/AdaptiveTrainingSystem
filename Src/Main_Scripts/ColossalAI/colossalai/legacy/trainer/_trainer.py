@@ -280,7 +280,6 @@ class Trainer:
         self._max_steps = max_steps
         self._max_epochs = epochs
 
-        # check if testing is required
         should_test = False
         if test_dataloader is not None:
             should_test = True
@@ -324,7 +323,6 @@ class Trainer:
                 return_output_label=return_output_label,
             )
 
-            # start eval
             if should_test and epoch % test_interval == 0:
                 self._eval(
                     test_dataloader=test_dataloader,
@@ -335,7 +333,6 @@ class Trainer:
 
             self._cur_epoch += 1
 
-            # check for termination
             if self._exceed_max_step():
                 self._logger.info(
                     f"Max number of steps {max_steps} has been reached, training is stopped automatically",
@@ -361,7 +358,6 @@ class Trainer:
             return_output_label (bool, optional): If True, the output of model and the label
                 will be returned. Defaults to True.
         """
-        # set display
         display_progress = self._should_display_progress(display_progress)
 
         # reset hooks
@@ -381,7 +377,6 @@ class Trainer:
             self._logger.info("Lower value means higher priority for calling hook function", ranks=[0])
         self._call_hooks("after_hook_is_attached")
 
-        # eval
         self._eval(
             test_dataloader=test_dataloader,
             display_progress=display_progress,
@@ -401,7 +396,6 @@ class Trainer:
         self._engine.eval()
 
         # prepare a list of (data, label) to make it iterable
-        # for compatibility with schedule
         simple_dataloader = [(data, None)]
         data_iter = iter(simple_dataloader)
         output, _, _ = self.engine.execute_schedule(data_iter, forward_only=True, return_loss=False)

@@ -34,12 +34,10 @@ class Txt2ImgIterableBaseDataset(IterableDataset):
         print(f"{self.__class__.__name__} dataset contains {self.__len__()} examples.")
 
     def __len__(self):
-        # return self.iter_end - self.iter_start
         return self.end - self.start
 
     def __iter__(self):
         sample_iterator = self._sample_generator(self.start, self.end)
-        # sample_iterator = self._sample_generator(self.iter_start, self.iter_end)
         return sample_iterator
 
     def _sample_generator(self, start, end):
@@ -67,7 +65,6 @@ class Txt2ImgIterableBaseDataset(IterableDataset):
             self.txt_list.extend(txts)
         info["end"] = len(self.file_list)
         # with open(file_path, 'r') as fin:
-        #     for _ in enumerate(fin):
         #         info['end'] += 1
         # self.txt_list = [k.replace('jpg', 'txt') for k in self.file_list]
         return info

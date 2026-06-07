@@ -76,7 +76,6 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         """
         assert isinstance(optimizer, LowLevelZeroOptimizer), "Please boost the optimizer before saving!"
         # the `state_dict` in LowLevelZeroOptimizer has communication
-        # if only the master rank collect state_dict and save,
         # the communication on each rank would not match
         state_dict = optimizer.state_dict()
         if self.coordinator.is_master():
@@ -126,7 +125,6 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             group_file_path = os.path.join(checkpoint, param_group_file)
             save_param_groups(state_dict, group_file_path)
 
-        # Save shards of optimizer states.
         total_size = 0
         for idx, shard_pair in enumerate(sharded_state):
             shard, current_size = shard_pair
@@ -163,7 +161,6 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         # Read checkpoint index file.
         ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
 
-        # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
             raise RuntimeError(

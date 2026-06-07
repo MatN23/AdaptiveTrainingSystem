@@ -121,8 +121,6 @@ def solve_solution(gm: ColoGraphModule, strategy_constructor: StrategiesConstruc
     """
     # temporarily we use all nodes as liveness list, we count the backward memory cost together with
     # forward memory cost into the node memory cost, and no activation checkpoint is used in this phase.
-    # graph_analyser = GraphAnalyser(gm)
-    # liveness_list = graph_analyser.liveness_analysis()
     cost_graph = CostGraph(strategy_constructor.leaf_strategies)
     cost_graph.simplify_graph()
     solver = Solver(gm.graph, strategy_constructor, cost_graph, memory_budget=memory_budget)
@@ -178,7 +176,6 @@ def initialize_device_mesh(
             mesh shape.
         logical_mesh_id(optional): the logical_mesh_id is used to specify the logical mesh id.
     """
-    # if world_size is not set, use the world size from torch.distributed
     if world_size == -1:
         world_size = dist.get_world_size()
 
@@ -187,7 +184,6 @@ def initialize_device_mesh(
     physical_mesh = torch.tensor(physical_devices)
 
     if alpha_beta_dict is None:
-        # if alpha_beta_dict is not given, use a series of executions to profile alpha and beta values for each device
         ab_profiler = AlphaBetaProfiler(physical_devices)
         alpha_beta_dict = ab_profiler.alpha_beta_dict
     else:

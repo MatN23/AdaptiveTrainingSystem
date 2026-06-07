@@ -331,7 +331,6 @@ class BlipPolicy(Policy):
             target_key=OPTDecoderLayer,
         )
 
-        # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
@@ -366,13 +365,11 @@ class BlipPolicy(Policy):
         return self.model
 
 
-# Blip2Model
 class Blip2ModelPolicy(BlipPolicy):
     def __init__(self) -> None:
         super().__init__()
 
 
-# Blip2ForConditionalGeneration
 class Blip2ForConditionalGenerationPolicy(BlipPolicy):
     def __init__(self) -> None:
         super().__init__()

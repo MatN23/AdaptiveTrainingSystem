@@ -10,7 +10,6 @@ def build_model(
     enable_flash_attention=False,
     enable_jit_fused=False,
 ):
-    # create new model
     org_model = model_fn()
 
     # shard model

@@ -38,7 +38,6 @@ class PlaceholderGenerator(StrategyGenerator):
         forward_size_mapping = {"output": self._compute_size_in_bytes(strategy, "output")}
 
         # compute fwd cost incurred
-        # fwd_cost = output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items()])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=0)
 

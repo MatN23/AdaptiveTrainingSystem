@@ -16,7 +16,6 @@ def check_all_gather(process_groups_dict, rank):
     else:
         sharded_tensor_to_comm = torch.zeros(2, 2).cuda()
 
-    # tensor to check
     tensor_to_check = torch.cat((torch.ones(2, 2), torch.zeros(2, 2)), 1).cuda()
 
     # CommSpec:(comm_pattern:allgather, gather_dim:1, logical_process_axis:1)
@@ -29,10 +28,8 @@ def check_all_gather(process_groups_dict, rank):
 
 
 def check_shard(process_groups_dict, rank):
-    # tensor to comm
     sharded_tensor_to_comm_0 = torch.zeros(2, 2).cuda()
     sharded_tensor_to_comm_1 = torch.ones(2, 2).cuda()
-    # tensor([[0., 0., 1., 1.],
     #         [0., 0., 1., 1.]])
     tensor_to_shard = torch.cat((sharded_tensor_to_comm_0, sharded_tensor_to_comm_1), 1)
 
@@ -53,24 +50,20 @@ def check_all_to_all(process_groups_dict, rank):
     if rank in (0, 1):
         sharded_tensor_0 = torch.zeros(2, 1)
         sharded_tensor_1 = torch.ones(2, 1)
-        # tensor([[0., 1.],
         #         [0., 1.]])
         tensor_to_comm = torch.cat((sharded_tensor_0, sharded_tensor_1), 1).cuda()
     if rank in (2, 3):
         sharded_tensor_0 = torch.ones(2, 1) * 2
         sharded_tensor_1 = torch.ones(2, 1) * 3
-        # tensor([[2., 3.],
         #         [2., 3.]])
         tensor_to_comm = torch.cat((sharded_tensor_0, sharded_tensor_1), 1).cuda()
 
     if rank in (0, 1):
-        # tensor([[0.],
         #         [0.],
         #         [2.],
         #         [2.]])
         tensor_to_check = torch.tensor([[0], [0], [2], [2]], dtype=tensor_to_comm.dtype).cuda()
     if rank in (2, 3):
-        # tensor([[1.],
         #         [1.],
         #         [3.],
         #         [3.]])
@@ -90,17 +83,14 @@ def check_all_to_all(process_groups_dict, rank):
 
 
 def check_all_reduce_fwd(process_groups_dict, rank):
-    # tensor to comm
     tensor_to_comm = torch.ones(2, 2).cuda() * rank
 
     # reduce through logical process axis 0
     # tensor to check
     if rank in (0, 2):
-        # tensor([[2., 2.],
         #         [2., 2.]])
         tensor_to_check = torch.tensor([[2, 2], [2, 2]], dtype=tensor_to_comm.dtype).cuda()
     if rank in (1, 3):
-        # tensor([[4., 4.],
         #         [4., 4.]])
         tensor_to_check = torch.tensor([[4, 4], [4, 4]], dtype=tensor_to_comm.dtype).cuda()
 
@@ -111,7 +101,6 @@ def check_all_reduce_fwd(process_groups_dict, rank):
 
 
 def check_all_reduce_bwd(process_groups_dict, rank):
-    # tensor to comm
     tensor_to_comm = torch.ones(2, 2).cuda() * rank
 
     tensor_to_check = torch.ones(2, 2).cuda() * rank

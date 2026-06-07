@@ -44,13 +44,11 @@ class SoftmaxGenerator(FollowingStrategyGenerator):
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
-        # fwd_cost = input + output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
         fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)
 
         # compute bwd cost incurred
-        # bwd_cost = input_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
         bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
@@ -80,7 +78,6 @@ class SoftmaxGenerator(FollowingStrategyGenerator):
                 "output": dim_partition_dict_for_output,
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
-            # add index into name to pass the duplicated check
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'

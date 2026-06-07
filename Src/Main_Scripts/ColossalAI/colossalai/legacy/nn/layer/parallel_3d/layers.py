@@ -100,11 +100,9 @@ class LayerNorm3D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight.transpose(0, 1)
-            # bias
             bias = state_dict.pop(bias_key, None)
             if bias is not None:
                 local_state[bias_key] = bias
@@ -251,11 +249,9 @@ class Linear3D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight.transpose(0, 1)
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -426,12 +422,10 @@ class Classifier3D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             if self.has_weight:
                 weight = state_dict.pop(weight_key, None)
                 if weight is not None:
                     local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -582,12 +576,10 @@ class VocabParallelClassifier3D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             if self.has_weight:
                 weight = state_dict.pop(weight_key, None)
                 if weight is not None:
                     local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -776,19 +768,15 @@ class PatchEmbedding3D(ParallelLayer):
         cls_token_key = prefix + "cls_token"
         pos_embed_key = prefix + "pos_embed"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
-            # bias
             bias = state_dict.pop(bias_key, None)
             if bias is not None:
                 local_state[bias_key] = bias
-            # cls token
             cls_token = state_dict.pop(cls_token_key, None)
             if cls_token is not None:
                 local_state[cls_token_key] = cls_token
-            # pos embed
             pos_embed = state_dict.pop(pos_embed_key, None)
             if pos_embed is not None:
                 local_state[pos_embed_key] = pos_embed
@@ -935,7 +923,6 @@ class Embedding3D(ParallelLayer):
         local_state = OrderedDict()
         weight_key = prefix + "weight"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
@@ -1073,7 +1060,6 @@ class VocabParallelEmbedding3D(ParallelLayer):
         local_state = OrderedDict()
         weight_key = prefix + "weight"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight

@@ -78,13 +78,11 @@ class LayerNormGenerator(StrategyGenerator):
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
-        # fwd_cost = input + other + bias + output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
         fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)
 
         # compute bwd cost incurred
-        # bwd_cost = input_grad + other_grad + bias_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
         bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
@@ -112,7 +110,6 @@ class LayerNormGenerator(StrategyGenerator):
         total_mesh_dim_list = []
         for mesh_dim_list in dim_partition.values():
             total_mesh_dim_list.extend(mesh_dim_list)
-        # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
         if len(total_mesh_dim_list) == 1:
             total_mesh_dim_list = total_mesh_dim_list[0]
         communication_action_mapping = {}
@@ -189,14 +186,11 @@ class LayerNormGenerator(StrategyGenerator):
         # in LayerNorm context, batch dimensions mean all the dimensions do not join the normalization.
         batch_dimension_length = input_data_dim - weight_data_dim
 
-        # SR = SR x R with single mesh dim on batch dimensions
         strategy_list.extend(self.split_input_batch_single_mesh_dim(0, batch_dimension_length))
         strategy_list.extend(self.split_input_batch_single_mesh_dim(1, batch_dimension_length))
 
-        # SR = SR x R with both mesh dims on batch dimensions
         strategy_list.extend(self.split_input_batch_both_mesh_dim(0, 1, batch_dimension_length))
 
-        # RR = RR x R
         strategy_list.append(self.non_split())
 
         return strategy_list

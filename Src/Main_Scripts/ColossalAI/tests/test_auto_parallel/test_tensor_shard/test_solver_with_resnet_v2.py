@@ -4,7 +4,6 @@ from torchvision.models import resnet50
 
 from colossalai._analyzer.fx.passes import shape_prop_pass
 
-# from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
 from colossalai.auto_parallel.tensor_shard.options import SolverOptions
@@ -29,7 +28,6 @@ def test_cost_graph():
     input_sample = {"x": torch.rand(128, 3, 224, 224).to("meta")}
 
     graph = tracer.trace(root=model, meta_args=input_sample)
-    # graph():
     #     %x : torch.Tensor [#users=1] = placeholder[target=x]
     #     %conv1 : [#users=1] = call_module[target=conv1](args = (%x,), kwargs = {})
     #     %bn1 : [#users=1] = call_module[target=bn1](args = (%conv1,), kwargs = {})
@@ -52,7 +50,6 @@ def test_cost_graph():
     #     %avgpool : [#users=1] = call_module[target=avgpool](args = (%layer4_2_relu_1,), kwargs = {})
     #     %flatten : [#users=1] = call_function[target=torch.flatten](args = (%avgpool, 1), kwargs = {})
     #     %fc : [#users=1] = call_module[target=fc](args = (%flatten,), kwargs = {})
-    #     return fc
     gm = GraphModule(model, graph, model.__class__.__name__)
     shape_prop_pass(gm, *input_sample.values())
     gm.recompile()

@@ -58,7 +58,6 @@ def _benchmark_evoformer_stack_gm(
     inputs = [i.cuda() if isinstance(i, torch.Tensor) else i for i in inputs]
     model.cuda()
 
-    # bench
     mem = _benchmark_memory(gm, inputs)
     speed = _benchmark_speed(gm, inputs)
     print("evoformer stack gm, mem: %.2fMB, time: %.4fs" % (mem, speed))
@@ -80,7 +79,6 @@ def _benchmark_evoformer_stack_origin(
     inputs = [i.cuda() if isinstance(i, torch.Tensor) else i for i in inputs]
     model.cuda()
 
-    # bench
     mem = _benchmark_memory(model, inputs)
     speed = _benchmark_speed(model, inputs)
     print("evoformer stack origin, mem: %.2fMB, time: %.4fs" % (mem, speed))
@@ -126,7 +124,6 @@ def benchmark_evoformer_stack(data_args):
 
 
 if __name__ == "__main__":
-    # launch colossalai
     colossalai.launch(
         config={},
         rank=0,

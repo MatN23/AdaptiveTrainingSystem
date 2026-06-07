@@ -4,27 +4,17 @@ from transformers import MistralConfig
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-sentence Mistral
-# ===============================
 
 
 def data_gen():
     # Generated from following code snippet
-    #
-    # from transformers import AutoModelForCausalLM, AutoTokenizer
-    # tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
-    # input = 'My favourite condiment is vinegar' (last two words repeated to satisfy length requirement)
-    # tokenized_input = tokenizer([input], return_tensors="pt")
-    # input_ids = tokenized_input['input_ids']
-    # attention_mask = tokenized_input['attention_mask']
     input_ids = torch.tensor([[1, 1984, 16020, 2076, 2487, 349, 21375, 4749]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
 def data_gen_for_lm():
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
     data["labels"] = data["input_ids"].clone()
@@ -38,10 +28,8 @@ def data_gen_for_sequence_classification():
     return data
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
-# define loss function
 loss_fn_for_mistral_model = lambda x: torch.nn.functional.mse_loss(
     x.last_hidden_state, torch.ones_like(x.last_hidden_state)
 )

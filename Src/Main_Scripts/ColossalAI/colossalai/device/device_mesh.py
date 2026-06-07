@@ -50,9 +50,7 @@ class DeviceMesh:
         init_process_group: bool = False,
         device: str = "cuda",
     ):
-        # ============================
         # Physical & Logical Mesh IDs
-        # ============================
         self._physical_mesh_id = physical_mesh_id
         assert physical_mesh_id.dim() == 1, "physical_mesh_id should be a 1D tensor."
 
@@ -84,11 +82,8 @@ class DeviceMesh:
             torch.unique(self.logical_mesh_id).numel() == self.logical_mesh_id.numel()
         ), "Found duplicate IDs in the logical_mesh_id and this is not allowed, please check your logical_mesh_id again."
 
-        # ===============================================
         # coefficient for alpha-beta communication model
         # alpha is latency and beta is bandwidth
-        # ===============================================
-        # if the values are not provided, we assume they are 1 for simplicity
         if mesh_alpha is None:
             mesh_alpha = [1] * len(self._mesh_shape)
         if mesh_beta is None:
@@ -102,15 +97,11 @@ class DeviceMesh:
             self.mesh_beta
         ), "mesh_alpha and mesh_beta should have the same length, please check your mesh_alpha and mesh_beta again."
 
-        # =========================
         # Device for Process Group
-        # =========================
         self._device = device
         self._dist_backend = self._DIST_BACKEND[device]
 
-        # =========================
         # Process Group Management
-        # =========================
         # the _global_to_local_rank_mapping is structured as follows
         # {
         #    <global-rank>: [ <local-rank-on-axis-0>, <local-rank-on-axis-1>, <local-rank-on-axis-2>, ...]
@@ -120,7 +111,6 @@ class DeviceMesh:
             mapping=self._global_to_local_rank_mapping, tensor=self.logical_mesh_id
         )
 
-        # create process group
         self._process_group_dict = {}
         self._ranks_in_the_process_group = {}
         self._global_rank_of_current_process = None
@@ -133,7 +123,6 @@ class DeviceMesh:
         # is known if created with from_process_group
         self._is_init_from_process_group = False
 
-        # initialize process group if specified
         self._init_ranks_in_the_same_group()
         self._init_process_group = init_process_group
         if init_process_group:
@@ -195,10 +184,8 @@ class DeviceMesh:
         if isinstance(process_group, ProcessGroup):
             process_group = [process_group]
 
-        # get mesh shape
         mesh_shape = [dist.get_world_size(pg) for pg in process_group]
 
-        # get device
         device_list = [_get_device_by_backend(pg) for pg in process_group]
 
         # make sure all devices are the same
@@ -206,14 +193,12 @@ class DeviceMesh:
             [device == device_list[0] for device in device_list]
         ), "All devices should be the same, please check your input process groups are created with the same distributed backend."
 
-        # create a fake physical mesh id
         # as we only get the process group associated with the current process,
         # we cannot get the global ranks for all processes in the mesh
         # therefore, we only use this fake physical mesh id to create the device mesh
         # and will remove this fake physical mesh id later
         fake_physical_mesh_id = torch.arange(reduce(operator.mul, mesh_shape, 1))
 
-        # create the device mesh
         device_mesh = DeviceMesh(physical_mesh_id=fake_physical_mesh_id, mesh_shape=mesh_shape, device=device_list[0])
 
         # hack the device attribute
@@ -307,7 +292,6 @@ class DeviceMesh:
             # inner_tensor refers to the processes with the same local rank
 
             if inner_tensor.numel() == 1:
-                # if the inner_tensor only has one element, it means that
                 # it already reaches the last axis
                 # we append its local_rank in the last axis to the index_list
                 # and assign to the mapping
@@ -349,7 +333,6 @@ class DeviceMesh:
                 if ranks_in_same_group in duplicate_check_list:
                     continue
 
-                # create the process group
                 pg_handler = dist.new_group(ranks=ranks_in_same_group, backend=self._dist_backend)
 
                 # keep this process group in the process_groups_dict
@@ -374,7 +357,6 @@ class DeviceMesh:
             ranks_in_same_group_by_axis = self._collate_global_ranks_in_same_process_group(global_rank)
 
             for axis, ranks_in_same_group in ranks_in_same_group_by_axis.items():
-                # create dict for each rank
                 if global_rank not in self._process_group_dict:
                     self._ranks_in_the_process_group[global_rank] = dict()
 
@@ -428,18 +410,15 @@ class DeviceMesh:
         #  }
         """
         # We have init the global rank to local rank by calling _init_global_to_logical_rank_mapping
-        # for self._global_to_local_rank_mapping
         # the key is the global rank
         # the value is the list of local ranks corresponding to the global rank with respect of different axes
         # we can see the list of local ranks as the process coordinates for simplicity
         # the key and value are all unique, therefore,
         # we can also to use the coordinates to find the global rank
 
-        # =========================================================================
         # Step 1
         # find all the process_coordinates for processes in the same process group
         # as the given global rank
-        # =========================================================================
 
         # each
         processes_in_the_same_process_group = {}
@@ -449,8 +428,6 @@ class DeviceMesh:
             # in the same process group in the given axis
             # the _local_rank refers to the local rank of the current process
             for _local_rank in range(self.logical_mesh_id.shape[dim]):
-                # if this dimension is not initialized yet,
-                # initialize it with an empty array
                 if dim not in processes_in_the_same_process_group:
                     processes_in_the_same_process_group[dim] = []
 
@@ -462,10 +439,8 @@ class DeviceMesh:
                 process_coordinates[dim] = _local_rank
                 processes_in_the_same_process_group[dim].append(process_coordinates)
 
-        # =================================================================
         # Step 2
         # Use local rank combination to find its corresponding global rank
-        # =================================================================
         # the key of the dict is the axis
         # the value is the list of global ranks which are in the same process group as the given global rank
         global_pg_ranks = {}

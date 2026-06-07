@@ -57,7 +57,6 @@ def convnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
     else:
         weight_tensors = [args[1].data]
 
-    # check if conv has bias
     if len(weight_tensors) > 1:
         has_bias = True
         # bias tensor's shape only has one dimension

@@ -105,7 +105,6 @@ def run_test(
     print_progress: bool = False,
     get_chunk_target: Any = None,
 ) -> None:
-    # launch colossalai
     colossalai.launch(
         config={},
         rank=rank,

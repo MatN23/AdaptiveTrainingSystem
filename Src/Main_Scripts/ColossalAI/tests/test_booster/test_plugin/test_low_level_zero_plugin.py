@@ -9,7 +9,6 @@ from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 
-# from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import COMMON_MODELS, IS_FAST_TEST, model_zoo
 
@@ -69,7 +68,6 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
         registry = model_zoo
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
-        # FIXME(ver217): fix these models
         if name in ignore_models:
             skipped_models.append(name)
             continue

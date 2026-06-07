@@ -64,7 +64,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
 
         state_dict_sharder = StateDictSharder(size_per_shard)
 
-        # Save parameters.
         for name, param in model.named_parameters():
             if param is None:
                 continue
@@ -76,7 +75,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Save buffers.
         for name, buf in model.named_buffers():
             if buf is not None and name not in model._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
@@ -84,7 +82,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
                 if block is not None:
                     yield block, block_size
 
-        # Save extra states.
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
         if (
             getattr(model.__class__, "get_extra_state", torch.nn.Module.get_extra_state)
@@ -95,7 +92,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Return the last block in sharder.
         yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
     def save_sharded_model(
@@ -325,7 +321,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
             if block is not None:
                 yield block, block_size
 
-        # Return the last block in sharder.
         yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
     def save_sharded_optimizer(
@@ -507,7 +502,6 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         weight_map = ckpt_index_file.weight_map
         weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
 
-        # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
             raise RuntimeError(
@@ -522,14 +516,12 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
             new_pg = copy.deepcopy(saved_pg)
             new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
             updated_groups.append(new_pg)
-        # ep param groups
         if len(optimizer.optim.param_groups) == len(saved_groups) + 1:
             new_pg = copy.deepcopy(saved_pg)
             new_pg["params"] = optimizer.optim.param_groups[-1]["params"]
             updated_groups.append(new_pg)
         optimizer.optim.__dict__.update({"param_groups": updated_groups})
 
-        # Load saved states to optimizer.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
         loaded_file = set()
         for pg in optimizer.optim.param_groups:

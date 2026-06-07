@@ -88,7 +88,6 @@ def ViTModel_pipeline_forward(stage_manager: PipelineStageManager, stage_index: 
             if pixel_values is None:
                 raise ValueError("You have to specify pixel_values")
 
-            # TODO(FoolPlayer): maybe have a cleaner way to cast the input (from `ImageProcessor` side?)
             expected_dtype = self.embeddings.patch_embeddings.projection.weight.dtype
             if pixel_values.dtype != expected_dtype:
                 pixel_values = pixel_values.to(expected_dtype)
@@ -303,7 +302,6 @@ def ViTForMaskedImageModeling_pipeline_forward(stage_manager: PipelineStageManag
         height = width = math.floor(sequence_length**0.5)
         sequence_output = sequence_output.permute(0, 2, 1).reshape(batch_size, num_channels, height, width)
 
-        # Reconstruct pixel values
         reconstructed_pixel_values = self.decoder(sequence_output)
 
         masked_im_loss = None

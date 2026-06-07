@@ -278,7 +278,6 @@ class GPT2Policy(Policy):
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
-# GPT2Model
 class GPT2ModelPolicy(GPT2Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2Model
@@ -301,7 +300,6 @@ class GPT2ModelPolicy(GPT2Policy):
         return []
 
 
-# GPT2LMHeadModel
 class GPT2LMHeadModelPolicy(GPT2Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
@@ -371,7 +369,6 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         return []
 
 
-# GPT2DoubleHeadsModel
 class GPT2DoubleHeadsModelPolicy(GPT2Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2DoubleHeadsModel
@@ -444,7 +441,6 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
         return []
 
 
-# GPT2ForQuestionAnswering
 class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForQuestionAnswering
@@ -471,7 +467,6 @@ class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
         return []
 
 
-# GPT2ForTokenClassification
 class GPT2ForTokenClassificationPolicy(GPT2Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForTokenClassification
@@ -511,7 +506,6 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
         return []
 
 
-# GPT2ForSequenceClassification
 class GPT2ForSequenceClassificationPolicy(GPT2Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2ForSequenceClassification

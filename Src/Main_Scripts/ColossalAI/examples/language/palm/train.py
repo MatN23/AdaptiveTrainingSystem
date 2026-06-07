@@ -112,8 +112,6 @@ def generate_dataset(dummy_data: bool = False):
             X = np.fromstring(file.read(int(95e6)), dtype=np.uint8)
             trX, vaX = np.split(X, [int(90e6)])
             data_train, data_val = torch.from_numpy(trX), torch.from_numpy(vaX)
-            # print(f"data_train {data_train.shape} {data_train.dtype} {max(data_train)} {min(data_train)}")
-            # print(f"data_val {data_val.shape} {data_val.dtype}  {max(data_val)} {min(data_val)}")
             return data_train, data_val
     else:
         return torch.randint(0, 100, (90000000,)), torch.randint(0, 100, (5000000,))
@@ -169,7 +167,6 @@ if args.distplan == "colossalai":
         model = PaLM(num_tokens=50304, dim=4096, depth=64)
         model = AutoregressiveWrapper(model, max_seq_len=SEQ_LEN)
 
-    # optimizer
 
     optimizer = HybridAdam(model.parameters(), lr=LEARNING_RATE, initial_scale=2**5)
     model, optimizer, _, _, _ = booster.boost(model, optimizer)
@@ -199,7 +196,6 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10.0, desc="training"):
         bwd_end = time()
         bwd_time = bwd_end - fwd_end
 
-        # print(f"training loss: {loss.item()}")
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         # optim.step()
         # optim.zero_grad()
@@ -230,18 +226,5 @@ median_index = ((NUM_BATCHES - WARMUP_BATCHES) >> 1) + WARMUP_BATCHES
 logger.info(f"Median TFLOPS is {tflops_list[median_index]:.3f}")
 
 # TODO
-# if i % VALIDATE_EVERY == 0:
-#     model.eval()
 #     with torch.no_grad():
-#         loss = model(next(val_loader))
-#         print(f"validation loss: {loss.item()}")
 
-# if i % GENERATE_EVERY == 0:
-#     model.eval()
-#     inp = random.choice(val_dataset)[:-1]
-#     prime = decode_tokens(inp)
-#     print(f"%s \n\n %s", (prime, "*" * 100))
-
-#     sample = model.generate(inp[None, ...], GENERATE_LENGTH)
-#     output_str = decode_tokens(sample[0])
-#     print(output_str)

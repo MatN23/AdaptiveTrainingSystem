@@ -83,19 +83,16 @@ class Linear2p5D(ParallelLayer):
         self.input_size_per_partition = divide(in_features, self.tesseract_dim)
         self.hidden_size_per_partition = divide(out_features, self.tesseract_dim)
 
-        # create weight, shape: [k/q, h/q]
         factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         self.weight = Parameter(
             torch.empty(self.input_size_per_partition, self.hidden_size_per_partition, **factory_kwargs)
         )
 
-        # create bias, shape: [h/q]
         if bias:
             self.bias = Parameter(torch.empty(self.hidden_size_per_partition, **factory_kwargs))
         else:
             self.register_parameter("bias", None)
 
-        # initialize parameters
         with seed(ParallelMode.TENSOR):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
@@ -116,11 +113,9 @@ class Linear2p5D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight.transpose(0, 1)
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -269,9 +264,8 @@ class LayerNorm2p5D(ParallelLayer):
         self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
 
         # partitioning dimension
-        self.partitioned_partition = divide(normalized_shape, self.tesseract_dim)  # *
+        self.partitioned_partition = divide(normalized_shape, self.tesseract_dim)
 
-        # create parameters
         factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
 
         self.weight = Parameter(torch.ones(self.partitioned_partition, **factory_kwargs))
@@ -292,11 +286,9 @@ class LayerNorm2p5D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
-            # bias
             bias = state_dict.pop(bias_key, None)
             if bias is not None:
                 local_state[bias_key] = bias
@@ -496,19 +488,15 @@ class PatchEmbedding2p5D(ParallelLayer):
         cls_token_key = prefix + "cls_token"
         pos_embed_key = prefix + "pos_embed"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
-            # bias
             bias = state_dict.pop(bias_key, None)
             if bias is not None:
                 local_state[bias_key] = bias
-            # cls token
             cls_token = state_dict.pop(cls_token_key, None)
             if cls_token is not None:
                 local_state[cls_token_key] = cls_token
-            # pos embed
             pos_embed = state_dict.pop(pos_embed_key, None)
             if pos_embed is not None:
                 local_state[pos_embed_key] = pos_embed
@@ -664,7 +652,6 @@ class Embedding2p5D(ParallelLayer):
         local_state = OrderedDict()
         weight_key = prefix + "weight"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
@@ -807,7 +794,6 @@ class VocabParallelEmbedding2p5D(ParallelLayer):
         local_state = OrderedDict()
         weight_key = prefix + "weight"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
@@ -959,12 +945,10 @@ class Classifier2p5D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             if self.has_weight:
                 weight = state_dict.pop(weight_key, None)
                 if weight is not None:
                     local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -1082,7 +1066,6 @@ class VocabParallelClassifier2p5D(ParallelLayer):
         self.input_size_per_partition = divide(in_features, self.tesseract_dim)
         self.hidden_size_per_partition = divide(num_classes, self.tesseract_dim)
 
-        # create weight, shape: [k/q, h/q]
         factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         if weight is not None:
             self.weight = weight
@@ -1092,13 +1075,11 @@ class VocabParallelClassifier2p5D(ParallelLayer):
                 torch.empty(self.hidden_size_per_partition, self.input_size_per_partition, **factory_kwargs)
             )
             self.has_weight = True
-        # create bias, shape: [h/q]
         if bias:
             self.bias = Parameter(torch.empty(self.hidden_size_per_partition, **factory_kwargs))
         else:
             self.bias = None
 
-        # initialize parameters
         with seed(ParallelMode.TENSOR):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
@@ -1122,12 +1103,10 @@ class VocabParallelClassifier2p5D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             if self.has_weight:
                 weight = state_dict.pop(weight_key, None)
                 if weight is not None:
                     local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:

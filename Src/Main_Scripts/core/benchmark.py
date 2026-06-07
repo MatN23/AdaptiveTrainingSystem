@@ -17,7 +17,6 @@ import sys
 import argparse
 from pathlib import Path
 
-# Add parent directory to path to import core
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # --- IMPORTS ---
@@ -46,9 +45,7 @@ except ImportError:
 
 
 
-# ============================================================================
 # UTILITIES
-# ============================================================================
 
 RESULTS = []
 
@@ -192,7 +189,6 @@ def benchmark_func(func, name="Op", warmup=None, iters=None):
             func()
         torch.cuda.synchronize()
         
-        # Timing
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         
@@ -210,7 +206,6 @@ def benchmark_func(func, name="Op", warmup=None, iters=None):
 def run_compare(name, shape_str, func_pt, func_cuda, available=True, warmup=None, iters=None):
     print(f"\nRunning {name}...")
     
-    # PyTorch
     pt_time = benchmark_func(func_pt, f"PyTorch {name}", warmup=warmup, iters=iters)
     print(f"  PyTorch: {pt_time:.4f} ms")
     
@@ -236,9 +231,7 @@ def run_compare(name, shape_str, func_pt, func_cuda, available=True, warmup=None
         "Speedup": speedup
     })
 
-# ============================================================================
 # 1. MOE OPERATIONS
-# ============================================================================
 
 def benchmark_moe_gating(batch_size, num_experts, k):
     logits = torch.randn(batch_size, num_experts, device='cuda', requires_grad=True)
@@ -281,7 +274,6 @@ def benchmark_moe_combine(batch_size, hidden_dim, num_experts, k):
     capacity = (batch_size * k + num_experts - 1) // num_experts
     capacity = int(capacity * 1.25)
     
-    # Setup inputs
     tokens = torch.randn(batch_size, hidden_dim, device='cuda')
     logits = torch.randn(batch_size, num_experts, device='cuda')
     indices, weights = MoECUDAOps.topk_gating(logits, k, use_cuda=MOE_AVAILABLE)
@@ -304,9 +296,7 @@ def benchmark_moe_combine(batch_size, hidden_dim, num_experts, k):
                run_pt, run_cuda, MOE_AVAILABLE)
 
 
-# ============================================================================
 # 2. TRANSFORMER OPS
-# ============================================================================
 
 def benchmark_rms_norm(batch_size, seq_len, hidden_size):
     x = torch.randn(batch_size, seq_len, hidden_size, device='cuda', requires_grad=True)
@@ -315,7 +305,6 @@ def benchmark_rms_norm(batch_size, seq_len, hidden_size):
     model_pt = FusedRMSNorm(hidden_size).cuda()
     model_pt.cuda_enabled = False
     
-    # CUDA
     model_cuda = FusedRMSNorm(hidden_size).cuda()
     model_cuda.cuda_enabled = True
     
@@ -353,7 +342,6 @@ def benchmark_rope(batch_size, seq_len, num_heads, head_dim):
 
 def benchmark_swiglu(batch_size, seq_len, hidden_size):
     inter_size = hidden_size * 4
-    # Create random inputs representing (gate, up) projections
     # total tokens = batch * seq
     total_tokens = batch_size * seq_len
     
@@ -380,9 +368,7 @@ def benchmark_swiglu(batch_size, seq_len, hidden_size):
 
 
 
-# ============================================================================
 # 4. TRAINING SIMULATION
-# ============================================================================
 
 class MockTransformerLayer(nn.Module):
     def __init__(self, hidden, heads, ops_available=True):
@@ -408,7 +394,6 @@ class MockTransformerLayer(nn.Module):
         heads = 32
         head_dim = hidden // heads
         
-        # Norm
         normed = self.norm(x)
         
         # QKV
@@ -416,10 +401,8 @@ class MockTransformerLayer(nn.Module):
         k = self.k(normed).view(batch, seq, heads, head_dim)
         v = self.v(normed).view(batch, seq, heads, head_dim)
         
-        # RoPE
         q, k = self.rope.apply_rotary_pos_emb(q, k)
         
-        # Attn (Mock flash attn via SDPA)
         attn = F.scaled_dot_product_attention(q.transpose(1,2), k.transpose(1,2), v.transpose(1,2))
         attn = attn.transpose(1,2).reshape(batch, seq, hidden)
         

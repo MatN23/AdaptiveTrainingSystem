@@ -72,7 +72,6 @@ def _tensor_numel(local_param: ColoParameter) -> int:
     Returns:
         int: the number of elements.
     """
-    # TODO(ver217): support dtensor here
     return local_param.numel()
 
 
@@ -93,7 +92,6 @@ def classify_params_by_dp_degree(
     """
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in param_order.generate():
-        # assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
         if is_ddp_ignored(param):
             continue
         param_key = dist.get_world_size(process_group)

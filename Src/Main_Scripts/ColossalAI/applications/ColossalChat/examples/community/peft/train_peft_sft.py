@@ -20,7 +20,6 @@ from colossalai.tensor import ColoParameter
 
 
 def train(args):
-    # configure strategy
     if args.strategy == "ddp":
         strategy = DDPStrategy()
     elif args.strategy == "colossalai_gemini":
@@ -30,11 +29,9 @@ def train(args):
     else:
         raise ValueError(f'Unsupported strategy "{args.strategy}"')
 
-    # configure model
     with strategy.model_init_context():
         print("Warning: currently only bloom is tested, gpt2,llama and opt are not tested")
         model = AutoModelForCausalLM.from_pretrained(args.pretrain).to(torch.cuda.current_device())
-        # if the args.save_path exists and args.save_path+'/adapter_config.json' exists, we'll load the adapter_config.json
         if (
             os.path.exists(args.save_path)
             and os.path.exists(args.save_path + "/adapter_config.json")
@@ -52,7 +49,6 @@ def train(args):
             model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
 
-    # configure tokenizer
     if args.model == "gpt2":
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         tokenizer.pad_token = tokenizer.eos_token
@@ -83,7 +79,6 @@ def train(args):
                 sub_module = model.get_submodule(sub_module_name)
                 setattr(sub_module, weight_name, ColoParameter(param))
 
-    # configure optimizer
     if args.strategy.startswith("colossalai"):
         optim = HybridAdam(model.parameters(), lr=args.lr, clipping_norm=1.0)
     else:
@@ -92,7 +87,6 @@ def train(args):
     logger = get_dist_logger()
     logger.set_level("WARNING")
 
-    # configure dataset
     law_dataset = EasyDataset(args.dataset, tokenizer=tokenizer, is_group_texts=not args.is_short_text)
     train_dataset = law_dataset
     print(train_dataset)
@@ -155,9 +149,7 @@ def train(args):
 
     trainer.fit(logger=logger, log_interval=args.log_interval)
 
-    # save model checkpoint after fitting on only rank0
     trainer.save_model(path=args.save_path, only_rank0=True, tokenizer=tokenizer)
-    # save optimizer checkpoint on all ranks
     if args.need_optim_ckpt:
         strategy.save_optimizer(
             trainer.optimizer, "rm_optim_checkpoint_%d.pt" % (torch.cuda.current_device()), only_rank0=False

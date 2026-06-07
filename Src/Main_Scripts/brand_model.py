@@ -29,7 +29,6 @@ def brand_checkpoint(checkpoint_path: str, output_path: str = None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     print(f" Branding starting on {device}...")
 
-    # 1. Load Checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
     # Extract state dict and config
@@ -40,7 +39,6 @@ def brand_checkpoint(checkpoint_path: str, output_path: str = None):
         state_dict = checkpoint
         config_dict = None
 
-    # Load Model
     if config_dict:
         config = DeepSeekConfig(**config_dict)
     else:

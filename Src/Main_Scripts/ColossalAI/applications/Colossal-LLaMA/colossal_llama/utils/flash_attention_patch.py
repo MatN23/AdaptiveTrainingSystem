@@ -125,7 +125,6 @@ if get_accelerator().name == "cuda":
         kv_len = k.shape[-2]  # initially, `kv_len` == `q_len`
         past_kv_len = 0
         if past_key_value is not None:
-            # if `past_key_value` is not None, `kv_len` > `q_len`.
             past_kv_len = past_key_value[0].shape[-2]
             kv_len += past_kv_len
 

@@ -288,7 +288,6 @@ class ChunkManager:
         grad_chunk = self.init_grad_chunk(chunk)
         grad_chunk.cuda_global_chunk.zero_()
 
-        # Add backup gradients to grad_chunk.
         if accumulated_grad_gathered:
             grad_chunk.cuda_global_chunk.add_(accumulated_grad)
         else:

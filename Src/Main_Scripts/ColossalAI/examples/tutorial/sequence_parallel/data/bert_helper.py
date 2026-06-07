@@ -60,19 +60,16 @@ def broadcast_data(keys, data, datatype):
         datatype: torch data type of all tensors in data associated
                   with keys.
     """
-    # Build (key, size) and (key, number of elements) dictionaries along
     # with the total number of elements on all ranks.
     key_size, key_numel, total_numel = _build_key_size_numel_dictionaries(keys, data)
 
     # Pack on rank zero.
     if not gpc.is_initialized(ParallelMode.TENSOR) or gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-        # Check that all keys have the same data type.
         # Flatten the data associated with the keys
         flatten_data = torch.cat([data[key].contiguous().view(-1) for key in keys], dim=0).cuda()
     else:
         flatten_data = torch.empty(total_numel, device=torch.cuda.current_device(), dtype=datatype)
 
-    # Broadcast
     torch.distributed.broadcast(
         flatten_data, gpc.get_ranks_in_group(ParallelMode.TENSOR)[0], group=gpc.get_group(ParallelMode.TENSOR)
     )
@@ -138,7 +135,6 @@ def get_batch_for_sequence_parallel(data_iterator):
     sub_seq_length = seq_length // local_world_size
     sub_seq_start = local_rank * sub_seq_length
     sub_seq_end = (local_rank + 1) * sub_seq_length
-    #
     # # Unpack.
     tokens = data_b["text"][:, sub_seq_start:sub_seq_end].long()
     types = data_b["types"][:, sub_seq_start:sub_seq_end].long()

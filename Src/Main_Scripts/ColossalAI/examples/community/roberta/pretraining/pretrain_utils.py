@@ -53,11 +53,9 @@ def get_model(args, logger):
 
     if len(args.load_pretrain_model) > 0:
         assert os.path.exists(args.load_pretrain_model)
-        # load_checkpoint(args.load_pretrain_model, model, strict=False)
         m_state_dict = torch.load(
             args.load_pretrain_model, map_location=torch.device(f"cuda:{torch.cuda.current_device()}")
         )
-        # new_state_dict = get_new_state_dict(m_state_dict)
         model.load_state_dict(
             m_state_dict, strict=True
         )  # must insure that every process have identical parameters !!!!!!!
@@ -66,7 +64,6 @@ def get_model(args, logger):
     numel = sum([p.numel() for p in model.parameters()])
     if args.checkpoint_activations:
         model.gradient_checkpointing_enable()
-    # model = LMModel(model, config, args)
 
     return config, model, numel
 
@@ -75,7 +72,6 @@ def get_optimizer(model, lr):
     param_optimizer = list(model.named_parameters())
     no_decay = ["bias", "gamma", "beta", "LayerNorm"]
 
-    # configure the weight decay for bert models
     optimizer_grouped_parameters = [
         {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], "weight_decay": 0.1},
         {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
@@ -85,11 +81,9 @@ def get_optimizer(model, lr):
 
 
 def get_lr_scheduler(optimizer, total_steps, warmup_steps=2000, last_epoch=-1):
-    # warmup_steps = int(total_steps * warmup_ratio)
     lr_scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps, last_epoch=last_epoch
     )
-    # lr_scheduler = LinearWarmupLR(optimizer, total_steps=total_steps, warmup_steps=warmup_steps)
     return lr_scheduler
 
 

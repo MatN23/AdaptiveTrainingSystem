@@ -53,7 +53,6 @@ def examine_pp(num_microbatch: int, batch_size: int):
     dist.get_rank()
     seed_all(1453)
 
-    # create models
     torch_model = MlpModel().cuda()
 
     pp_model = copy.deepcopy(torch_model).cuda()
@@ -84,7 +83,6 @@ def examine_pp(num_microbatch: int, batch_size: int):
         sharded_model._forward,
     )
 
-    # create optimizer
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
     pp_optimizer = OptimizerWrapper(torch.optim.SGD(sharded_model.parameters(), lr=1))
 
@@ -101,22 +99,18 @@ def examine_pp(num_microbatch: int, batch_size: int):
     torch_loss.backward()
     pp_ret = schedule.forward_backward_step(sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True)
 
-    # check loss
     if stage_manager.is_last_stage():
         assert torch.allclose(torch_loss, pp_ret["loss"])
 
-    # check gradients
     for i in range(len(sharded_model)):
         idx = rank * num_local_layer + i
         assert torch.allclose(torch_model.layers[idx].weight.grad, sharded_model[i].weight.grad)
         assert torch.allclose(torch_model.layers[idx].bias.grad, sharded_model[i].bias.grad)
 
-    # step
     torch_optimizer.step()
     pp_optimizer.step()
     pp_optimizer.zero_grad()
 
-    # check updated param
     for i in range(len(sharded_model)):
         idx = rank * num_local_layer + i
         assert torch.allclose(torch_model.layers[idx].weight, sharded_model[i].weight)

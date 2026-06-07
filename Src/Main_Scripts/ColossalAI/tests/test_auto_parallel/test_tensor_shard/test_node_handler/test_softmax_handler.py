@@ -54,12 +54,10 @@ def check_split_handler(rank, world_size, port, softmax_dim, model_cls):
     )
     tracer = ColoTracer(bias_addition_split=True)
 
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %other : torch.Tensor [#users=1] = placeholder[target=other]
     #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%input_1, %other), kwargs = {bias: None})
     #     %softmax : [#users=1] = call_method[target=split](args = (%linear,), kwargs = {})
-    #     return split
     meta_args = {
         "input": torch.rand(8, 16, 64, 32).to("meta"),
         "other": torch.rand(64, 32).to("meta"),
@@ -88,7 +86,6 @@ def check_split_handler(rank, world_size, port, softmax_dim, model_cls):
 
     softmax_handler.register_strategy(compute_resharding_cost=False)
 
-    # check operation data mapping
     mapping = softmax_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

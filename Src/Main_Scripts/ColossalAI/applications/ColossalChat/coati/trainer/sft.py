@@ -120,7 +120,6 @@ class SFTTrainer(SLTrainer):
                 self.accumulative_meter.reset()
                 step_bar.update()
 
-                # Save checkpoint
                 if (
                     self.save_dir is not None
                     and self.save_interval is not None

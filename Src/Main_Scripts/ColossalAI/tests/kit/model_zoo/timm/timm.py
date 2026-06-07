@@ -3,9 +3,7 @@ import torch
 
 from ..registry import ModelAttribute, model_zoo
 
-## ==============
 # Register models without control flow
-## ==============
 data_gen_fn = lambda: dict(x=torch.rand(2, 3, 224, 224))
 output_transform_fn = lambda x: dict(output=x)
 
@@ -144,9 +142,7 @@ model_zoo.register(
     name="timm_dm_nfnet", model_fn=tm.dm_nfnet_f0, data_gen_fn=data_gen_fn, output_transform_fn=output_transform_fn
 )
 
-# ==============
 # Register models with control flow
-# ==============
 model_zoo.register(
     name="timm_convnext",
     model_fn=tm.convnext.convnext_base,

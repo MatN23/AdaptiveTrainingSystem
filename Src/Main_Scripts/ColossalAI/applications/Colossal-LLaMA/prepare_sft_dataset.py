@@ -115,11 +115,9 @@ def main():
 
         # We don't concatenate data samples here.
         spliced_dataset = dataset
-        # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
         output_name = f"part-{output_index}"
         output_jsonl_path = os.path.join(args.data_jsonl_output_dir, output_name + ".jsonl")
-        # st = time.time()
         with open(file=output_jsonl_path, mode="w", encoding="utf-8") as fp_writer:
             spliced_count = 0
             for spliced_data_point in spliced_dataset:
@@ -128,7 +126,6 @@ def main():
                 spliced_count += 1
                 fp_writer.write(json.dumps(spliced_data_point, ensure_ascii=False) + "\n")
 
-        # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
         logger.info(f"Start to save {output_arrow_path}")
         spliced_dataset = load_dataset(

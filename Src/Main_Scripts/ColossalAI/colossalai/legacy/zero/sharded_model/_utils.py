@@ -76,7 +76,6 @@ def cast_float_arguments(fn: Callable, *args: Any, **kwargs: Any) -> Tuple[Any, 
 def chunk_and_pad(tensor: torch.Tensor, num_chunks: int) -> List[torch.Tensor]:
     """Chunk a given Tensor into num_chunks parts and add any necessary padding."""
     chunks = list(torch.flatten(tensor).chunk(num_chunks))
-    # torch.chunk may return fewer than num_chunks chunks, pad accordingly.
     num_pad_for_partial_chunk = chunks[0].numel() - chunks[-1].numel()
     if num_pad_for_partial_chunk > 0:
         chunks[-1] = F.pad(chunks[-1], [0, num_pad_for_partial_chunk])

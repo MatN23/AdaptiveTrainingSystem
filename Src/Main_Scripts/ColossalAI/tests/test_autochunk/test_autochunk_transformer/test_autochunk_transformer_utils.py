@@ -110,7 +110,6 @@ def run_test(
     get_chunk_target: Any = None,
 ) -> None:
     model = model(config=config)
-    # launch colossalai
     colossalai.launch(
         config={},
         rank=rank,

@@ -17,7 +17,6 @@ def data_gen(batch_size, seq_length):
 
 
 def data_gen_for_sequence_classification(batch_size, seq_length):
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen(batch_size, seq_length)
     data["labels"] = torch.ones((batch_size), dtype=torch.long)
@@ -81,7 +80,6 @@ def bench_shardformer(BATCH, N_CTX, provider, model_func, dtype=torch.float32, d
         return ms
 
 
-# start benchmark, command:
 # torchrun --standalone --nproc_per_node=2 performance_benchmark.py
 if __name__ == "__main__":
     colossalai.launch_from_torch({})

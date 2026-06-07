@@ -103,7 +103,6 @@ def _find_input_and_output_nodes(nodes: List[Node]):
     input_nodes = []
     output_nodes = []
 
-    # if a node has an input node which is not in the node list
     # we treat that input node as the input of the checkpoint function
     for node in nodes:
         for input_node in node._input_nodes.keys():
@@ -111,7 +110,6 @@ def _find_input_and_output_nodes(nodes: List[Node]):
             if input_node not in nodes and node_repr not in input_nodes:
                 input_nodes.append(node_repr)
 
-    # if a node has a user node which is not in the node list
     # we treat that user node as the node receiving the current node output
     for node in nodes:
         for output_node in node.users.keys():
@@ -142,7 +140,6 @@ def _find_ckpt_regions(nodes: List[Node]):
                 current_region = act_ckpt_label
                 start = idx
 
-            # if activation checkpoint has changed
             # we restart the tracking
             # e.g. node ckpt states = [ckpt1, ckpt2, ckpt2, ckpt2]
             if act_ckpt_label != current_region:
@@ -273,7 +270,6 @@ def _find_nested_ckpt_regions(nodes, check_idx=0):
                 current_region = act_ckpt_label
                 start = idx
 
-            # if activation checkpoint has changed
             # we restart the tracking
             # e.g. node ckpt states = [ckpt1, ckpt2, ckpt2, ckpt2]
             if act_ckpt_label != current_region:
@@ -317,7 +313,6 @@ def emit_ckpt_func(
     """
     inputs, outputs = _find_input_and_output_nodes(node_list)
 
-    # if the current checkpoint function use int as label, using old generation method
     if isinstance(node_list[0].meta["activation_checkpoint"], int):
         label = node_list[0].meta["activation_checkpoint"]
         ckpt_fn_def = _gen_ckpt_fn_def(label, inputs)
@@ -341,7 +336,6 @@ def emit_ckpt_func(
         ckpt_fn_def = _gen_ckpt_fn_def(label, inputs)
         ckpt_func.append(f"{ckpt_fn_def}\n")
 
-        # if there is more level to fetch
         if level + 1 < len(node_list[0].meta["activation_checkpoint"]):
             ckpt_regions = _find_nested_ckpt_regions(node_list, level + 1)
             start_idx = [item[0] for item in ckpt_regions]
@@ -526,7 +520,6 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
 
     # append code text to body
     for idx, node in enumerate(node_list):
-        # if this is the first node of the ckpt region
         # append the ckpt function definition
         if idx in start_idx:
             label = start_idx.index(idx)
@@ -576,7 +569,6 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
             delete_unused_value_func(node, body)
 
         if idx in end_idx:
-            # if this is the last node of the ckpt region
             # generate return statement
             label = end_idx.index(idx)
             return_statement = _gen_ckpt_output(output_vars[label])
@@ -608,7 +600,6 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
                                 if "inplace" in user.kwargs:
                                     use_reentrant = not user.kwargs["inplace"]
 
-            # if all the inputs are leaf nodes, we need to set use_reentrant = False
             if not non_leaf_input:
                 use_reentrant = False
 
@@ -822,7 +813,6 @@ if CODEGEN_AVAILABLE:
             # Modified for activation checkpointing
             ckpt_func = []
 
-            # if any node has a list of labels for activation_checkpoint, we
             # will use nested type of activation checkpoint codegen
             if any(isinstance(node.meta.get("activation_checkpoint", None), Iterable) for node in nodes):
                 emit_code_with_nested_activation_checkpoint(body, ckpt_func, nodes, emit_node, delete_unused_values)
@@ -1032,7 +1022,6 @@ else:
         # Modified for activation checkpointing
         ckpt_func = []
 
-        # if any node has a list of labels for activation_checkpoint, we
         # will use nested type of activation checkpoint codegen
         if any(isinstance(node.meta.get("activation_checkpoint", None), Iterable) for node in self.nodes):
             emit_code_with_nested_activation_checkpoint(body, ckpt_func, self.nodes, emit_node, delete_unused_values)

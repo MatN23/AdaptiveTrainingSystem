@@ -121,14 +121,14 @@ class DataCollatorForSupervisedDataset(object):
                 sequences=reversed_input_ids,
                 batch_first=True,
                 padding_value=self.tokenizer.pad_token_id,
-            )  # (bsz, max_len)
+            )
             input_ids = torch.flip(reversed_input_ids, dims=(1,))  # (bsz, max_len)
             reversed_labels = [seq.flip(dims=(0,)) for seq in batch_labels]
             reversed_labels = torch.nn.utils.rnn.pad_sequence(
                 sequences=reversed_labels,
                 batch_first=True,
                 padding_value=self.ignore_index,
-            )  # (bsz, max_len)
+            )
             labels = torch.flip(reversed_labels, dims=(1,))  # (bsz, max_len)
         else:
             raise RuntimeError(
@@ -303,7 +303,6 @@ class StatefulDistributedSampler(DistributedSampler):
                 indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
 
             if not self.drop_last:
-                # add extra samples to make it evenly divisible
                 padding_size = self.total_size - len(indices)
                 if padding_size <= len(indices):
                     indices += indices[:padding_size]
@@ -317,7 +316,7 @@ class StatefulDistributedSampler(DistributedSampler):
             # subsample
             indices = indices[
                 : self.total_size : self.num_replicas
-            ]  # num_replicas=tp_group=1, we only support tp_group==1 for now
+            ]
             assert len(indices) == self.num_samples
 
             return iter(indices)

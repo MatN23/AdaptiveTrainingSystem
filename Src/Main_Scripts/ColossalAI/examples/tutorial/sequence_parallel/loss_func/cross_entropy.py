@@ -12,7 +12,6 @@ class _VocabCrossEntropy(torch.autograd.Function):
         # Subtract the maximum value.
         vocab_parallel_logits.sub_(logits_max.unsqueeze(dim=-1))
 
-        # Create a mask of valid vocab ids (1 means it needs to be masked).
         target_mask = target < 0
         masked_target = target.clone()
         masked_target[target_mask] = 0
@@ -33,7 +32,6 @@ class _VocabCrossEntropy(torch.autograd.Function):
         torch.exp(vocab_parallel_logits, out=exp_logits)
         sum_exp_logits = exp_logits.sum(dim=-1)
 
-        # Loss = log(sum(exp(logits))) - predicted-logit.
         loss = torch.log(sum_exp_logits) - predicted_logits
 
         # Store softmax, target-mask and masked-target for backward pass.

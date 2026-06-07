@@ -16,9 +16,7 @@ class BaseAccelerator(ABC):
         self._communication_backend = communication_backend
         self._is_synchronous = is_synchronous
 
-    # =======================
     # immutable attributes
-    # =======================
 
     @property
     def name(self) -> str:
@@ -45,9 +43,7 @@ class BaseAccelerator(ABC):
         cls_name = self.__class__.__name__
         return f"{cls_name}(name={self._name}, communication_backend={self._communication_backend}, is_synchronous={self._is_synchronous})"
 
-    # =======================
     # device APIs
-    # =======================
     @abstractmethod
     def get_version(self) -> str:
         """
@@ -136,9 +132,7 @@ class BaseAccelerator(ABC):
         Returns the percent of time over the past sample period during which one or more kernels was executing on the device as given by nvidia-smi or npu-smi, etc.
         """
 
-    # =======================
     # random number generator APIs
-    # =======================
     @abstractmethod
     def get_rng_state(self, device="cuda") -> torch.Tensor:
         """
@@ -193,9 +187,7 @@ class BaseAccelerator(ABC):
         Returns the current random seed of the current device.
         """
 
-    # =======================
     # memory management APIs
-    # =======================
     @abstractmethod
     def empty_cache(self) -> None:
         """
@@ -268,9 +260,7 @@ class BaseAccelerator(ABC):
         Resets the "peak" stats tracked by the device memory allocator.
         """
 
-    # =======================
     # streams and events APIs
-    # =======================
 
     @abstractmethod
     def Stream(self, device=None, priority=0, **kwargs):
@@ -308,9 +298,7 @@ class BaseAccelerator(ABC):
         Wrapper around the Context-manager StreamContext that selects a given stream.
         """
 
-    # =======================
     # amp APIs
-    # =======================
     @abstractmethod
     def autocast(
         self, enabled: bool = True, dtype: torch.dtype = torch.float16, cache_enabled: bool = True

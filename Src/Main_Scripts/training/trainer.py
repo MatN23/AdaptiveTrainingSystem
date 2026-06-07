@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import math
@@ -1125,18 +1124,15 @@ class EnhancedConversationTrainer:
         else:
             self.device = torch.device('cpu')
         
-        # Initialize precision manager FIRST
         self.precision_manager = PrecisionManager(config)
         
         # Enhanced managers
         self.quantization_manager = QuantizationManager(config)
         self.moe_optimizer = MoEOptimizationManager(config) if hasattr(config, 'use_moe') and config.use_moe else None
         
-        # Initialize custom CUDA kernels
         self.fused_loss = FusedLoss() if getattr(config, 'use_fused_loss', True) and CUSTOM_KERNELS_AVAILABLE and _safe_cuda_is_available() else None
         self.fused_grad_clip = FusedGradClip() if getattr(config, 'use_fused_grad_clip', True) and CUSTOM_KERNELS_AVAILABLE and _safe_cuda_is_available() else None
 
-        # Log precision info
         precision_info = self.precision_manager.get_precision_info()
         logging.info(f"Training precision: {precision_info['training']['precision']} ({precision_info['training']['bits']} bits)")
         logging.info(f"Inference precision: {precision_info['inference']['precision']} ({precision_info['inference']['bits']} bits)")
@@ -1169,7 +1165,6 @@ class EnhancedConversationTrainer:
         self.metric_history_size = max(1, int(getattr(config, 'metric_history_size', 2048)))
         self._metric_trim_trigger = self.metric_history_size * 2
         
-        # Initialize training metrics
         self.metrics = {
             'train_losses': [],
             'eval_losses': [],
@@ -1225,7 +1220,6 @@ class EnhancedConversationTrainer:
         self._cached_eval_dataset_ref = None
         self._cached_eval_batch_size = None
         
-        # Setup training components
         self._setup_training()
 
     @staticmethod
@@ -1253,7 +1247,6 @@ class EnhancedConversationTrainer:
         # we need to handle the remaining gradients
         if gradient_accumulation_steps > 1:
             try:
-                # Check if we have any accumulated gradients
                 has_accumulated_grads = any(
                     param.grad is not None for param in self.model.parameters()
                 )
@@ -1287,7 +1280,6 @@ class EnhancedConversationTrainer:
 
         logging.info(f"{' EMERGENCY' if emergency else ''} LR Adjustment: {old_lr:.2e}  {new_lr:.2e}")
 
-        #  Save scheduler state BEFORE changing LR
         if self.scheduler:
             self._saved_scheduler_lr = self.scheduler.get_last_lr()[0]
             self._saved_scheduler_step = getattr(self.scheduler, '_step_count', 0)
@@ -1307,9 +1299,7 @@ class EnhancedConversationTrainer:
 
         logging.info(f" LR override active for {grace_period} steps")
 
-    # ============================================================================
     #  CRITICAL FIX: ORCHESTRATOR COMMUNICATION (3 methods)
-    # ============================================================================
     
     def get_current_metrics(self):
         """
@@ -1325,7 +1315,6 @@ class EnhancedConversationTrainer:
         
         def lazy_tensor(val):
             #  PERFORMANCE FIX: Do NOT call .item() here. 
-            # Return the tensor as-is and let the orchestrator background thread sync it.
             return val
 
         if (
@@ -1391,7 +1380,6 @@ class EnhancedConversationTrainer:
         if not self.throughput_window:
             return 0.0
         
-        # Return average of recent measurements
         # Note: If elements are Tensors, sum() returns a Tensor.
         # This preserves async execution until .item() is called in logging.
         return sum(self.throughput_window) / len(self.throughput_window)
@@ -1415,9 +1403,7 @@ class EnhancedConversationTrainer:
         
         return memory_stats
 
-    # ============================================================================
     #  MOE ARCHITECTURE ADAPTATION (3 methods)
-    # ============================================================================
     
     def add_expert(self, layer_idx: Optional[int] = None):
         """
@@ -1447,11 +1433,9 @@ class EnhancedConversationTrainer:
                 if not (hasattr(layer, 'use_moe') and layer.use_moe):
                     continue
                 
-                # Create new expert
                 from core.model import SwiGLUExpert
                 new_expert = SwiGLUExpert(self.config).to(self.device)
                 
-                # Initialize using knowledge distillation from existing experts
                 self._initialize_new_expert(new_expert, layer.ffn.experts)
                 
                 # Add to expert list
@@ -1466,7 +1450,6 @@ class EnhancedConversationTrainer:
                     device=self.device
                 )
                 new_gate_weight[:-1] = old_gate_weight
-                # Initialize new expert gate with small random values
                 torch.nn.init.normal_(new_gate_weight[-1], mean=0.0, std=0.01)
                 
                 layer.ffn.gate = nn.Linear(
@@ -1516,7 +1499,6 @@ class EnhancedConversationTrainer:
                     param.data += torch.randn_like(param) * 0.01
                     initialized_params.append(name)
                 else:
-                    #  Initialize with small random values
                     torch.nn.init.normal_(param, mean=0.0, std=0.02)
                     missing_params.append(name)
 
@@ -1586,7 +1568,6 @@ class EnhancedConversationTrainer:
             # DeepSpeed handles this automatically
             return
         
-        # Add new parameters to optimizer
         new_params = list(new_module.parameters())
         if new_params:
             self.optimizer.add_param_group({
@@ -1595,9 +1576,7 @@ class EnhancedConversationTrainer:
                 'weight_decay': getattr(self.config, 'weight_decay', 0.01)
             })
 
-    # ============================================================================
     #  MOE ROUTING ADAPTATION (4 methods)
-    # ============================================================================
     
     def adjust_capacity_factor(self, new_factor: float):
         """
@@ -1661,7 +1640,6 @@ class EnhancedConversationTrainer:
         
         for layer in model.layers:
             if hasattr(layer, 'use_moe') and layer.use_moe:
-                # Add dropout to expert outputs
                 if not hasattr(layer.ffn, 'expert_dropout'):
                     layer.ffn.expert_dropout = nn.Dropout(dropout_rate)
     
@@ -1704,9 +1682,6 @@ class EnhancedConversationTrainer:
         
         return stats
 
-    # ============================================================================
-    #  MOD (MIXTURE OF DEPTHS) ADAPTATION (2 methods)
-    # ============================================================================
     
     def adjust_mod_capacity(self, new_capacity: float):
         """
@@ -1771,9 +1746,7 @@ class EnhancedConversationTrainer:
         
         return stats
 
-    # ============================================================================
     #  BATCH SIZE ADAPTATION (2 methods)
-    # ============================================================================
     
     def adjust_batch_size(self, new_batch_size: int):
         """
@@ -1841,9 +1814,7 @@ class EnhancedConversationTrainer:
         """
         return create_dataloader(dataset, self.config, shuffle=shuffle)
 
-    # ============================================================================
     #  EMERGENCY RECOVERY (2 methods)
-    # ============================================================================
     
     def emergency_lr_reduction(self, reduction_factor: float = 10.0):
         """
@@ -1908,7 +1879,6 @@ class EnhancedConversationTrainer:
         logging.info(f"Rolling back from step {self.global_step} to step {best_checkpoint['step']}")
         
         try:
-            # Load checkpoint
             checkpoint_path = best_checkpoint['path']
             
             if self.use_deepspeed:
@@ -1937,9 +1907,7 @@ class EnhancedConversationTrainer:
             import traceback
             traceback.print_exc()
 
-    # ============================================================================
     #  ADVANCED OPTIMIZER CONTROL (2 methods)
-    # ============================================================================
     
     def adjust_weight_decay(self, new_weight_decay: float):
         """
@@ -1981,9 +1949,7 @@ class EnhancedConversationTrainer:
             param_group[param_name] = new_value
             logging.debug(f"Updated {param_name}: {old_value} -> {new_value}")
 
-    # ============================================================================
     # EXISTING METHODS (with enhancements)
-    # ============================================================================
 
     def train_with_oom_fallback(self, train_dataset, eval_dataset=None):
         """Train with automatic batch size reduction on OOM errors."""
@@ -2148,7 +2114,6 @@ class EnhancedConversationTrainer:
                 torch.set_float32_matmul_precision('high')
                 logging.info(" TF32 matmul precision enabled ('high')")
 
-            # Setup standard PyTorch training
             self.model = self.model.to(self.device)
 
             #  OPTIMIZATION: Model compilation
@@ -2181,10 +2146,8 @@ class EnhancedConversationTrainer:
                 except Exception as e:
                     logging.warning(f" torch.compile failed: {e}")
 
-            # Create optimizer
             self.optimizer = self._create_standard_optimizer()
 
-            # Setup gradient scaler for mixed precision
             self.use_amp = self.precision_manager.should_use_grad_scaler()
             self.scaler = GradScaler() if self.use_amp else None
 
@@ -2455,7 +2418,6 @@ class EnhancedConversationTrainer:
         flat_logits = logits.view(-1, logits.size(-1))
         flat_labels = labels.view(-1)
 
-        # Create mask for valid tokens (non-padding)
         pad_token_id = getattr(self.tokenizer, 'pad_token_id', 0)
         mask = (flat_labels != pad_token_id).float()
 
@@ -2559,7 +2521,6 @@ class EnhancedConversationTrainer:
                 'accuracy': 0.0
             }
         
-        # START TIMING (non-blocking)
         compute_start = time.perf_counter()
         
         try:
@@ -2609,7 +2570,6 @@ class EnhancedConversationTrainer:
             
             self.deepspeed_engine.backward(loss)
             
-            # END TIMING (non-blocking)
             compute_time = time.perf_counter() - compute_start
             
             #  NO SYNC: Keep valid_tokens as tensor
@@ -2662,7 +2622,6 @@ class EnhancedConversationTrainer:
                 'accuracy': 0.0
             }
         
-        # START TIMING (non-blocking to avoid pipeline stalls)
         compute_start = time.perf_counter()
         
         # === FORWARD PASS ===
@@ -2715,7 +2674,6 @@ class EnhancedConversationTrainer:
         else:
             loss.backward()
         
-        # END TIMING (non-blocking - estimates only, but doesn't stall pipeline)
         compute_time = time.perf_counter() - compute_start
         
         #  NO SYNC: Return tensors directly
@@ -2793,7 +2751,6 @@ class EnhancedConversationTrainer:
             )
 
         #  CRITICAL: Optional NaN check (lazy)
-        # return {'grad_norm': grad_norm, 'lr': ...}
 
         # Take optimizer step
         if self.use_amp and self.scaler is not None:
@@ -2831,10 +2788,8 @@ class EnhancedConversationTrainer:
                 logging.info(f" Step {self.global_step}: Adaptive override active "
                             f"({self._adaptive_override_steps}/{grace_period}) LR: {current_lr:.2e}")
 
-            # Check if we should release control
             if self._adaptive_override_steps >= grace_period:
                 if is_emergency:
-                    # Check if emergency is resolved
                     recent_grad_norms = getattr(self, '_recent_grad_norms', [])
                     if recent_grad_norms and max(recent_grad_norms[-5:]) < 10.0:
                         # Crisis resolved
@@ -3116,7 +3071,6 @@ class EnhancedConversationTrainer:
             if self.should_stop:
                 break
             
-            # Start timing accumulation cycle
             if accumulation_start_time is None:
                 accumulation_start_time = time.perf_counter()
                 accumulation_compute_time = 0.0
@@ -3196,7 +3150,6 @@ class EnhancedConversationTrainer:
                 
                 # Update throughput window
                 #  FIX: Avoid sync "if cycle_throughput > 0"
-                # Check CPU-side time instead. tokens/time will be valid if time > 0.
                 if accumulation_compute_time > 0:
                     cycle_throughput = self._detach_metric_value(cycle_throughput)
                     self.throughput_window.append(cycle_throughput)
@@ -3237,7 +3190,6 @@ class EnhancedConversationTrainer:
                             batch_tokens=accumulation_metrics['tokens']
                         )
                         
-                        # Check for early stopping every 500 steps
                         if self.global_step % 500 == 0:
                             status = self.chinchilla_scaler.get_status_report()
                             print(f"\n{'='*60}")
@@ -3249,7 +3201,6 @@ class EnhancedConversationTrainer:
                             print(f"  Training phase: {status['training']['training_phase']}")
                             print(f"{'='*60}\n")
 
-                        # Check for early stopping every 100 steps
                         if self.global_step % 100 == 0:
                             should_stop, reason = self.chinchilla_scaler.should_stop_early()
                             if should_stop:
@@ -3575,7 +3526,6 @@ class EnhancedConversationTrainer:
                 
                 epoch_metrics = self.train_epoch(train_dataloader, epoch)
                 
-                #  CHECK FOR EARLY STOPPING RIGHT AFTER train_epoch()
                 if self.should_stop:
                     print(f"\n{'='*80}")
                     print(f" TRAINING STOPPED EARLY")
@@ -3623,7 +3573,6 @@ class EnhancedConversationTrainer:
                     if getattr(self.config, 'early_stopping_patience', None):
                         self._check_early_stopping(eval_metrics['eval_loss'])
                 
-                # Save checkpoint with history tracking
                 if self.use_deepspeed:
                     checkpoint_path = self._save_deepspeed_checkpoint(epoch + 1)
                 else:
@@ -3844,7 +3793,6 @@ class EnhancedConversationTrainer:
 
                 def linear_lr_lambda(current_step: int):
                     if current_step < warmup_steps:
-                        # Warmup
                         return float(current_step) / float(max(1, warmup_steps))
                     else:
                         # Linear decay
@@ -3959,9 +3907,7 @@ class EnhancedConversationTrainer:
             print(f"  {info}")
 
 
-# ============================================================================
 # UTILITY FUNCTIONS
-# ============================================================================
 
 def get_available_quantization_methods():
     """Get dictionary of available quantization methods."""
@@ -4228,10 +4174,8 @@ def profile_training_loop_overhead(trainer, train_dataloader, num_batches=10):
         _ = loss_dict['accuracy'].item()
         timings['metrics'].append((time.perf_counter() - metrics_start) * 1000)
         
-        # Total step time
         timings['total_step'].append((time.perf_counter() - step_start) * 1000)
     
-    # Print results
     print(f"\nResults (averaged over {num_batches} batches):")
     print("="*80)
     print(f"{'Operation':<20} {'Avg (ms)':<12} {'Min (ms)':<12} {'Max (ms)':<12} {'% of Total':<12}")
@@ -4272,7 +4216,6 @@ def profile_training_loop_overhead(trainer, train_dataloader, num_batches=10):
     
     print("="*80)
     
-    # Recommendations
     print("\nRecommendations:")
     
     overhead_pct = (overhead_time / total_avg * 100)

@@ -71,7 +71,6 @@ class TrainingSimulator(ABC):
         if link not in self.link_to_bandwidth:
             raise TypeError(f"Unknown data transfer link {link}")
 
-        # size_list = sorted(list(map(float, self.link_to_bandwidth[link].keys())))
         size_list = sorted(self.link_to_bandwidth[link].keys())
         d_idx = bisect.bisect_left(size_list, comm_volumn)
         return self.link_to_bandwidth[link][size_list[d_idx]]

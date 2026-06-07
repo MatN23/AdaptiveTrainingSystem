@@ -90,7 +90,6 @@ class DistCrossEntropy(Function):
         dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM, group=process_group)
 
         # calculate the loss
-        # loss = log(sum(exp(x[i]))) - x[class]
         loss = torch.where(target == ignore_index, 0.0, torch.log(sum_exp_logits) - pred_logits)
         num_non_zero = torch.sum(loss != 0.0)
         ctx.inv_num_non_zero = 1.0 / num_non_zero

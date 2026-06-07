@@ -35,7 +35,6 @@ class TensorDetector:
 
         self.module = module
         if isinstance(module, nn.Module):
-            # if module is an instance of nn.Module, we can name the parameter with its real name
             for name, param in module.named_parameters():
                 self.tensor_info[id(param)].append(name)
                 self.tensor_info[id(param)].append(param.device)
@@ -114,7 +113,6 @@ class TensorDetector:
         self.info += "\n"
         self.info += LINE
 
-        # if a tensor updates this turn, and was recorded before
         # it should be updated in the saved_tensor_info as well
         outdated = [x for x in self.saved_tensor_info.keys() if x in self.order]
         minus = [x for x in self.saved_tensor_info.keys() if x not in self.detected]

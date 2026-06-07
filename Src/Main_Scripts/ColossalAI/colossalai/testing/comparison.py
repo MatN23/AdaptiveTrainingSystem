@@ -33,7 +33,6 @@ def assert_equal_in_group(tensor: Tensor, process_group: ProcessGroup = None):
     tensor_list = [torch.empty_like(tensor) for _ in range(world_size)]
     dist.all_gather(tensor_list, tensor, group=process_group)
 
-    # check if they are equal one by one
     for i in range(world_size - 1):
         a = tensor_list[i]
         b = tensor_list[i + 1]
@@ -116,7 +115,6 @@ def assert_hf_output_close(
         track_name (str): the name of the value compared, used to track the path
     """
     if isinstance(out1, dict) and isinstance(out2, dict):
-        # if two values are dict
         # we recursively check the keys
         assert set(out1.keys()) == set(out2.keys())
         for k in out1.keys():
@@ -131,7 +129,6 @@ def assert_hf_output_close(
                 rtol=rtol,
             )
     elif isinstance(out1, (list, tuple)) and isinstance(out2, (list, tuple)):
-        # if two values are list
         # we recursively check the elements
         assert len(out1) == len(out2)
         for i in range(len(out1)):

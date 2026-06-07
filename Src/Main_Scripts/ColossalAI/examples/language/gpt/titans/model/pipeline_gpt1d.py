@@ -1,6 +1,5 @@
 import inspect
 
-# import model_zoo.gpt.gpt as col_gpt
 import titans.model.gpt.gpt as col_gpt
 import torch
 import torch.nn as nn
@@ -217,10 +216,6 @@ class PipelineGPTHybrid(GenericPipelineGPT):
         )
         if last:
             norm = col_nn.LayerNorm(hidden_size, eps=layer_norm_epsilon)
-            # head = col_gpt.GPTLMHead(vocab_size=vocab_size,
-            #                          hidden_size=hidden_size,
-            #                          dtype=dtype,
-            #                          bias=False)
             head = col_nn.Classifier(hidden_size, vocab_size, dtype=dtype, bias=False)
         super().__init__(embedding=embedding, blocks=blocks, norm=norm, head=head)
 

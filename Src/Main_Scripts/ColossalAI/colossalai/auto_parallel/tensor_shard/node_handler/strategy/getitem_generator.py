@@ -40,13 +40,11 @@ class GetItemStrategyGenerator(FollowingStrategyGenerator):
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
-        # fwd_cost = input + output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
         fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)
 
         # compute bwd cost incurred
-        # bwd_cost = input_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
         bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)

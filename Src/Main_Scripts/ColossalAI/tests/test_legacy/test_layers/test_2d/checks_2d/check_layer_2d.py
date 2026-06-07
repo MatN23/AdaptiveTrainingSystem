@@ -96,7 +96,6 @@ def check_linear():
     B_grad = B_master.grad
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[j]
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
-    # if i == 0:
     check_equal(B_grad, layer.bias.grad)
 
     print_rank_0("linear backward: pass")
@@ -351,7 +350,6 @@ def check_classifier_no_given_weight():
     B_shape = (OUTPUT_SIZE,)
     B_master = torch.randint(5, B_shape, dtype=dtype, device=device)
     torch.distributed.broadcast(B_master, src=0)
-    # B = torch.chunk(B_master, DEPTH, dim=0)[j]
     B = B_master.clone()
     layer.bias.data.copy_(B)
 
@@ -365,7 +363,6 @@ def check_classifier_no_given_weight():
     B_master.requires_grad = True
     C_master = torch.matmul(A_master, W_master.transpose(0, 1)) + B_master
     C = torch.chunk(C_master, DEPTH, dim=0)[i]
-    # C = torch.chunk(C, DEPTH, dim=-1)[j]
 
     check_equal(out, C)
     print_rank_0("classifier (no given weight) forward: pass")
@@ -374,7 +371,6 @@ def check_classifier_no_given_weight():
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_accelerator().get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
-    # grad = torch.chunk(grad, DEPTH, dim=-1)[j]
     grad = grad.clone()
     out.backward(grad)
 
@@ -391,8 +387,6 @@ def check_classifier_no_given_weight():
     check_equal(W_grad, layer.weight.grad)
 
     B_grad = B_master.grad
-    # B_grad = torch.chunk(B_grad, DEPTH, dim=0)[j]
-    # if i == 0:
     check_equal(B_grad, layer.bias.grad)
 
     print_rank_0("classifier (no given weight) backward: pass")
@@ -644,110 +638,43 @@ def check_vocab_parallel_loss():
     print_rank_0("vocab parallel cross entropy loss backward: pass")
 
 
-# def check_attention():
-#     device = get_accelerator().get_current_device()
-#     dtype = torch.float32
-#     INPUT_SIZE = HIDDEN_SIZE
-#     NUM_ATTENTION_HEADS = 2
 
-#     j = gpc.get_local_rank(ParallelMode.PARALLEL_2D_ROW)
-#     i = gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)
 
-#     layer = TransformerSelfAttention2D(
 #         HIDDEN_SIZE,
 #         NUM_ATTENTION_HEADS,
-#         attention_dropout_prob=0.5,
-#         hidden_dropout_prob=0.5,
 #     )
 
-#     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
-#     A_master = torch.randn(A_shape, dtype=dtype, device=device)
-#     torch.distributed.broadcast(A_master, src=0)
-#     A = torch.chunk(A_master, DEPTH, dim=0)[i]
-#     A = torch.chunk(A, DEPTH, dim=-1)[j]
-#     A = A.clone()
 #     A.requires_grad = True
 
-#     mask_shape = (BATCH_SIZE // DEPTH, NUM_ATTENTION_HEADS // DEPTH, SEQ_LENGTH, SEQ_LENGTH)
-#     attention_mask = torch.zeros(mask_shape, dtype=dtype, device=device)
 
-#     out = layer(A, attention_mask)
 #     assert out.shape == (BATCH_SIZE // DEPTH, SEQ_LENGTH, INPUT_SIZE // DEPTH)
-#     print_rank_0('self attention forward: pass')
 
-#     grad_shape = out.shape
-#     grad = torch.randn(grad_shape, dtype=dtype, device=device)
 
 #     out.backward(grad)
 #     assert A.grad.shape == A.shape
-#     print_rank_0('self attention backward: pass')
 
-# def check_mlp():
-#     device = get_accelerator().get_current_device()
-#     dtype = torch.float32
-#     INPUT_SIZE = HIDDEN_SIZE
 
-#     j = gpc.get_local_rank(ParallelMode.PARALLEL_2D_ROW)
-#     i = gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)
 
-#     layer = TransformerMLP2D(
 #         HIDDEN_SIZE,
-#         dropout_prob=0.5,
-#         act_func='gelu',
 #     )
 
-#     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
-#     A_master = torch.randn(A_shape, dtype=dtype, device=device)
-#     torch.distributed.broadcast(A_master, src=0)
-#     A = torch.chunk(A_master, DEPTH, dim=0)[i]
-#     A = torch.chunk(A, DEPTH, dim=-1)[j]
-#     A = A.clone()
 #     A.requires_grad = True
 
-#     out = layer(A)
 #     assert out.shape == (BATCH_SIZE // DEPTH, SEQ_LENGTH, INPUT_SIZE // DEPTH)
-#     print_rank_0('mlp forward: pass')
 
-#     grad_shape = out.shape
-#     grad = torch.randn(grad_shape, dtype=dtype, device=device)
 
 #     out.backward(grad)
 #     assert A.grad.shape == A.shape
-#     print_rank_0('mlp backward: pass')
 
-# def check_transformerlayer():
-#     device = get_accelerator().get_current_device()
-#     dtype = torch.float32
-#     INPUT_SIZE = HIDDEN_SIZE
-#     NUM_ATTENTION_HEADS = 2
 
-#     j = gpc.get_local_rank(ParallelMode.PARALLEL_2D_ROW)
-#     i = gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)
 
-#     layer = TransformerLayer2D(HIDDEN_SIZE,
 #                                NUM_ATTENTION_HEADS,
-#                                act_func='gelu',
-#                                attention_dropout_prob=0.5,
-#                                hidden_dropout_prob=0.5)
 
-#     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
-#     A_master = torch.randn(A_shape, dtype=dtype, device=device)
-#     torch.distributed.broadcast(A_master, src=0)
-#     A = torch.chunk(A_master, DEPTH, dim=0)[i]
-#     A = torch.chunk(A, DEPTH, dim=-1)[j]
-#     A = A.clone()
 #     A.requires_grad = True
 
-#     mask_shape = (BATCH_SIZE // DEPTH, NUM_ATTENTION_HEADS // DEPTH, SEQ_LENGTH, SEQ_LENGTH)
-#     attention_mask = torch.zeros(mask_shape, dtype=dtype, device=device)
 
-#     out = layer(A, attention_mask)
 #     assert out.shape == (BATCH_SIZE // DEPTH, SEQ_LENGTH, INPUT_SIZE // DEPTH)
-#     print_rank_0('transformerlayer forward: pass')
 
-#     grad_shape = out.shape
-#     grad = torch.randn(grad_shape, dtype=dtype, device=device)
 
 #     out.backward(grad)
 #     assert A.grad.shape == A.shape
-#     print_rank_0('transformerlayer backward: pass')

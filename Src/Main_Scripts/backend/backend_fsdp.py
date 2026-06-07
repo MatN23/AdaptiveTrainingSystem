@@ -73,22 +73,17 @@ class FSDPBackend:
         self.original_model = model
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Initialize distributed if not already done
         self._init_distributed()
         
-        # Setup mixed precision
         self.mixed_precision_policy = self._create_mixed_precision_policy()
         
         # Wrap model with FSDP
         self.model = self._wrap_model_with_fsdp(model)
         
-        # Create optimizer
         self.optimizer = self._create_optimizer()
         
-        # Create learning rate scheduler
         self.scheduler = None  # Will be set up when total_steps is known
         
-        # Setup gradient scaler for mixed precision
         self.use_amp = self._should_use_grad_scaler()
         self.scaler = GradScaler() if self.use_amp else None
         
@@ -107,7 +102,6 @@ class FSDPBackend:
             world_size = int(os.environ.get('WORLD_SIZE', 1))
             
             if world_size > 1:
-                # Initialize process group
                 torch.distributed.init_process_group(
                     backend='nccl' if torch.cuda.is_available() else 'gloo',
                     init_method='env://'
@@ -200,7 +194,6 @@ class FSDPBackend:
     def _apply_activation_checkpointing(self, model: FSDP):
         """Apply activation checkpointing to reduce memory usage."""
         try:
-            # Define which layers to checkpoint
             def check_fn(submodule):
                 # Checkpoint transformer blocks or similar large modules
                 return isinstance(submodule, (nn.TransformerEncoderLayer, nn.TransformerDecoderLayer))
@@ -304,9 +297,7 @@ class FSDPBackend:
         
         logging.info(f"Learning rate scheduler initialized: {lr_scheduler_type}")
     
-    # ========================================================================
     # UNIFIED API - Forward Pass
-    # ========================================================================
     
     def __call__(self, *args, **kwargs):
         """Forward pass - matches PyTorch model interface."""
@@ -316,9 +307,7 @@ class FSDPBackend:
         """Explicit forward pass."""
         return self.model(*args, **kwargs)
     
-    # ========================================================================
     # UNIFIED API - Training Methods
-    # ========================================================================
     
     def backward(self, loss: torch.Tensor):
         """
@@ -367,9 +356,7 @@ class FSDPBackend:
         """
         self.optimizer.zero_grad(set_to_none=set_to_none)
     
-    # ========================================================================
     # UNIFIED API - Model State
-    # ========================================================================
     
     def train(self):
         """Set model to training mode."""
@@ -406,9 +393,7 @@ class FSDPBackend:
         ):
             self.model.load_state_dict(state_dict)
     
-    # ========================================================================
     # UNIFIED API - Learning Rate
-    # ========================================================================
     
     def get_lr(self) -> float:
         """Get current learning rate."""
@@ -420,9 +405,7 @@ class FSDPBackend:
         """Get last learning rate (scheduler compatibility)."""
         return [self.get_lr()]
     
-    # ========================================================================
     # UNIFIED API - Gradient Information
-    # ========================================================================
     
     def get_global_grad_norm(self) -> float:
         """Get global gradient norm."""
@@ -434,9 +417,7 @@ class FSDPBackend:
         total_norm = total_norm ** 0.5
         return total_norm
     
-    # ========================================================================
     # UNIFIED API - Checkpointing
-    # ========================================================================
     
     def save_checkpoint(
         self,
@@ -521,10 +502,8 @@ class FSDPBackend:
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
         
-        # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         
-        # Load model state
         with FSDP.state_dict_type(
             self.model,
             StateDictType.FULL_STATE_DICT,
@@ -532,7 +511,6 @@ class FSDPBackend:
         ):
             self.model.load_state_dict(checkpoint['model_state_dict'])
         
-        # Load optimizer state
         if load_optimizer_states and 'optimizer_state_dict' in checkpoint:
             with FSDP.state_dict_type(
                 self.model,
@@ -544,7 +522,6 @@ class FSDPBackend:
                 )
                 self.optimizer.load_state_dict(optim_state)
         
-        # Load scheduler state
         if load_lr_scheduler_states and self.scheduler and checkpoint.get('scheduler_state_dict'):
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         
@@ -556,9 +533,7 @@ class FSDPBackend:
         logging.info(f"FSDP checkpoint loaded: {checkpoint_path}")
         return metadata
     
-    # ========================================================================
     # UNIFIED API - Device Management
-    # ========================================================================
     
     def to(self, device):
         """Device movement (no-op for FSDP, handles internally)."""
@@ -572,9 +547,7 @@ class FSDPBackend:
         """Move to CPU (no-op for FSDP)."""
         return self
     
-    # ========================================================================
     # Backend-Specific Properties
-    # ========================================================================
     
     @property
     def module(self):
@@ -586,9 +559,7 @@ class FSDPBackend:
         """Get backend name."""
         return "fsdp"
     
-    # ========================================================================
     # Utility Methods
-    # ========================================================================
     
     def is_main_process(self) -> bool:
         """Check if this is the main process."""
@@ -621,9 +592,7 @@ class FSDPBackend:
                 f"sharding_strategy={getattr(self.config, 'fsdp_sharding_strategy', 'FULL_SHARD')})")
 
 
-# ============================================================================
 # Factory Function
-# ============================================================================
 
 def create_fsdp_backend(
     model: nn.Module,

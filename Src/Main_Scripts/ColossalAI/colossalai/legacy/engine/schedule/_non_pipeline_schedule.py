@@ -32,7 +32,6 @@ class NonPipelineSchedule(BaseSchedule):
     """
 
     def __init__(self, data_process_func: Callable = None):
-        # check that non-pipeline schedule data process func only takes in one parameter
         # which is the batch data
 
         if data_process_func:
@@ -74,11 +73,9 @@ class NonPipelineSchedule(BaseSchedule):
         if self.data_process_func:
             data, label = self.data_process_func(batch_data)
         else:
-            # if not batch data process func is given,
             # then we regard the batch data as a simple tuple of (data, label)
             data, label = batch_data
 
-        # forward
         with conditional_context(torch.no_grad(), enable=forward_only):
             output = self._call_engine(engine, data)
             if return_loss:

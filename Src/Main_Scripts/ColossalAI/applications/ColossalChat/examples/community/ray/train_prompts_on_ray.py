@@ -101,7 +101,6 @@ class BasePPORole(DistributedTorchRayActor):
         return self._experience_maker.make_experience(experience_computation_ref)
 
     def _init_strategy(self, strategy: str):
-        # configure strategy
         if strategy == "ddp":
             self._strategy = DDPStrategy()
         elif strategy == "colossalai_gemini":
@@ -225,9 +224,7 @@ class RayPPOActor(TrainablePPORole):
 
     def save_checkpoint(self, save_path, should_save_optimizer: bool):
         if self._rank == 0:
-            # save model checkpoint only on rank 0
             self._strategy.save_model(self._model, save_path, only_rank0=True)
-        # save optimizer checkpoint on all ranks
         if should_save_optimizer:
             self._strategy.save_optimizer(
                 self._optimizer,
@@ -324,7 +321,6 @@ class PPORayActorGroup:
             master_actor = self.ray_actor_type.options(num_gpus=1).remote(world_size, 0, 0, None, None)
         self._actor_handlers = [master_actor]
 
-        # Create worker actors
         if world_size > 1:
             master_addr, master_port = ray.get(master_actor.get_master_addr_port.remote())
             for rank in range(1, world_size):
@@ -456,7 +452,6 @@ def main(args):
         raise ValueError(f'Unsupported model "{args.model}"')
 
     logging.info("Start creating actors")
-    # Initialize 4 models (actor, critic, initial_model and reward_model)
     actor_group = PPOActorRayActorGroup(num_nodes=args.num_actor_nodes, num_gpus_per_node=args.num_gpus_per_node)
     critic_group = PPOCriticRayActorGroup(num_nodes=args.num_critic_nodes, num_gpus_per_node=args.num_gpus_per_node)
     initial_group = PPOInitialRayActorGroup(num_nodes=args.num_initial_nodes, num_gpus_per_node=args.num_gpus_per_node)
@@ -483,7 +478,6 @@ def main(args):
     max_timesteps = args.max_timesteps
     update_timesteps = args.update_timesteps
     experience_batch_size = args.experience_batch_size
-    # Start training
     logging.info("Training start")
     # Set all models to eval and add experience maker
     all_ray_actors = (
@@ -542,7 +536,6 @@ def main(args):
                 # clear refs queue
                 experience_composition_refs.clear()
     logging.info("Training finished")
-    # Save checkpoint
     actor_group.save_checkpoint(args.save_path, args.need_optim_ckpt)
 
 

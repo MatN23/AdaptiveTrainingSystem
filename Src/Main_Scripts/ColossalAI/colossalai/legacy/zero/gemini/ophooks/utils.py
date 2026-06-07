@@ -100,7 +100,6 @@ def register_ophooks_recursively(
     if len(list(module.parameters(recurse=False))) == 0:
         return
 
-    # return from filtered module
     if filter_fn is not None and filter_fn(module):
         return
 

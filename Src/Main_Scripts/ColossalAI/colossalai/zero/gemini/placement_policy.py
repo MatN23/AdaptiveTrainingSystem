@@ -155,12 +155,10 @@ class AutoPlacementPolicy(PlacementPolicy):
 
         if avail_cuda_model_data < cuda_demand:
             # Move cuda_demand - avail_cuda_model_data volume of tensors
-            # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_chunks = can_evict_chunks
             if not warmup:
                 to_free_chunks = self._sort_can_evict_chunks(tuple(to_free_chunks), compute_idx, tuple(compute_list))
-                # print(self._sort_can_evict_chunks.cache_info())
             for chunk in to_free_chunks:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break

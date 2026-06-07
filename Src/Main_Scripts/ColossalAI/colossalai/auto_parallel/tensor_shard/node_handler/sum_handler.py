@@ -24,7 +24,6 @@ class SumHandler(NodeHandler):
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
-        # check if the input operand is a parameter
         if isinstance(self.node.args[0]._meta_data, torch.nn.parameter.Parameter):
             data_type = OperationDataType.PARAM
         else:
@@ -51,7 +50,6 @@ class SumHandler(NodeHandler):
         # For examples:
         #   input: torch.rand(2, 3, 4, 5)
         #   output: torch.sum(input, (0, 2))
-        #   sum_mapping_dict = {1: 0, 3: 1}
         #   sum_mapping_dict[1] = 0 means the 0th dim of output is the 1st dim of input
         #   sum_mapping_dict[3] = 1 means the 1st dim of output is the 3rd dim of input
         sum_mapping_dict = {}

@@ -233,7 +233,6 @@ def launch_multi_processes(args: Config) -> None:
     if args.host and args.hostfile:
         click.echo("Error: hostfile and hosts are mutually exclusive, only one is required")
 
-    # check if hostfile is given
     if args.hostfile:
         device_pool = fetch_hostfile(args.hostfile, ssh_port=args.ssh_port)
         active_device_pool = parse_device_filter(device_pool, args.include, args.exclude)
@@ -261,7 +260,6 @@ def launch_multi_processes(args: Config) -> None:
 
     if not active_device_pool:
         # run on local node if not hosts or hostfile is given
-        # add local node to host info list
         active_device_pool = HostInfoList()
         localhost_info = HostInfo(hostname="127.0.0.1", port=args.ssh_port)
         active_device_pool.append(localhost_info)
@@ -298,7 +296,6 @@ def launch_multi_processes(args: Config) -> None:
         )
         runner.send(hostinfo=hostinfo, cmd=cmd)
 
-    # start training
     msg_from_node = runner.recv_from_all()
     has_error = False
 
@@ -307,7 +304,6 @@ def launch_multi_processes(args: Config) -> None:
     for hostname, msg in msg_from_node.items():
         click.echo(f"{hostname}: {msg}")
 
-        # check if a process failed
         if msg == "failure":
             has_error = True
 

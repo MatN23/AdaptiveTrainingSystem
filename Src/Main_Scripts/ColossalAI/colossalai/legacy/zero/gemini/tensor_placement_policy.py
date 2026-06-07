@@ -48,7 +48,6 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
     def __init__(self, mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
         super().__init__(None, mem_stats_collector=mem_stats_collector)
         # model data will use 1-self._warmup_non_model_data_ratio CUDA memory in warmup phase
-        # TODO(ver217): make these args configurable
         self._warmup_non_model_data_ratio: float = 0.8
         self._steady_cuda_cap_ratio: float = 0.9
 
@@ -93,14 +92,12 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         end = time()
         if avail_cuda_model_data < cuda_demand:
             # Move cuda_demand - avail_cuda_model_data volume of tensors
-            # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_tensor_list = hold_cuda_tensor_list
             if not warmup:
                 to_free_tensor_list = self._sort_hold_cuda_tensors(
                     tuple(hold_cuda_tensor_list), compute_idx, tuple(compute_list)
                 )
-                # print(self._sort_hold_cuda_tensors.cache_info())
             end = time()
             for t in to_free_tensor_list:
                 if freed_cuda_model_data >= to_free_cuda_model_data:

@@ -29,7 +29,6 @@ def save_checkpoint(
     """
     rank = dist.get_rank()
     model_state = model.state_dict()
-    # save the dist context about the tensors in a new dict, while still maintain the original dict.
     for k, v in model_state.items():
         if isinstance(v, ColoTensor):
             gather_tensor(v)  # gather shared tensors to rank0
@@ -96,7 +95,6 @@ def load_checkpoint(
         torch_load_kwargs: (dict, optional): The kwargs of torch.load inside the function
         load_state_dict_kwargs (dict, optional): The kwargs of load_state_dict inside the function
     """
-    # initialize the default parameters
     if not torch_load_kwargs:
         torch_load_kwargs = dict()
     if not load_state_dict_kwargs:

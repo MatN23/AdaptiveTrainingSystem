@@ -26,36 +26,29 @@ def check_stage_manager():
     stage_manager = PipelineStageManager(pg_mesh, PP_DIM)
     rank = dist.get_rank()
 
-    # check stage info
     assert stage_manager.num_stages == PP_SIZE
     assert stage_manager.stage == RANK_TO_COORDINATE[rank][PP_DIM]
 
-    # check is_first_stage
     ranks_in_group = PP_RANKS_IN_GROUP[rank]
     is_first_stage = ranks_in_group.index(rank) == 0
     assert stage_manager.is_first_stage() == is_first_stage
 
-    # check is_last_stage
     is_last_stage = ranks_in_group.index(rank) == len(ranks_in_group) - 1
     assert stage_manager.is_last_stage() == is_last_stage
 
-    # check prev rank
     if not is_first_stage:
         prev_rank = ranks_in_group[ranks_in_group.index(rank) - 1]
         assert stage_manager.get_prev_rank() == prev_rank
 
-    # check next rank
     if not is_last_stage:
         next_rank = ranks_in_group[ranks_in_group.index(rank) + 1]
         assert stage_manager.get_next_rank() == next_rank
 
-    # check p2p groups
     for prev, cur in zip(ranks_in_group[:-1], ranks_in_group[1:]):
         if rank in [prev, cur]:
             group = stage_manager.get_p2p_process_group(prev, cur)
             dist.barrier(group=group)
 
-    # check stage groups
     pg_mesh = ProcessGroupMesh(4)
     stage_manager = PipelineStageManager(pg_mesh, 0)
     group = stage_manager.init_process_group_by_stages([0, 2])

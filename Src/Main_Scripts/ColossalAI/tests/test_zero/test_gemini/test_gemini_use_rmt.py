@@ -62,7 +62,6 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     for i, data in enumerate(train_dataloader):
         # you can only test a single fwd + bwd.
         # after bwd param is grad for Gemini, due to the chunk reuse optimization.
-        # print(f'iteration {i}')
         if i > 4:
             break
         data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
@@ -72,7 +71,6 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
 
     gemini_non_model_data = model.gemini_manager._mem_stats_collector._memstats.non_model_data_list("cuda")
 
-    # print('gemini non model data:', gemini_non_model_data)
 
     assert len(gemini_non_model_data) == len(
         runtime_tracer_non_model_data

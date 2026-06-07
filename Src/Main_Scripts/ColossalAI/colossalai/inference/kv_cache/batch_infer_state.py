@@ -36,7 +36,6 @@ class BatchInferState:
 
     @property
     def total_token_num(self):
-        # return self.batch_size * self.max_len_in_batch
         assert self.seq_len is not None and self.seq_len.size(0) > 0
         return int(torch.sum(self.seq_len))
 
@@ -77,7 +76,7 @@ class BatchInferState:
             attention_mask = batch["attention_mask"]
         else:
             input_ids_list = batch
-        if isinstance(input_ids_list[0], int):  # for a single input
+        if isinstance(input_ids_list[0], int):
             input_ids_list = [input_ids_list]
             attention_mask = [attention_mask] if attention_mask is not None else attention_mask
 

@@ -79,7 +79,6 @@ default_inference_kwargs = {
 
 def get_few_shot_data():
     few_shot_data = few_shot_prompt.split("\n\n")
-    # print(few_shot_data)
     assert len(few_shot_data) == 8
 
     return few_shot_data

@@ -3,26 +3,11 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-image SAM
-# ===============================
 
 
-# define data gen function
 def data_gen():
     # Generated from following code snippet
-    #
-    # from PIL import Image
-    # import requests
-    # from transformers import SamModel, SamProcessor
-    #
-    # model = SamModel.from_pretrained("facebook/sam-vit-base")
-    # processor = SamProcessor.from_pretrained("facebook/sam-vit-base")
-    #
-    # img_url = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"
-    # raw_image = Image.open(requests.get(img_url, stream=True).raw).convert("RGB")
-    # input_points = [[[450, 600]]] # 2D localization of a window
-    # inputs = processor(raw_image, input_points=input_points, return_tensors="pt")
 
     pixel_values = torch.rand(1, 3, 1024, 1024, dtype=torch.float32)
     original_sizes = torch.tensor([[1764, 2646]], dtype=torch.int64)
@@ -36,10 +21,8 @@ def data_gen():
     )
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
-# define loss funciton
 loss_fn = lambda x: x["iou_scores"].mean()
 
 config = transformers.SamConfig()

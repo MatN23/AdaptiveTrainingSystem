@@ -35,10 +35,6 @@ class Accelerator:
         if self.device == "cpu":
             pass
         elif self.device == "cuda":
-            # TODO(FrankLeeeee): use global environment to check if it is a dist job
-            # if is_distributed:
-            #     local_rank = EnvTable().get_local_rank()
-            #     torch.cuda.set_device(torch.device(f'cuda:{local_rank}'))
             torch.cuda.set_device(torch.device("cuda"))
         else:
             raise ValueError(f"Device {self.device} is not supported yet")

@@ -244,8 +244,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             Union[torch.Tensor, dict]: The intermediate output (dict) of the current stage. If it is the last stage, the output is the loss (Tensor).
         """
         micro_batch = self.load_micro_batch()
-        # for the first stage, input_obj is None
-        # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
         output_obj = model_forward(model, micro_batch, input_obj)
         if self.stage_manager.is_last_stage():
             loss = criterion(output_obj, micro_batch) / self.num_microbatches
@@ -384,7 +382,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             output_obj_grad = self.send_forward_recv_backward(
                 output_obj, send_prior_fallback=self.stage_manager.stage % 2 == 0
             )
-            # Add input_obj and output_obj to end of list.
             input_objs.append(input_obj)
             output_objs.append(output_obj)
 

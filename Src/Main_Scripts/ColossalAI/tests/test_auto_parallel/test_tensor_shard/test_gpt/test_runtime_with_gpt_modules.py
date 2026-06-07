@@ -10,7 +10,6 @@ from torch.fx import GraphModule
 
 from colossalai._analyzer.fx.passes.shape_prop import shape_prop_pass
 
-# from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 
 try:

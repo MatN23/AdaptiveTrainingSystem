@@ -173,7 +173,6 @@ class DPOTrainer(SLTrainer):
             )
             reward_accuracies = (chosen_rewards > rejected_rewards).float().mean()
 
-            # DPO Loss
             loss = losses.mean()
 
             self.booster.backward(loss=loss, optimizer=self.optimizer)
@@ -220,7 +219,6 @@ class DPOTrainer(SLTrainer):
                 self.accumulative_meter.reset()
 
                 if (self.num_train_step + 1) % self.save_interval == 0:
-                    # save checkpoint
                     self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                     save_checkpoint(
                         save_dir=self.save_dir,

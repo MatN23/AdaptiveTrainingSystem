@@ -38,9 +38,7 @@ from .utils import create_randomizer_with_offset
 
 __all__ = ["FusedLinear1D_Col", "FusedLinear1D_Row", "GPT2FusedLinearConv1D_Col", "GPT2FusedLinearConv1D_Row"]
 
-# ====================================
 # For GPT Only
-# ====================================
 
 
 def split_fused_qkv_in_gpt2_style(
@@ -213,7 +211,6 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
 
         # Parameters.
         if weight is None:
-            # Initialize weight.
             factory_kwargs = {"device": device, "dtype": dtype}
             self.weight = Parameter(torch.empty(self.in_features, self.out_features, **factory_kwargs))
         else:
@@ -411,7 +408,6 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
 
         # Parameters.
         if weight is None:
-            # Initialize weight.
             factory_kwargs = {"device": device, "dtype": dtype}
             self.weight = Parameter(torch.empty(self.in_features, self.out_features, **factory_kwargs))
         else:
@@ -422,7 +418,6 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
             sharded_tensor_to_existing_param(sharded_weight, self.weight)
 
         if self.stream_chunk_num > 1:
-            # TODO() work for inference only
             self.chunk_weight()
         if bias:
             if bias_ is None:
@@ -551,9 +546,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
             return output, self.bias
 
 
-# ====================================
 # For Fused torch.nn.Linear
-# ====================================
 
 
 class FusedLinear1D_Col(ParallelModule):
@@ -627,7 +620,6 @@ class FusedLinear1D_Col(ParallelModule):
 
         # Parameters.
         if weight is None:
-            # Initialize weight.
             factory_kwargs = {"device": device, "dtype": dtype}
             self.weight = Parameter(torch.empty(self.out_features, self.in_features, **factory_kwargs))
         else:
@@ -699,17 +691,8 @@ class FusedLinear1D_Col(ParallelModule):
 
         # # TODO: copy the sharded weights
         # with torch.no_grad():
-        #     sharded_weight = split_fused_qkv_in_gpt2_style(module.weight.data,
-        #                                                    n_fused=n_fused,
-        #                                                    process_group=process_group,
-        #                                                    is_transposed=False)
         #     linear_1d.weight.data.copy_(sharded_weight.data)
 
-        #     if bias:
-        #         sharded_bias = split_fused_qkv_in_gpt2_style(module.bias.data,
-        #                                                      n_fused=n_fused,
-        #                                                      process_group=process_group,
-        #                                                      is_transposed=False)
         #         linear_1d.bias.data.copy_(sharded_bias.data)
         return linear_1d
 
@@ -727,7 +710,6 @@ class FusedLinear1D_Col(ParallelModule):
             input_.shape, self.weight.shape, self.weight.shape[-1]
         )
         # Set up backprop all-reduce.
-        # input_parallel = reduce_backward(input_, self.process_group)
         input_parallel = input_
 
         # Matrix multiply.

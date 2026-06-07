@@ -11,7 +11,6 @@ class PreProcessor(nn.Module):
         self.sub_seq_length = sub_seq_length
 
     def bert_position_ids(self, token_ids):
-        # Create position ids
         seq_length = token_ids.size(1)
         local_rank = gpc.get_local_rank(ParallelMode.SEQUENCE)
         position_ids = torch.arange(

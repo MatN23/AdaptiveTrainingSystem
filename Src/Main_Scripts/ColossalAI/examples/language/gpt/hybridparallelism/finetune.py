@@ -19,9 +19,7 @@ from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLev
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
 
-# ==============================
 # Prepare Hyperparameters
-# ==============================
 NUM_EPOCHS = 3
 BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
@@ -156,7 +154,6 @@ def train_epoch(
                 data = move_to_cuda(data)
                 outputs = model(**data)
                 loss = _criterion(outputs, None)
-                # Backward
                 booster.backward(loss, optimizer)
                 pbar.set_postfix({"loss": loss.item()})
 
@@ -166,9 +163,7 @@ def train_epoch(
 
 
 def main():
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--task", default="mrpc", help="GLUE task to run")
     parser.add_argument(
@@ -193,18 +188,13 @@ def main():
         model_name = "gpt2"
     else:
         raise RuntimeError
-    # ==============================
     # Launch Distributed Environment
-    # ==============================
     colossalai.launch_from_torch(config={}, seed=42)
     coordinator = DistCoordinator()
 
-    # local_batch_size = BATCH_SIZE // coordinator.world_size
     lr = LEARNING_RATE * coordinator.world_size
 
-    # ==============================
     # Instantiate Plugin and Booster
-    # ==============================
     booster_kwargs = {}
     if args.plugin == "torch_ddp_fp16":
         booster_kwargs["mixed_precision"] = "fp16"
@@ -229,18 +219,14 @@ def main():
 
     booster = Booster(plugin=plugin, **booster_kwargs)
 
-    # ==============================
     # Prepare Dataloader
-    # ==============================
     data_builder = GLUEDataBuilder(
         model_name, plugin, args.task, train_batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE
     )
     train_dataloader = data_builder.train_dataloader()
     test_dataloader = data_builder.test_dataloader()
 
-    # ====================================
     # Prepare model, optimizer
-    # ====================================
     # gpt2 pretrained model
 
     cfg = AutoConfig.from_pretrained(model_name, num_labels=data_builder.num_labels)
@@ -279,16 +265,12 @@ def main():
         loss = criterion(outputs)
         return loss
 
-    # ==============================
     # Boost with ColossalAI
-    # ==============================
     model, optimizer, _criterion, _, lr_scheduler = booster.boost(
         model, optimizer, criterion=_criterion, lr_scheduler=lr_scheduler
     )
 
-    # ==============================
     # Train model
-    # ==============================
     for epoch in range(NUM_EPOCHS):
         train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, train_dataloader, booster, coordinator)
 

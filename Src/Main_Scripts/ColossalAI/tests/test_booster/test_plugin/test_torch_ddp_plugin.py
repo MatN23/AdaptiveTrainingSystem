@@ -69,7 +69,6 @@ def check_torch_ddp_no_sync():
     model = DummyModel()
     criterion = lambda x: x.mean()
     optimizer = SGD(model.parameters(), lr=1e-3)
-    # create a custom dataset with 0 to 10
     dataset = torch.arange(0, 10)
     train_dataloader = plugin.prepare_dataloader(dataset, batch_size=2)
     model, optimizer, criterion, train_dataloader, _ = booster.boost(
@@ -101,8 +100,6 @@ def check_torch_ddp_no_sync():
         with ctx:
             fwd_bwd()
         grad_set = get_grad_set_over_all_ranks()
-        # for the first batch, all ranks should have different grads
-        # for the second batch, as grad is synchronized,all ranks should have the same grads
         target_num_different_grad = dist.get_world_size() if i == 0 else 1
         assert len(grad_set) == target_num_different_grad
 

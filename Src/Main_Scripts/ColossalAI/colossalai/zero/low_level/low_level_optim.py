@@ -74,7 +74,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         max_scale: int = 2**24,
         clip_grad_norm: float = 0.0,  # grad clipping
         verbose: bool = False,
-        reduce_bucket_size: int = 1024 * 1024,  # communication
+        reduce_bucket_size: int = 1024 * 1024,
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = False,
         partition_grad: bool = False,  # stage 2 flag
@@ -98,12 +98,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # grad accumulation
         self.require_grad_sync = True
 
-        # if process_group is none, will use the default one
         self.dp_pg = dp_process_group
         self._local_rank = dist.get_rank(group=self.dp_pg)
         self._world_size = dist.get_world_size(group=self.dp_pg)
 
-        # extra dp
         # This group is used to sync moe param, dp_world_size = moe_duplicates * extra_dp_size.
         # Non moe param will be sync by global dp pg, moe param will be sync by extra dp pg.
         # Moe param grad is be split as non moe param by global dp pg, and grad will be merged in step.
@@ -135,7 +133,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     param.data = param.data.to(forced_dtype)
             self._dtype = forced_dtype
 
-        # check argument conflict
         self._sanity_checks()
 
         # ParameterStore will manage the tensor buffers used for zero
@@ -164,7 +161,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             continue
                     group_params.append(param)
 
-            # add the working params to working_param_groups for bookkeeping
             self._working_param_groups[group_id] = group_params
 
             master_param_current_rank = self._create_master_param_current_rank(group_params)
@@ -175,18 +171,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             # managed by this data parallel rank
             param_group["params"] = master_param_current_rank
 
-        # if there are moe params, store in addtional group in optim
         if len(self.working_moe_params) > 0:
             self._sync_master_param = False
             param_group = dict()
-            # create fp32 master param
             for key, value in self.optim.param_groups[0].items():
                 if key != "params":
                     param_group[key] = value
             self.master_moe_params = []
             for param in self.working_moe_params:
                 self.master_moe_params.append(param.clone().to(torch.float32).detach())
-            # create mapping from master to working for optimizer io
             self.moe_master_to_working_map = {}
             for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
                 self.moe_master_to_working_map[id(master_moe_param)] = working_moe_param
@@ -194,18 +187,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             param_group["params"] = self.master_moe_params
             self.optim.param_groups.append(param_group)
 
-        # initialize communication stream for
         # communication-computation overlapping
         if self._overlap_communication:
             self._comm_stream = get_accelerator().Stream()
 
         # reduction hook is only used if overlapping communication
         # or stage 2 is used
-        # if it is stage 1 without overlapping, no hook will be attached
         if self._overlap_communication or self._partition_grads:
             self._attach_reduction_hook()
 
-        # initialize mixed precision mixin
         self.mixed_precision_mixin: Optional[MixedPrecisionMixin] = None
         if self._dtype is torch.float16:
             self.mixed_precision_mixin = LowLevelZeroFP16MixedPrecisionMixin(
@@ -275,12 +265,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         return params_current_rank
 
-    ###########################
     # Backward Reduction Hook #
-    ###########################
 
     def _grad_handler(self, group_id, param):
-        # if run with no_sync context, would not sync grad when backward
         if self.require_grad_sync:
             self._add_to_bucket(param, group_id)
 
@@ -293,9 +280,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if param.requires_grad:
                     param.register_post_accumulate_grad_hook(partial(self._grad_handler, group_id))
 
-    #######################
     # Reduction Functions #
-    #######################
 
     def _run_reduction(self):
         if self._bucket_store.num_elements_in_bucket() > 0:
@@ -483,8 +468,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def _add_to_bucket(self, param, group_id):
         param_size = param.numel()
 
-        # check if the bucket is full
-        # if full, will reduce the grads already in the bucket
         # or got a grad of param from another group
         # after reduction, the bucket will be empty
         if (
@@ -496,9 +479,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         padding_size = self._param_store.get_param_padding_size(param)
         self._bucket_store.add_param_grad(group_id, param, padding_size)
 
-    ################################
-    # torch.optim.Optimizer methods
-    ################################
 
     def backward(self, loss, retain_graph=False):
         assert not (
@@ -559,9 +539,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         param.grad.zero_()
         self._bucket_store.reset_all()
 
-    ####################
     # Update Parameter #
-    ####################
 
     def step(self, closure=None):
         assert closure is None, "closure is not supported by step()"
@@ -580,7 +558,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         norm_groups = []
 
         # sometimes not all params are 'really' working
-        # for instance, when layer drop, the dropped layer has no grad
         # and should not be updated
         real_working_params = dict()
         real_master_params = dict()
@@ -591,7 +568,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             real_master_params[group_id] = []
             for splited_param in master_params:
                 working_param = self._param_store.master_to_working_param[id(splited_param)]
-                # if a working param requires grad and has no grad
                 # it is not 'really' working, e.g. the droped layer
                 # else the splited grad should be attached to the splited param
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
@@ -743,9 +719,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         return total_norm
 
-    #############################
     # Mixed Precision Utilities #
-    #############################
 
     def _unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
@@ -762,9 +736,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for grad in grad_groups_flat:
             grad.data.mul_(1.0 / div_scale)
 
-    ############################
     # Gradient Synchronization #
-    ############################
 
     # this method is used to sync gradient manually
     def _sync_grad(self):
@@ -777,7 +749,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._run_reduction()
 
     def _reduce_grad(self, partition_grad):
-        # if not overlapping communication (no reduction hook is attached) when zero1
         # we need to manually reduce these gradients
         if not partition_grad and not self._overlap_communication:
             self._sync_grad()
@@ -794,9 +765,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         finally:
             self.require_grad_sync = old_require_grad_sync
 
-    ##############
-    # State Dict #
-    ##############
 
     def _pack_state(self, state: Dict) -> Dict:
         # comes from pytorch optimizer.state_dict()

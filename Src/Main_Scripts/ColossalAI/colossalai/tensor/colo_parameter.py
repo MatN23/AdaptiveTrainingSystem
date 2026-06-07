@@ -79,16 +79,11 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
 
     def __reduce_ex__(self, proto):
         # Adapted from torch._utils._rebuild_parameter
-        # def _rebuild_colo_parameter(data, requires_grad, backward_hooks):
-        #     colo_param = ColoParameter(data, requires_grad)
         #     colo_param._backward_hooks = backward_hooks
-        #     return colo_param
 
-        # return (
         #     _rebuild_colo_parameter,
         #     (self.data, self.requires_grad, OrderedDict())
         # )
 
-        # TODO(jzy) we don't support object reflection now.
         # distspec cannot be pickled or rebuilt because it's tightly connected to runtime attribute `process_group`.
         raise NotImplementedError

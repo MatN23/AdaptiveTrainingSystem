@@ -39,14 +39,12 @@ def evaluate(model, args, logger, global_step, criterion):
                 batch_data,
             ) in (
                 iterator_data
-            ):  # tqdm(enumerate(dataset_iterator), total=(total_length // args.train_micro_batch_size_per_gpu // world_size), colour='cyan', smoothing=1):
-                # batch_data = pretrain_dataset_provider.get_batch(batch_index)
+            ):
                 eval_step += 1
                 input_ids = batch_data[0].cuda()
                 attention_mask = batch_data[1].cuda()
                 token_type_ids = batch_data[2].cuda()
                 mlm_label = batch_data[3].cuda()
-                # nsp_label = batch_data[5].cuda()
 
                 output = model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 

@@ -4,9 +4,7 @@ from transformers import AutoConfig, AutoModelForCausalLM
 
 from ..registry import ModelAttribute, model_zoo
 
-# ================================
 # Register single-sentence ChatGLM
-# ================================
 
 
 def data_gen():
@@ -24,10 +22,8 @@ def data_gen_for_conditional_generation():
     return data
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
-# define loss function
 loss_fn_for_chatglm_model = lambda x: torch.nn.functional.mse_loss(
     x["last_hidden_state"], torch.ones_like(x["last_hidden_state"])
 )

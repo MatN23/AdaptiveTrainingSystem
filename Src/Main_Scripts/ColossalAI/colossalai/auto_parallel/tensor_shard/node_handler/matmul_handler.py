@@ -97,13 +97,11 @@ class Padder(BmmTransform):
         other_shape = mapping_copy["other"]
 
         if len(input_shape) == 1:
-            # if the input is a 1D tensor, 1 is prepended to its shape
             # and it will be removed afterwards
             input_shape.insert(0, 1)
             self.padded_dim_mapping["input"] = -2
             self.padded_dim_mapping["output"] = -2
         elif len(other_shape) == 1:
-            # if the other is a 1D tensor, 1 is appended to its shape
             # and it will be removed afterwards
             other_shape = other_shape.append(1)
             self.padded_dim_mapping["other"] = -1
@@ -183,7 +181,6 @@ class Broadcaster(BmmTransform):
         self.broadcast_dim_info["input"] = input_broadcast_dim_info
         self.broadcast_dim_info["other"] = other_broadcast_dim_info
 
-        # create the full logical shape
         input_shape = bcast_non_matrix_dims + input_shape[-2:]
         other_shape = bcast_non_matrix_dims + other_shape[-2:]
         assert len(input_shape) == len(other_shape)
@@ -202,13 +199,11 @@ class Broadcaster(BmmTransform):
 
             for dim_idx, broadcast_type in self.broadcast_dim_info[key].items():
                 if broadcast_type == BroadcastType.MULTIPLE:
-                    # if the dim is originally 1 and multiplied during broadcast
                     # we set its sharding to R
                     # e.g. [1, 2, 4] x [4, 4, 8] -> [4, 2, 8]
                     # the dim 0 of [1, 2, 4] is multiplied to 4
                     tensor_shape[dim_idx] = 1
                 elif broadcast_type == BroadcastType.PADDING:
-                    # if the dim is padded
                     # we remove its sharding
                     tensor_shape[dim_idx] = None
 
@@ -290,7 +285,6 @@ class Viewer(BmmTransform):
         # enumerate all sharding strategies
         strategies = []
         for i in range(num_batch_dim_before_view):
-            # create a new strategy
             strategy_copy = strategy.clone()
             try:
                 _update_sharding_spec("input", strategy_copy, i)
@@ -338,7 +332,6 @@ class MatMulHandler(MetaInfoNodeHandler):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        # check which type of operation this matmul will call
         self.input_meta_data = self.node.args[0]._meta_data
         self.other_meta_data = self.node.args[1]._meta_data
         self.output_meta_data = self.node._meta_data
@@ -392,7 +385,6 @@ class MatMulHandler(MetaInfoNodeHandler):
         if output_logical_shape:
             output_logical_shape = torch.Size(output_logical_shape)
 
-        # create op data
         input_op_data = OperationData(
             name=str(self.node.args[0]),
             type=OperationDataType.ARG,
@@ -450,7 +442,6 @@ class MatMulHandler(MetaInfoNodeHandler):
             return strategy
         elif self.matmul_type == MatMulType.MM:
             if self.input_meta_data.dim() == 1:
-                # if a 1 is prepended to the input shape (this occurs when input is a 1D tensor)
                 # we need to remove that dim
                 input_sharding_spec = strategy.get_sharding_spec_by_name(str(self.node.args[0]))
                 input_physical_shape = self.node.args[0]._meta_data.shape

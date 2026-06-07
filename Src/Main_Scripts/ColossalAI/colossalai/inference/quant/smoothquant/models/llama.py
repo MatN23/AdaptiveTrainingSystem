@@ -205,7 +205,6 @@ class LLamaSmoothquantAttention(nn.Module):
 
         else:
             if infer_state.decode_is_contiguous:
-                # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
                     infer_state.decode_mem_start : infer_state.decode_mem_end, :, :
                 ]
@@ -215,7 +214,6 @@ class LLamaSmoothquantAttention(nn.Module):
                 cache_k.copy_(key_states)
                 cache_v.copy_(value_states)
             else:
-                # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head
                 _copy_kv_to_mem_cache(
                     infer_state.decode_layer_id,
@@ -419,7 +417,7 @@ class LlamaApplyRotary(nn.Module):
 
     def forward(self, x, cos, sin, position_ids):
         # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
-        cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
+        cos = cos.squeeze(1).squeeze(0)
         sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
         cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
         sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
@@ -746,7 +744,6 @@ class SmoothLlamaForCausalLM(BaseSmoothForCausalLM):
 
         llama_model.eval()
         device = next(llama_model.parameters()).device
-        # print("model:", llama_model)
         act_dict = defaultdict(dict)
 
         def stat_io_hook(m, x, y, name):

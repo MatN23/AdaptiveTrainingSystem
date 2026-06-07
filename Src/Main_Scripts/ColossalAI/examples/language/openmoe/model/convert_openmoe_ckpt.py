@@ -1,12 +1,8 @@
-# coding=utf-8
 # Copyright 2022 Google LLC and HuggingFace Inc. team.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -139,7 +135,6 @@ def convert_t5x_to_pytorch(variables: dict, *, num_layers: int, moe_interval: in
             new[f"model.layers.{i}.mlp.experts.wi_gate"] = wi[0]
             new[f"model.layers.{i}.mlp.experts.wi_up"] = wi[1]
             new[f"model.layers.{i}.mlp.experts.wo"] = wo
-            # extra
             layer_norm = t5x_layer_norm_lookup(old, i, "decoder", "pre_extra_mlp_layer_norm")
             new[f"model.layers.{i}.pre_extra_mlp_layernorm.weight"] = layer_norm
             wi, wo = t5x_extra_mlp_lookup(old, i, "decoder", split_mlp_wi)
@@ -188,10 +183,8 @@ def convert_t5x_checkpoint_to_pytorch(t5x_checkpoint_path, config_file, pytorch_
     # The v1.0 checkpoints will simply have an LM head that is the word embeddings.
     model = OpenMoeForCausalLM(config)
 
-    # Load weights from tf checkpoint
     load_t5x_weights_in_t5(model, config, t5x_checkpoint_path)
 
-    # Save pytorch-model
     print(f"Save PyTorch model to {pytorch_dump_path}")
     model.save_pretrained(pytorch_dump_path)
 

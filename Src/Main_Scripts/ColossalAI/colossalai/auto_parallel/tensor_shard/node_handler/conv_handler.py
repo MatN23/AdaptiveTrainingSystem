@@ -85,7 +85,6 @@ class ConvFunctionHandler(MetaInfoNodeHandler):
             name=str(self.node.args[0]), type=OperationDataType.ARG, data=self.node.args[0]._meta_data
         )
 
-        # check if the other operand is a parameter
         if isinstance(self.node.args[1]._meta_data, torch.nn.parameter.Parameter):
             data_type = OperationDataType.PARAM
         else:
@@ -107,7 +106,6 @@ class ConvFunctionHandler(MetaInfoNodeHandler):
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
         if "bias" in self.node.kwargs and self.node.kwargs["bias"] is not None:
-            # check if the other operand is a parameter
             if isinstance(self.node.kwargs["bias"]._meta_data, torch.nn.parameter.Parameter):
                 data_type = OperationDataType.PARAM
             else:

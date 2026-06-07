@@ -24,7 +24,6 @@ class PermuteHandler(NodeHandler):
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
-        # check if the input operand is a parameter
         if isinstance(self.node.args[0]._meta_data, torch.nn.parameter.Parameter):
             data_type = OperationDataType.PARAM
         else:
@@ -35,7 +34,6 @@ class PermuteHandler(NodeHandler):
 
         permute_dims = []
         if self.node.op == "call_method":
-            # torch.Tensor.permute (input, *dims)
             for arg in self.node.args:
                 if isinstance(arg, torch.fx.Node):
                     if isinstance(arg._meta_data, int):
@@ -44,7 +42,6 @@ class PermuteHandler(NodeHandler):
                     assert isinstance(arg, int), "The argument in permute node should be either type of Node or int."
                     permute_dims.append(arg)
         else:
-            # torch.permute (input, dims)
             for arg in self.node.args:
                 if isinstance(arg, torch.fx.Node):
                     if isinstance(arg._meta_data, (tuple, list)):

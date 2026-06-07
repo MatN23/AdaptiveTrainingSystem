@@ -24,7 +24,6 @@ def test_gradient_clip():
     print(f"Device: {torch.cuda.get_device_name(0)}")
     print()
     
-    # Import after CUDA check
     try:
         from training.cuda_kernels import FusedGradClip
     except ImportError as e:
@@ -41,14 +40,11 @@ def test_gradient_clip():
     
     all_passed = True
     
-    # ==========================================================================
     # TEST 1: Basic Norm Computation (Known Values)
-    # ==========================================================================
     print("\n" + "-" * 60)
     print("TEST 1: Basic Norm Computation (Known Values)")
     print("-" * 60)
     
-    # Create tensor with known gradient: all 1s
     size = 10000
     param = torch.nn.Parameter(torch.zeros(size, device='cuda'))
     param.grad = torch.ones(size, device='cuda')
@@ -77,9 +73,7 @@ def test_gradient_clip():
         print("   TEST 1 FAILED - Norm mismatch!")
         all_passed = False
     
-    # ==========================================================================
     # TEST 2: Large Scale (Many Small Values)
-    # ==========================================================================
     print("\n" + "-" * 60)
     print("TEST 2: Large Scale Accumulation (10M elements)")
     print("-" * 60)
@@ -110,14 +104,11 @@ def test_gradient_clip():
         print("   TEST 2 FAILED - Accumulation error!")
         all_passed = False
     
-    # ==========================================================================
     # TEST 3: Multiple Tensors (Simulating Real Model)
-    # ==========================================================================
     print("\n" + "-" * 60)
     print("TEST 3: Multiple Tensors (Simulating Real Model)")
     print("-" * 60)
     
-    # Create 50 tensors of varying sizes
     params = []
     total_elements = 0
     for i in range(50):
@@ -150,9 +141,7 @@ def test_gradient_clip():
         print("   TEST 3 FAILED - Multi-tensor issue!")
         all_passed = False
     
-    # ==========================================================================
     # TEST 4: Clipping Actually Works
-    # ==========================================================================
     print("\n" + "-" * 60)
     print("TEST 4: Clipping Application")
     print("-" * 60)
@@ -183,9 +172,7 @@ def test_gradient_clip():
         print("   TEST 4 FAILED - Clipping not applied correctly!")
         all_passed = False
     
-    # ==========================================================================
     # SUMMARY
-    # ==========================================================================
     print("\n" + "=" * 80)
     if all_passed:
         print(" ALL TESTS PASSED! Gradient clipping is working correctly.")

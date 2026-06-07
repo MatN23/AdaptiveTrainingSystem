@@ -136,7 +136,6 @@ def evaluate_model(
 def main():
     args = parse_demo_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
@@ -160,7 +159,6 @@ def main():
     eval_dataset = BeansDataset(image_processor, args.tp_size, split="validation")
     num_labels = train_dataset.num_labels
 
-    # Load pretrained ViT model
     config = ViTConfig.from_pretrained(args.model_name_or_path)
     config.num_labels = num_labels
     config.id2label = {str(i): c for i, c in enumerate(train_dataset.label_names)}
@@ -198,7 +196,6 @@ def main():
         raise ValueError(f"Plugin with name {args.plugin} is not supported!")
     logger.info(f"Set plugin as {args.plugin}", ranks=[0])
 
-    # Prepare dataloader
     train_dataloader = plugin.prepare_dataloader(
         train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=beans_collator
     )
@@ -206,7 +203,6 @@ def main():
         eval_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=beans_collator
     )
 
-    # Set optimizer
     optimizer = HybridAdam(model.parameters(), lr=(args.learning_rate * world_size), weight_decay=args.weight_decay)
 
     # Set criterion (loss function)
@@ -220,20 +216,17 @@ def main():
         optimizer=optimizer, total_steps=(len(train_dataloader) * args.num_epoch), warmup_steps=num_warmup_steps
     )
 
-    # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
         model=model, optimizer=optimizer, criterion=criterion, dataloader=train_dataloader, lr_scheduler=lr_scheduler
     )
 
-    # Finetuning
     logger.info(f"Start finetuning", ranks=[0])
     for epoch in range(args.num_epoch):
         train_epoch(epoch, model, optimizer, criterion, lr_scheduler, train_dataloader, booster, coordinator)
         evaluate_model(epoch, model, criterion, eval_dataloader, booster, coordinator)
     logger.info(f"Finish finetuning", ranks=[0])
 
-    # Save the finetuned model
     booster.save_model(model, args.output_path, shard=True)
     logger.info(f"Saving model checkpoint to {args.output_path}", ranks=[0])
 

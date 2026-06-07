@@ -25,9 +25,7 @@ class PlaceholderModel(nn.Module):
 def test_placeholder_handler(placeholder_option):
     model = PlaceholderModel()
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
-    #     return input_1
     meta_args = {
         "input": torch.rand(4, 4, 64, 64).to("meta"),
     }
@@ -50,7 +48,6 @@ def test_placeholder_handler(placeholder_option):
 
     placeholder_handler.register_strategy(compute_resharding_cost=False)
 
-    # check operation data mapping
     mapping = placeholder_handler.get_operation_data_mapping()
 
     strategy = placeholder_strategies_vector[0]

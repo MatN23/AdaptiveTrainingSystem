@@ -2,7 +2,6 @@ from typing import List
 
 import torch
 
-# from colossalai.fx import symbolic_trace
 from colossalai._analyzer.fx import symbolic_trace
 
 
@@ -27,7 +26,6 @@ def trace_model_and_compare_output(model, data_gen, ignore_data: List[str] = Non
     non_fx_out = model(**inputs)
     fx_out = gm(**inputs)
 
-    # check output
     for k in non_fx_out.keys():
         if torch.is_tensor(fx_out[k]):
             assert torch.equal(

@@ -16,7 +16,7 @@ from tests.kit.model_zoo import model_zoo, run_fwd
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
+    {"placement_policy": "static", "shard_param_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
     {"placement_policy": "auto"},
 ]
@@ -124,7 +124,6 @@ def exam_gemini_grad_acc(
             gemini_optim.step()
             torch_optim.zero_grad()
 
-            # check updated param
             torch_dict = torch_model.state_dict()
             gemini_dict = gemini_model.state_dict(only_rank_0=False)
 

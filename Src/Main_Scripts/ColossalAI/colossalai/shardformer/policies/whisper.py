@@ -235,7 +235,6 @@ class WhisperPolicy(Policy):
             target_key=WhisperDecoder,
         )
 
-        # enable flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
@@ -345,7 +344,6 @@ class WhisperPolicy(Policy):
             return stage_manager.distribute_layers(num_encoder_layers, num_stages), num_stages
 
         # the number of stages distributed between encoder and decoder is optimized in this way:
-        # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
         #                   s.t. num_encoder_stages + num_decoder_stages = num_stages, num_encoder_stages >= 1, num_decoder_stages >= 1
         def objective(num_encoder_stages):
             return abs(num_encoder_layers / num_encoder_stages - num_decoder_layers / (num_stages - num_encoder_stages))
@@ -471,7 +469,6 @@ class WhisperPolicy(Policy):
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
 
-# WhisperModel
 class WhisperModelPolicy(WhisperPolicy):
     def module_policy(self):
         from transformers import WhisperModel
@@ -495,7 +492,6 @@ class WhisperModelPolicy(WhisperPolicy):
         return []
 
 
-# WhisperForConditionalGeneration
 class WhisperForConditionalGenerationPolicy(WhisperPolicy):
     def module_policy(self):
         from transformers import WhisperForConditionalGeneration
@@ -553,7 +549,6 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
         return []
 
 
-# WhisperForAudioClassification
 class WhisperForAudioClassificationPolicy(WhisperPolicy):
     def module_policy(self):
         from transformers import WhisperForAudioClassification

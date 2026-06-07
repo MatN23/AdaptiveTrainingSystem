@@ -61,7 +61,6 @@ class LoraLinear(lora.LoRALayer, nn.Module):
 
     def reset_parameters(self):
         if hasattr(self, "lora_A"):
-            # Initialize A with the default values for nn.Linear and set B to zero.
             nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
             nn.init.zeros_(self.lora_B)
 
@@ -81,7 +80,6 @@ class LoraLinear(lora.LoRALayer, nn.Module):
                 # Make sure that the weights are not merged
                 if self.r > 0:
                     if not hasattr(self, "lora_A") or not hasattr(self, "lora_B"):
-                        # FIXME(csric): temporary fix
                         self.lora_A = nn.Parameter(self.weight.new_empty((self.r, self.in_features)))
                         self.lora_B = nn.Parameter(self.weight.new_empty((self.out_features, self.r)))
                         self.reset_parameters()

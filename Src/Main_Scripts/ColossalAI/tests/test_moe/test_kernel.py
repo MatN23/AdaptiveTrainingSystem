@@ -50,7 +50,6 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     grad = torch.randn(ech, device=get_accelerator().get_current_device())
     old_out.backward(grad)  # get gradient
 
-    # save all results
     o_tk_grad = tokens.grad.data.clone()
     o_gt_grad = layer.gate_weight.grad.data.clone()
 

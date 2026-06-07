@@ -1,5 +1,4 @@
 # Src/Main_Scripts/security/auth.py
-# Copyright (c) 2025 Matias Nielsen. All rights reserved.
 # Licensed under the Custom License below.
 
 import hashlib
@@ -79,7 +78,6 @@ class SecurityManager:
             logging.warning(f"Attempt to create duplicate user: {username}")
             return False
         
-        # Create user
         salt = self._generate_salt()
         password_hash = self._hash_password(password, salt)
         
@@ -137,7 +135,6 @@ class SecurityManager:
         user.failed_login_attempts = 0
         user.last_login = datetime.now()
         
-        # Generate session token
         session_token = self._generate_session_token(user)
         user.session_token = session_token
         
@@ -168,7 +165,6 @@ class SecurityManager:
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=['HS256'])
             
-            # Check if session exists
             if token not in self.active_sessions:
                 return None
             
@@ -245,7 +241,6 @@ class SecurityManager:
         # Clean old entries
         self.rate_limits[key] = [t for t in self.rate_limits[key] if now - t < window]
         
-        # Check limit
         if len(self.rate_limits[key]) >= limit:
             return False
         

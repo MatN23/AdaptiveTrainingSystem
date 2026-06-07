@@ -90,7 +90,6 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
     )
 
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %m1 : torch.Tensor [#users=1] = placeholder[target=m1]
     #     %m2 : torch.Tensor [#users=1] = placeholder[target=m2]
@@ -99,7 +98,6 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%input_1, 3), kwargs = {})
     #     %mul_1 : [#users=1] = call_function[target=operator.mul](args = (2, %linear), kwargs = {})
     #     %add : [#users=1] = call_function[target=operator.add](args = (%mul_1, %mul), kwargs = {})
-    #     return add
     graph = tracer.trace(model, meta_args=meta_args_for_tracer)
     gm = ColoGraphModule(model, graph)
     shape_prop_pass(gm, *meta_args_for_tracer.values())
@@ -114,7 +112,6 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
     handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     assert mapping["input"].name == "m1"
@@ -134,36 +131,27 @@ def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls)
     assert mapping["output"].data.shape == torch.Size([4, 16])
     assert mapping["output"].type == OperationDataType.OUTPUT
 
-    # SS = SR x RS
     assert "S0S1 = S0R x RS1_0" in strategy_name_list
     assert "S1S0 = S1R x RS0_0" in strategy_name_list
 
-    # SR = SS x SR
     assert "S0R = S0S1 x S1R_0" in strategy_name_list
     assert "S1R = S1S0 x S0R_0" in strategy_name_list
 
-    # RS = RS x SS
     assert "RS0 = RS1 x S1S0" in strategy_name_list
     assert "RS1 = RS0 x S0S1" in strategy_name_list
 
-    # RR = RS x SR
     assert "RR = RS0 x S0R" in strategy_name_list
     assert "RR = RS1 x S1R" in strategy_name_list
 
-    # RS= RR x RS
     assert "RS0 = RR x RS0" in strategy_name_list
     assert "RS1 = RR x RS1" in strategy_name_list
 
-    # S01R = S01R x RR
     assert "S01R = S01R x RR_0" in strategy_name_list
 
-    # RR = RS01 x S01R
     assert "RR = RS01 x S01R" in strategy_name_list
 
-    # RS01 = RR x RS01
     assert "RS01 = RR x RS01" in strategy_name_list
 
-    # RR = RR x RR
     assert "RR = RR x RR" in strategy_name_list
 
     for strategy in strategies_vector:

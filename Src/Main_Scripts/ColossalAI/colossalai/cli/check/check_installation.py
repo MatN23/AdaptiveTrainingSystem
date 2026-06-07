@@ -33,14 +33,12 @@ def check_installation():
     torch_version, torch_cuda_version = _check_torch_version()
     colossalai_version, prebuilt_torch_version_required, prebuilt_cuda_version_required = _parse_colossalai_version()
 
-    # if cuda_version is None, that means either
     # CUDA_HOME is not found, thus cannot compare the version compatibility
     if not cuda_version:
         sys_torch_cuda_compatibility = None
     else:
         sys_torch_cuda_compatibility = _is_compatible([cuda_version, torch_cuda_version])
 
-    # if cuda_version or cuda_version_required is None, that means either
     # CUDA_HOME is not found or AOT compilation is not enabled
     # thus, there is no need to compare the version compatibility at all
     if not cuda_version or not prebuilt_cuda_version_required:
@@ -48,7 +46,6 @@ def check_installation():
     else:
         sys_colossalai_cuda_compatibility = _is_compatible([cuda_version, prebuilt_cuda_version_required])
 
-    # if torch_version_required is None, that means AOT compilation is not enabled
     # thus there is no need to compare the versions
     if prebuilt_torch_version_required is None:
         torch_compatibility = None
@@ -170,7 +167,6 @@ def _check_torch_version():
         torch_version: PyTorch version.
         torch_cuda_version: CUDA version required by PyTorch.
     """
-    # get torch version
     # torch version can be of two formats
     # - 1.13.1+cu113
     # - 1.13.1.devxxx

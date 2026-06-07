@@ -1,13 +1,9 @@
 #!/usr/bin/env python
-# coding=utf-8
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -316,10 +312,8 @@ def main():
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
     # (the dataset will be downloaded automatically from the datasets Hub).
-    #
     # For CSV/JSON files, this script will use the column called 'text' or the first column if no column called
     # 'text' is found. You can easily tweak this behavior (see below).
-    #
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
     logger.info("Start preparing dataset", ranks=[0])
@@ -369,8 +363,6 @@ def main():
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
-    # Load pretrained model and tokenizer
-    #
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
     if args.config_name:
@@ -495,7 +487,6 @@ def main():
             )
         block_size = min(args.block_size, tokenizer.model_max_length)
 
-    # Main data processing function that will concatenate all texts from our dataset and generate chunks of block_size.
     def group_texts(examples):
         # Concatenate all texts.
         concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
@@ -514,9 +505,7 @@ def main():
 
     if not args.synthetic:
         # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a remainder
-        # for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value might be slower
         # to preprocess.
-        #
         # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
         # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
 
@@ -533,7 +522,6 @@ def main():
         eval_dataset = lm_datasets["validation"]
 
         # Log a few random samples from the training set:
-        # for index in random.sample(range(len(train_dataset)), 3):
         #     logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
         # DataLoaders creation:
@@ -662,8 +650,6 @@ def main():
         if is_main_process:
             torch.save(model_state, args.output_dir + "/epoch_{}_model.pth".format(completed_steps))
         dist.barrier()
-        # load_state = torch.load(args.output_dir + '/epoch_{}_model.pth'.format(completed_steps))
-        # model.load_state_dict(load_state, strict=False)
 
     logger.info("Training finished", ranks=[0])
 

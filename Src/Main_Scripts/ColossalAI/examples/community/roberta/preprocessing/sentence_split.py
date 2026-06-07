@@ -78,8 +78,6 @@ def get_sent(output_path, input_path, fin_list=[], host=-1, seq_len=512) -> None
                     f.write(i.strip() + "\n")
                 f.write("]]" + "\n")
                 cnt += 1
-                # if cnt >= 2:
-                #     exit()
 
 
 def getFileSize(filepath, shard):
@@ -140,14 +138,7 @@ if __name__ == "__main__":
         get_sent(output_path, input_path, fin_list=shard, host=index, seq_len=seq_len)
     print(f"cost {str(time.time() - start)}")
 
-    # if you have multiple server, you can use code below or modify code to openmpi
 
-    # for i in range(len(real_shard) // server_num + 1):
     #     fin_list, host = get_start_end(real_shard, i)
 
-    #     start = time.time()
-    #     get_sent(output_path,
     #             input_path,
-    #             fin_list=fin_list, host= 10 * i + host - 1)
-
-    #     print(f'cost {str(time.time() - start)}')

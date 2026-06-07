@@ -27,7 +27,6 @@ if __name__ == "__main__":
     if not os.path.exists(args.sql_file_path):
         os.makedirs(args.sql_file_path)
 
-    # Setup openai key
     # Set env var OPENAI_API_KEY or load from a file
     openai_key = open(args.open_ai_key_path).read()
     os.environ["OPENAI_API_KEY"] = openai_key
@@ -40,10 +39,8 @@ if __name__ == "__main__":
         model_name="moka-ai/m3e-base", model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": False}
     )
 
-    # Define memory with summarization ability
     memory = ConversationBufferWithSummary(llm=llm)
 
-    # Load data to vector store
     print("Select files for constructing retriever")
     documents = []
     while True:
@@ -53,11 +50,9 @@ if __name__ == "__main__":
         data_name = input("Enter a short description of the data:")
         retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
-        # Split
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=0)
         splits = text_splitter.split_documents(retriever_data)
         documents.extend(splits)
-    # Create retriever
     information_retriever.add_documents(docs=documents, cleanup="incremental", mode="by_source", embedding=embedding)
 
     prompt_template = """Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.

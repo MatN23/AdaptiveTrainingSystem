@@ -32,7 +32,6 @@ def train_gpt(args):
     model_type = args.model_type
     batch_size = args.batch_size
 
-    # build model
     model_builder, data_gen = get_gpt2_components(model_type=model_type, batch_size=batch_size)
     label = torch.randint(
         low=0,

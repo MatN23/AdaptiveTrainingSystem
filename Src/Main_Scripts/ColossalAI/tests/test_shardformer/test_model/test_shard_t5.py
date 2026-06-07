@@ -37,13 +37,11 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
 
-    # unwrap model
     t5 = unwrap_model(org_model)
     sharded_t5 = unwrap_model(sharded_model)
 
     row_layer_for_check = ["shared", "encoder.block[0].layer[0].SelfAttention.q"]
 
-    # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
     if test_config["precision"] == "fp32":
         atol, rtol = 1e-5, 1e-3
@@ -59,7 +57,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
 
-    # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
@@ -71,7 +68,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    # check weights
     if test_config["precision"] == "fp32":
         # TODO he precision in weight checking is too significant.
         atol, rtol = 1e-3, 1e-3
@@ -89,7 +85,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             verbose=False,
         )
 
-    # check grads
     check_all_grad_tensors(grads_to_check)
 
     torch.cuda.empty_cache()

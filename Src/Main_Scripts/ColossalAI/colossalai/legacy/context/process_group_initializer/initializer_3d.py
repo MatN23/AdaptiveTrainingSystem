@@ -13,7 +13,6 @@ from .process_group_initializer import ProcessGroupInitializer
 
 
 def _check_depth_env_var(depth):
-    # check global variable
     env_depth = env.depth_3d
 
     if env_depth:

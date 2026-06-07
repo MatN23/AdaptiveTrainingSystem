@@ -92,7 +92,6 @@ class PipelineScheduleV2(PipelineSchedule):
         # Input, output tensors only need to be saved when doing backward passes
         input_objs = None
         output_objs = None
-        # local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
         if not forward_only:
             input_objs = []
@@ -141,7 +140,6 @@ class PipelineScheduleV2(PipelineSchedule):
                 comm.send_forward(output_obj)
                 output_obj_grad = comm.recv_backward()
 
-                # Add input_obj and output_obj to end of list.
                 input_objs.append(input_obj)
                 output_objs.append(output_obj)
 

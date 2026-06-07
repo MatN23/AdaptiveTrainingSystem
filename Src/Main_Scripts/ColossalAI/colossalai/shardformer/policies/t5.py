@@ -209,7 +209,6 @@ class T5BasePolicy(Policy):
             target_key=T5Stack,
         )
 
-        # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
@@ -275,7 +274,6 @@ class T5BasePolicy(Policy):
             return stage_manager.distribute_layers(num_encoder_layers, num_stages), num_stages
 
         # the number of stages distributed between encoder and decoder is optimized in this way:
-        # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
         #                   s.t. num_encoder_stages + num_decoder_stages = num_stages, num_encoder_stages >= 1, num_decoder_stages >= 1
         def objective(num_encoder_stages):
             return abs(num_encoder_layers / num_encoder_stages - num_decoder_layers / (num_stages - num_encoder_stages))

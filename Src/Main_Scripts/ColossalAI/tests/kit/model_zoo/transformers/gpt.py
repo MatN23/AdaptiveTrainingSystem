@@ -5,21 +5,11 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-sentence GPT
-# ===============================
 
 
 def data_gen():
     # Generated from following code snippet
-    #
-    # from transformers import GPT2Tokenizer
-    # input = 'Hello, my dog is cute is cute' (last two words repeated to satisfy length requirement)
-    # tokenized_input = tokenizer(input, return_tensors='pt')
-    # input_ids = tokenized_input['input_ids']
-    # attention_mask = tokenized_input['attention_mask']
-    # input_ids = torch.tensor([[15496, 11, 616, 3290, 318, 13779, 318, 13779]], dtype=torch.int64)
-    # attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     input_ids = torch.tensor(
         [
             [15496, 11, 616, 3290, 318, 13779, 318, 13779, 15496, 11, 616, 3290, 318, 13779, 318, 13779],
@@ -39,7 +29,6 @@ def data_gen():
 
 
 def data_gen_for_lm():
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
     data["labels"] = data["input_ids"].clone()
@@ -109,10 +98,8 @@ def date_gen_for_double_heads():
     return inputs
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
-# define loss function
 loss_fn_for_gpt2_model = lambda x: torch.nn.functional.mse_loss(
     x["last_hidden_state"], torch.ones_like(x["last_hidden_state"])
 )

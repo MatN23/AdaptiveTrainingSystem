@@ -58,9 +58,7 @@ class CheckpointIO(ABC):
         >>> checkpoint_io.save_optimizer(optimizer, 'optimizer.pt')
     """
 
-    # ======================================
     # Public methods
-    # ======================================
     def load_model(
         self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True
     ) -> Union[nn.Module, ModelWrapper]:
@@ -84,7 +82,6 @@ class CheckpointIO(ABC):
         # the existence of index file means it is a sharded checkpoint
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
-        # return the origin model instead of the unwrapped model
         origin_model = model
 
         if index_file_exists:
@@ -159,7 +156,6 @@ class CheckpointIO(ABC):
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
         if Path(checkpoint).is_dir() and not index_file_exists:
-            # if the checkpoint is a directory and there is no index file, raise error
             raise ValueError(f"Cannot find index file in {checkpoint}")
 
         if index_file_exists:
@@ -198,9 +194,7 @@ class CheckpointIO(ABC):
         else:
             self.save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
 
-    # ========================================================
     # Abstract methods for model loading/saving implementation
-    # ========================================================
     @abstractmethod
     def load_sharded_model(self, model: nn.Module, index_file_path: str, strict: bool):
         """
@@ -259,9 +253,7 @@ class CheckpointIO(ABC):
             use_safetensors (bool): whether to use safe tensors.
         """
 
-    # ========================================================
     # Abstract methods for optimizer loading/saving implementation
-    # ========================================================
 
     @abstractmethod
     def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
@@ -310,11 +302,9 @@ class CheckpointIO(ABC):
             gather_dtensor (bool): whether to gather the distributed tensor to the first device.
         """
 
-    # ============================================
     # methods for loading and saving lr scheduler
     # as this is quite standard, there is no need
     # to make them abstract
-    # ============================================
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
         Save lr scheduler to checkpoint.

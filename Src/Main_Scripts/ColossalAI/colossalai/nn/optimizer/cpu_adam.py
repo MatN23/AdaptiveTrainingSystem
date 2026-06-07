@@ -78,7 +78,6 @@ class CPUAdam(NVMeOptimizer):
         super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
         cpu_adam = CPUAdamLoader().load()
-        # if you find yourself stuck here, make sure that you install colossalai with BUILD_EXT=1 specification
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
     def torch_adam_update(
@@ -108,7 +107,6 @@ class CPUAdam(NVMeOptimizer):
         exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
         exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
-        # TODO(jiaruifang) dose not support amsgrad
         denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(eps)
 
         step_size = lr / bias_correction1

@@ -11,7 +11,7 @@ from tests.kit.model_zoo import model_zoo
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
+    {"placement_policy": "static", "shard_param_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
     {"placement_policy": "auto"},
 ]
@@ -55,7 +55,6 @@ def exam_state_dict(placement_config, keep_gathered, model_name: str, master_wei
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         assert_close(value, temp_zero_value, rtol=1e-3, atol=1e-5)
 
-    # check load state dict
     model.load_state_dict(torch_dict, strict=False)
     zero_dict = model.state_dict(only_rank_0=False)
 
@@ -64,7 +63,6 @@ def exam_state_dict(placement_config, keep_gathered, model_name: str, master_wei
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         assert_close(value, temp_zero_value, rtol=1e-3, atol=1e-5)
 
-    # check state dict shard
     accumulated_keys = set()
     # ensure number of shards > 1
     for shard, _ in model.state_dict_shard(max_shard_size=(model_size / 3), only_rank_0=False):

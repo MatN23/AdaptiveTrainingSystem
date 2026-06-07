@@ -75,12 +75,10 @@ def check_split_handler(rank, world_size, port, split_size, split_dim, model_cls
     )
     tracer = ColoTracer(bias_addition_split=True)
     if model_cls.__name__ == "ConvSplitModel":
-        # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
         #     %conv2d : [#users=1] = call_function[target=torch.conv2d](args = (%input_1, %other), kwargs = {})
         #     %split : [#users=1] = call_method[target=split](args = (%conv2d,), kwargs = {})
-        #     return split
         meta_args = {
             "input": torch.rand(8, 8, 66, 66).to("meta"),
             "other": torch.rand(16, 8, 3, 3).to("meta"),
@@ -88,12 +86,10 @@ def check_split_handler(rank, world_size, port, split_size, split_dim, model_cls
         graph = tracer.trace(model, meta_args=meta_args)
 
     if model_cls.__name__ == "LinearSplitModel":
-        # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
         #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%input_1, %other), kwargs = {bias: None})
         #     %split : [#users=1] = call_method[target=split](args = (%linear,), kwargs = {})
-        #     return split
         meta_args = {
             "input": torch.rand(8, 16, 64, 32).to("meta"),
             "other": torch.rand(64, 32).to("meta"),
@@ -128,7 +124,6 @@ def check_split_handler(rank, world_size, port, split_size, split_dim, model_cls
 
     split_handler.register_strategy(compute_resharding_cost=False)
 
-    # check operation data mapping
     mapping = split_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

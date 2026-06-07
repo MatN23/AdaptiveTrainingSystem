@@ -86,7 +86,6 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
-        # fwd_cost = input + other + bias + output
         fwd_activation_cost = sum(
             [v for k, v in forward_size_mapping.items() if not self.is_param(k) and not self.is_buffer(k)]
         )
@@ -95,7 +94,6 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost, buffer=fwd_buffer_cost)
 
         # compute bwd cost incurred
-        # bwd_cost = input_grad + other_grad + bias_grad
         bwd_activation_cost = sum(
             [v for k, v in backward_size_mapping.items() if not self.is_param(k) and not self.is_buffer(k)]
         )
@@ -199,7 +197,6 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         # For SyncBN case, we don't need to do communication for weight and bias.
         # TODO: the communication happens internally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
@@ -236,7 +233,6 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
         # TODO: the communication happens internally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
@@ -287,7 +283,6 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
         # TODO: the communication happens internally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
@@ -314,14 +309,11 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         """
 
         strategy_list = []
-        # RS = RS x S
         strategy_list.append(self.split_input_channel(0))
         strategy_list.append(self.split_input_channel(1))
 
-        # RR = RR x R
         strategy_list.append(self.non_split())
 
-        # RS01 = RS01 x S01
         strategy_list.append(self.split_input_channel_1d(0, 1))
 
         # The strategies with SYNC_BN are temporarily commented,
@@ -330,15 +322,12 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         # TODO: The strategies below should be uncommented after runtime
         # passes ready.
-        # SR = SR x R WITH SYNC_BN
         strategy_list.append(self.split_input_batch(0))
         strategy_list.append(self.split_input_batch(1))
 
-        # SS = SS x S WITH SYNC_BN
         strategy_list.append(self.split_input_both_dim(0, 1))
         strategy_list.append(self.split_input_both_dim(1, 0))
 
-        # S01R = S01R x R WITH SYNC_BN
         strategy_list.append(self.split_input_batch_1d(0, 1))
 
         return strategy_list

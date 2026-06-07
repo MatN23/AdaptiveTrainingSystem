@@ -144,7 +144,6 @@ class LoadBalancer:
                         new_data = deepcopy(data)
                         # calculate origin group sum
                         origin_diff = origin_diff_list[group_num_i] + origin_diff_list[group_num_j]
-                        # swap data
                         self._swap_data(
                             new_data,
                             group_num_i,
@@ -160,7 +159,6 @@ class LoadBalancer:
                         new_score = origin_diff - new_diff
                         if new_score > 0:
                             new_score = origin_score + new_score
-                            # get swap loss
                             swap_loss = self._get_swap_loss(
                                 group_swap_factor,
                                 swap_list,
@@ -173,7 +171,6 @@ class LoadBalancer:
                             # update swap list
                             new_swap_list = swap_list + [(group_num_i, group_size_i, group_num_j, group_size_j)]
                             results.append((new_data, new_score, new_swap_list))
-        # sort results
         results.sort(key=lambda x: x[1], reverse=True)
         # select top k results
         results = results[:beam_width]
@@ -347,7 +344,6 @@ class LoadBalancer:
         master_gate_weight = optim._param_store.working_to_master_param[id(self.gate)]
         gate_exp_avg = optim.optim.state[master_gate_weight]["exp_avg"]
         gate_exp_avg_sq = optim.optim.state[master_gate_weight]["exp_avg_sq"]
-        # gather
         global_master_gate_weight = self._gather_global_dp_group(master_gate_weight).view(gate_shape)
         global_gate_exp_avg = self._gather_global_dp_group(gate_exp_avg).view(gate_shape)
         global_gate_exp_avg_sq = self._gather_global_dp_group(gate_exp_avg_sq).view(gate_shape)
@@ -429,7 +425,6 @@ class LoadBalancer:
         # prepare load
         load = self._sync_load()
         load = self._load_to_list(load)
-        # search balance
         swap_list = self._search_balance(load)
         if dist.get_rank() == 0:
             if len(swap_list) > 0:
@@ -438,5 +433,4 @@ class LoadBalancer:
                 print(f"[Load Balance] Invalid swap, skip...")
         # swap expert and gate
         self._swap_moe_param(swap_list, optim)
-        # clear load
         self._clear_load()

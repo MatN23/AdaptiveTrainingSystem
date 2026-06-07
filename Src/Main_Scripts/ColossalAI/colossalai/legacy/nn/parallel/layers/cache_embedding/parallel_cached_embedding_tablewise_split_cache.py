@@ -99,17 +99,14 @@ class ParallelCachedEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
                     else:
                         indices_end_position = offsets[batch_size * (handle_table + 1)]
                 with record_function("part 2"):
-                    # local_indices = indices[indices_start_position:indices_end_position] - self.global_tables_offsets[handle_table]
                     local_indices = indices.narrow(
                         0, indices_start_position, indices_end_position - indices_start_position
                     ).sub(self.global_tables_offsets[handle_table])
                     if self.include_last_offset:
-                        # local_offsets = offsets[batch_size * handle_table:batch_size * (handle_table + 1) + 1] - offsets[batch_size * (handle_table)]
                         local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size + 1).sub(
                             offsets[batch_size * (handle_table)]
                         )
                     else:
-                        # local_offsets = offsets[batch_size * handle_table:batch_size * (handle_table + 1)] - offsets[batch_size * (handle_table)]
                         local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size).sub(
                             offsets[batch_size * (handle_table)]
                         )

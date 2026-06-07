@@ -91,10 +91,8 @@ class ColoTracer(Tracer):
             proxy = super().create_proxy(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
             return proxy
 
-        # if graph is traced for auto parallelism module, some extra node will be added during
         # graph construction to deal with the compatibility between bias addition and all reduce.
 
-        # if no extra manipulation is applied, we just pass the origin arguments to create_proxy function
         # to create node on computation graph
         origin_arguments = (kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
         # dispatch the arguments generator depending on the kind and target in origin arguments.
@@ -136,7 +134,6 @@ class ColoTracer(Tracer):
         if handle is not None:
             return handle.generate()
 
-        # create nodes using patched arguments
         proxy = super().create_proxy(*origin_arguments)
         proxy: ColoProxy
         meta_out = self._meta_data_computing(
@@ -153,7 +150,6 @@ class ColoTracer(Tracer):
         if getattr(self, "_disable_module_getattr", False):
             return attr_val
         else:
-            # return super()._module_getattr(attr, attr_val, parameter_proxy_cache)
             def maybe_get_proxy_for_attr(attr_val, collection_to_search, parameter_proxy_cache):
                 for n, p in collection_to_search:
                     if attr_val is p:
@@ -192,7 +188,6 @@ class ColoTracer(Tracer):
 
         # a leaf module is the torch.nn.Module subclasses starting with `torch.nn`
         # which means customized modules are not leaf module by default
-        # if a customized or third-party module like apex.normalization.FusedRMSNorm is patched,
         # we should treat it as leaf module as well
         if meta_patched_module.has(m.__class__) or self.is_leaf_module(m, module_qualified_name):
             return self.create_proxy("call_module", module_qualified_name, args, kwargs)
@@ -340,7 +335,6 @@ class ColoTracer(Tracer):
         else:
             self._configure_tracer_type(TracerType.META)
 
-        # check concrete and meta args have valid names
         sig = inspect.signature(root.forward)
         sig_names = set(sig.parameters.keys())
         meta_arg_names = set(meta_args.keys())
@@ -426,7 +420,6 @@ class ColoTracer(Tracer):
                 else:
                     if hasattr(torch.fx._symbolic_trace, "_assert_is_none"):
                         # Newer versions of torch.fx emit an assert statement
-                        # for concrete arguments; delete those before we delete
                         # the concrete arg.
                         to_delete = []
                         for user in node.users:
@@ -504,7 +497,6 @@ def wrap_tensor_constructor_method(target):
         proxy = look_for_proxy(*args, **kwargs)
 
         if proxy is not None:
-            # if the arg is a proxy, then need to record this function called on this proxy
             # e.g. torch.ones(size) where size is an input proxy
             colo_proxy = proxy.tracer.create_proxy("call_function", target, args, kwargs)
             if not isinstance(colo_proxy, ColoProxy):

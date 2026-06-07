@@ -176,9 +176,6 @@ class PipelineSchedule(BaseSchedule):
         if isinstance(model, ShardedModelV2):
             self.dtype = torch.half
             model = model.module
-        # sig = inspect.signature(model.forward)
-        # for p in sig.parameters.values():
-        #     assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
 
     @staticmethod
     def _call_engine(model, data):
@@ -220,11 +217,9 @@ class PipelineSchedule(BaseSchedule):
         else:
             if isinstance(micro_batch_data, (tuple, list)):
                 if gpc.is_first_rank(ParallelMode.PIPELINE):
-                    # for the first stage, we use the data from the
                     # dataloader output by default
                     data, label = micro_batch_data
                 else:
-                    # for non-first stage, we use the output passed
                     # by the previous as the model input
                     data = stage_output
                     _, label = micro_batch_data
@@ -414,7 +409,6 @@ class PipelineSchedule(BaseSchedule):
                     output_obj, bt_shapes, dtype=self.dtype, scatter_gather_tensors=self.scatter_gather_tensors
                 )
 
-                # Add input_obj and output_obj to end of list.
                 input_objs.append(input_obj)
                 output_objs.append(output_obj)
 
@@ -648,7 +642,6 @@ class InterleavedPipelineSchedule(PipelineSchedule):
             )
             output_objs[model_chunk_id].append(output_obj)
 
-            # if forward-only, no need to save tensors for a backward pass
             if forward_only:
                 input_objs[model_chunk_id].pop()
                 output_objs[model_chunk_id].pop()

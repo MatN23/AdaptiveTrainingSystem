@@ -192,7 +192,6 @@ def main():
     if opt.use_int8:
         model = replace_module(model)
         # # to compute the model size
-        # getModelSize(model)
 
     sampler = DDIMSampler(model)
 
@@ -247,9 +246,7 @@ def main():
                             prompts = list(prompts)
                         c = model.get_learned_conditioning(prompts)
 
-                        # encode (scaled latent)
                         z_enc = sampler.stochastic_encode(init_latent, torch.tensor([t_enc] * batch_size).to(device))
-                        # decode it
                         samples = sampler.decode(
                             z_enc,
                             c,
@@ -287,4 +284,3 @@ def main():
 if __name__ == "__main__":
     main()
     # # to compute the mem allocated
-    # print(torch.cuda.max_memory_allocated() / 1024 / 1024)

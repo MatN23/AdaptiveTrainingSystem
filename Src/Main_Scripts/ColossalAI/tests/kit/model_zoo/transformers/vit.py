@@ -3,14 +3,11 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-sentence VIT
-# ===============================
 
 config = transformers.ViTConfig(num_hidden_layers=4, hidden_size=128, intermediate_size=256, num_attention_heads=4)
 
 
-# define data gen function
 def data_gen():
     pixel_values = torch.randn(1, 3, 224, 224)
     return dict(pixel_values=pixel_values)
@@ -30,7 +27,6 @@ def data_gen_for_masked_image_modeling():
     return data
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
 # function to get the loss

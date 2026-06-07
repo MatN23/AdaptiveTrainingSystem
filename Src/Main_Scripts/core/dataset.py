@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # High-Performance Dataset Loader using HuggingFace Datasets + Arrow
 
 import logging
@@ -40,9 +39,7 @@ except ImportError:
 
 
 if DATASETS_AVAILABLE:
-    # ============================================================================
     # HIGH-PERFORMANCE BASE TRAINING DATASET (Arrow-backed)
-    # ============================================================================
     
     class FastBaseTrainingDataset(Dataset):
         """High-performance base/pre-training dataset using HuggingFace Datasets + Arrow."""
@@ -63,7 +60,6 @@ if DATASETS_AVAILABLE:
             
             logging.info(f"FastBaseTrainingDataset loading from {data_path}")
             
-            # Load dataset with HuggingFace Datasets (memory-mapped)
             self.dataset = self._load_dataset_fast()
             
             # Pre-tokenize and chunk (cached on disk)
@@ -108,7 +104,6 @@ if DATASETS_AVAILABLE:
                     cache_dir=getattr(self.config, 'data_cache_dir', 'data/cache')
                 )
             
-            # Check if dataset has __len__ (not IterableDataset)
             try:
                 self.stats['total_loaded'] = len(dataset)
             except TypeError:
@@ -120,7 +115,6 @@ if DATASETS_AVAILABLE:
             chunks = []
             batch_size = 1000
             
-            # Check if we can get length
             try:
                 total_docs = len(self.dataset)
                 logging.info(f"Tokenizing {total_docs:,} documents in batches of {batch_size}...")
@@ -176,7 +170,6 @@ if DATASETS_AVAILABLE:
                     remove_columns=self.dataset.column_names
                 )
             
-            # Create chunks from tokenized data
             current_tokens = []
             start_idx = 0
             
@@ -190,7 +183,6 @@ if DATASETS_AVAILABLE:
                 
                 current_tokens.extend(tokens)
                 
-                # Create chunks when we have enough tokens
                 while (len(current_tokens) - start_idx) >= self.seq_length + 1:
                     chunk = current_tokens[start_idx:start_idx + self.seq_length + 1]
                     chunks.append(chunk)
@@ -225,7 +217,6 @@ if DATASETS_AVAILABLE:
             attention_mask = torch.ones_like(input_ids, dtype=torch.float)
             loss_weights = torch.ones_like(input_ids, dtype=torch.float)
             
-            # Mask padding
             padding_mask = (input_ids == 0)
             attention_mask[padding_mask] = 0.0
             loss_weights[padding_mask] = 0.0
@@ -241,9 +232,7 @@ if DATASETS_AVAILABLE:
             return self.stats.copy()
     
     
-    # ============================================================================
     # HIGH-PERFORMANCE STREAMING DATASET (Memory-efficient)
-    # ============================================================================
     
     class FastStreamingBaseTrainingDataset(IterableDataset):
         """High-performance streaming dataset for massive files."""
@@ -259,7 +248,6 @@ if DATASETS_AVAILABLE:
             
             file_ext = self.data_path.suffix.lower()
             
-            # Load as streaming dataset
             if file_ext == '.jsonl':
                 self.dataset = load_dataset(
                     'json',
@@ -294,7 +282,6 @@ if DATASETS_AVAILABLE:
                 if isinstance(example, dict):
                     text = example.get('text')
                     if text is None:
-                        # Try first key
                         first_key = next(iter(example.keys()), None)
                         if first_key:
                             text = example[first_key]
@@ -306,7 +293,6 @@ if DATASETS_AVAILABLE:
                 
                 self.stats['total_processed'] += 1
                 
-                # Tokenize
                 tokens = self.tokenizer.tokenizer.encode(text)
                 if not tokens:
                     continue
@@ -342,9 +328,7 @@ if DATASETS_AVAILABLE:
                     start_idx = 0
     
     
-    # ============================================================================
     # HIGH-PERFORMANCE CONVERSATION DATASET (Arrow-backed)
-    # ============================================================================
     
     class FastConversationDataset(Dataset):
         """High-performance conversation dataset using Arrow."""
@@ -366,7 +350,6 @@ if DATASETS_AVAILABLE:
             
             logging.info(f"FastConversationDataset loading from {data_path}")
             
-            # Load with HuggingFace Datasets
             self.dataset = self._load_dataset_fast()
             
             # Filter and validate in parallel
@@ -641,9 +624,6 @@ if DATASETS_AVAILABLE:
             return self.stats.copy()
     
     
-    # ============================================================================
-    # HYBRID DATASET MANAGER
-    # ============================================================================
     
     class FastHybridDatasetManager:
         """High-performance Hybrid Dataset Manager."""
@@ -671,7 +651,6 @@ if DATASETS_AVAILABLE:
             else:
                 self.finetuning_paths = list(ft_paths) if ft_paths else []
             
-            # Get eval paths
             base_eval = getattr(config, 'base_eval_paths', None)
             if base_eval is None:
                 base_eval = getattr(config, 'base_eval_path', None)
@@ -736,7 +715,6 @@ if DATASETS_AVAILABLE:
             if len(paths) == 1:
                 return dataset_class(paths[0], tokenizer, self.config, split_name)
             
-            # Load all datasets and use the first one (each is already optimized)
             datasets_to_concat = []
             for path in paths:
                 if Path(path).exists():
@@ -835,9 +813,6 @@ if DATASETS_AVAILABLE:
             return train_dataset, eval_dataset
     
     
-    # ============================================================================
-    # FAST INTERLEAVED DATASET
-    # ============================================================================
     
     class FastInterleavedDataset(Dataset):
         """Fast interleaved dataset combining base and fine-tuning."""
@@ -883,9 +858,7 @@ if DATASETS_AVAILABLE:
                 return self.finetuning_dataset[dataset_idx]
 
 
-# ============================================================================
 # SMART DATALOADER WITH AUTO-OPTIMIZATION
-# ============================================================================
 
 def create_fast_dataloader(dataset: Union[Dataset, IterableDataset],
                            config,
@@ -928,9 +901,6 @@ def create_fast_dataloader(dataset: Union[Dataset, IterableDataset],
     return DataLoader(**dataloader_kwargs)
 
 
-# ============================================================================
-# MAIN SETUP FUNCTION (Drop-in replacement)
-# ============================================================================
 
 def setup_fast_datasets(config, tokenizer):
     """Main entry point for fast dataset setup."""
@@ -938,18 +908,16 @@ def setup_fast_datasets(config, tokenizer):
     return manager.get_datasets(tokenizer)
 
 
-# ============================================================================
 # BACKWARDS COMPATIBILITY & FALLBACK
-# ============================================================================
 
 if DATASETS_AVAILABLE:
     # Export fast versions as primary (type: ignore to suppress Pylance warnings)
-    BaseTrainingDataset = FastBaseTrainingDataset  # type: ignore
-    StreamingBaseTrainingDataset = FastStreamingBaseTrainingDataset  # type: ignore
-    ConversationDataset = FastConversationDataset  # type: ignore
-    HybridDatasetManager = FastHybridDatasetManager  # type: ignore
-    InterleavedDataset = FastInterleavedDataset  # type: ignore
-    create_dataloader = create_fast_dataloader  # type: ignore
+    BaseTrainingDataset = FastBaseTrainingDataset
+    StreamingBaseTrainingDataset = FastStreamingBaseTrainingDataset
+    ConversationDataset = FastConversationDataset
+    HybridDatasetManager = FastHybridDatasetManager
+    InterleavedDataset = FastInterleavedDataset
+    create_dataloader = create_fast_dataloader
     setup_datasets = setup_fast_datasets  # type: ignore
     
     print("="*80)
@@ -987,7 +955,6 @@ else:
     print("  pip install polars")
     print("="*80 + "\n")
     
-    # Create dummy classes for fallback
     class BaseTrainingDataset:
         def __init__(self, *args, **kwargs):
             raise ImportError("HuggingFace Datasets required: pip install datasets")
@@ -1034,9 +1001,7 @@ else:
         raise ImportError("HuggingFace Datasets required: pip install datasets")
 
 
-# ============================================================================
 # EXPORTS
-# ============================================================================
 
 __all__ = [
     # Primary classes

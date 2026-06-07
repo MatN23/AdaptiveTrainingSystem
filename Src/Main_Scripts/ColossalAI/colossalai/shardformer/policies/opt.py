@@ -152,7 +152,6 @@ class OPTPolicy(Policy):
             target_key=OPTDecoderLayer,
         )
 
-        # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={

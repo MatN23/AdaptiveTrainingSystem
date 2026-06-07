@@ -309,7 +309,6 @@ class ShardedModelV2(nn.Module):
             if not p.requires_grad:
                 continue
             # Leave the gradient accumulation state (_require_backward_grad_sync) as-is if not synchronizing this pass.
-            # NOTE() (no-sync)/sync pass: (not conduct)/conduct gradient all reducing between process group.
             # If _require_backward_grad_sync is True,
             # p.grad remains the accumulated unsharded gradient from prior no-sync passes.
             # We also allows to interleave no-sync pass with sync passes, if desired.
@@ -384,7 +383,6 @@ class ShardedModelV2(nn.Module):
             reduced_grad.data.div_(self.gradient_postdivide_factor)
         self._save_grad(param, reduced_grad)
 
-    # FIXME(ver217): refactor the below line when impl eviction policy
     def _save_grad(self, param: Parameter, grad: torch.Tensor):
         # record whether we have overflow
         self.overflow_counter += torch.isinf(grad).any().item()

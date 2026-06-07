@@ -20,9 +20,7 @@ from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import PipelineGradientCheckpointConfig
 
-# ==============================
 # Constants
-# ==============================
 
 MODEL_CONFIGS = {
     "7b": LlamaConfig(max_position_embeddings=4096),
@@ -45,9 +43,7 @@ MODEL_CONFIGS = {
 
 
 def main():
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=str, default="7b", help="Model configuration")
     parser.add_argument(
@@ -96,9 +92,6 @@ def main():
         else {}
     )
 
-    # ==============================
-    # Initialize Booster
-    # ==============================
     use_empty_init = True
     if args.plugin == "gemini":
         plugin = GeminiPlugin(
@@ -188,9 +181,6 @@ def main():
 
     booster = Booster(plugin=plugin)
 
-    # ==============================
-    # Initialize Dataset and Dataloader
-    # ==============================
     dp_size = getattr(plugin, "dp_size", coordinator.world_size)
 
     if args.config in MODEL_CONFIGS:
@@ -202,9 +192,6 @@ def main():
     )
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
-    # ==============================
-    # Initialize Model and Optimizer
-    # ==============================
     init_ctx = (
         LazyInitContext(default_device=get_accelerator().get_current_device())
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))

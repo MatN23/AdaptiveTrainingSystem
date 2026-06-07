@@ -249,9 +249,6 @@ def size_value_converting_pass(gm: torch.fx.GraphModule, device_mesh: DeviceMesh
             # it has been processed in above pass.
 
             # There are three main usages of operator.getitem:
-            #   getitem(input, int)
-            #   getitem(input, slice)
-            #   getitem(input, Tuple[slice])
             # In this pass, we need process the last two cases because
             # node arguments may potentially appear in these cases.
             if isinstance(getitem_index, slice):
@@ -512,7 +509,6 @@ def runtime_preparation_pass(
     gm = size_value_converting_pass(gm, device_mesh)
     gm = node_args_converting_pass(gm, device_mesh)
     # TODO: the pass below should be uncommented after the implementation of implicit_comm_action_apply_pass completed.
-    # gm = implicit_comm_action_apply(gm)
     gm = module_params_sharding_pass(gm, device_mesh, overlap=overlap)
 
     return gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict

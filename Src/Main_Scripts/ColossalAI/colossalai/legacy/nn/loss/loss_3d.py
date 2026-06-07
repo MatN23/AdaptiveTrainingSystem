@@ -86,7 +86,6 @@ class _VocabParallelCrossEntropy3D(torch.autograd.Function):
         predicted_logits[target_mask] = 0.0
         dist.all_reduce(predicted_logits, group=gpc.get_group(output_parallel_mode))
 
-        # Loss = log(sum(exp(logits))) - predicted-logit.
         exp_logits = torch.exp(logits)
         sum_exp_logits = exp_logits.sum(dim=-1)
         dist.all_reduce(sum_exp_logits, group=gpc.get_group(output_parallel_mode))

@@ -55,7 +55,7 @@ def rotate_half(x):
 
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
-    cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
+    cos = cos.squeeze(1).squeeze(0)
     sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
     cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
     sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
@@ -448,7 +448,6 @@ class LlamaInferenceForwards:
             )
         else:
             if infer_state.decode_is_contiguous:
-                # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
                 cache_k = infer_state.cache_manager.key_buffer[infer_state.decode_layer_id][
                     infer_state.decode_mem_start : infer_state.decode_mem_end, :, :
                 ]
@@ -458,7 +457,6 @@ class LlamaInferenceForwards:
                 cache_k.copy_(key_states)
                 cache_v.copy_(value_states)
             else:
-                # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head
                 copy_kv_to_mem_cache(
                     infer_state.decode_layer_id,
@@ -499,5 +497,4 @@ class LlamaInferenceForwards:
 
         attn_output = self.o_proj(attn_output)
 
-        # return past_key_value as None
         return attn_output, None, None

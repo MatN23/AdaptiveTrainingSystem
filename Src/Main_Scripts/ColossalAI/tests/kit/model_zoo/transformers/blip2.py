@@ -3,26 +3,13 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-image SAM
-# ===============================
 
 
-# define data gen function
 def data_gen():
     # Generated from following code snippet
-    #
-    # from PIL import Image
-    # import requests
-    # from transformers import Blip2Processor, Blip2Model
-    # import torch
 
-    # processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-    # url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    # image = Image.open(requests.get(url, stream=True).raw)
 
-    # prompt = "Question: how many cats are there? Answer:"
-    # inputs = processor(images=image, text=prompt, return_tensors="pt").to(device, torch.float16)
 
     pixel_values = torch.rand(1, 3, 224, 224, dtype=torch.float32)
     input_ids = torch.tensor([[2, 45641, 35, 141, 171, 10017, 32, 89, 116, 31652, 35]], dtype=torch.int64)
@@ -31,10 +18,8 @@ def data_gen():
     return dict(pixel_values=pixel_values, input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 
 
-# define output transform function
 output_transform_fn = lambda x: x
 
-# define loss funciton
 loss_fn_blip2_model = lambda x: x["loss"]
 
 config = transformers.Blip2Config()

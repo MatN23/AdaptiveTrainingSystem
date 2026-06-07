@@ -56,7 +56,6 @@ if HAS_TRITON:
         cur_head = tl.program_id(1)
         start_m = tl.program_id(2)
 
-        # initialize offsets
         offs_n = tl.arange(0, BLOCK_N)
         offs_d = tl.arange(0, BLOCK_DMODEL)
         offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -116,10 +115,8 @@ if HAS_TRITON:
             beta = tl.exp(m_ij - m_i_new)
             l_i_new = alpha * l_i + beta * l_ij
             # -- update output accumulator --
-            # scale p
             p_scale = beta / l_i_new
             p = p * p_scale[:, None]
-            # scale acc
             acc_scale = l_i / l_i_new * alpha
             tl.store(t_ptrs, acc_scale)
             acc_scale = tl.load(t_ptrs)

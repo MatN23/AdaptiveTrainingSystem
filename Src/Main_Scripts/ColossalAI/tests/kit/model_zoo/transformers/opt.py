@@ -3,9 +3,7 @@ import transformers
 
 from ..registry import ModelAttribute, model_zoo
 
-# ===============================
 # Register single-sentence OPT
-# ===============================
 BATCH_SIZE = 2
 SEQ_LENGTH = 16
 
@@ -17,7 +15,6 @@ def data_gen():
 
 
 def data_gen_for_causal_lm():
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
     labels = data["input_ids"].clone()
@@ -26,7 +23,6 @@ def data_gen_for_causal_lm():
 
 
 def data_gen_for_sequence_classification():
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
     data["input_ids"].clone()
@@ -35,7 +31,6 @@ def data_gen_for_sequence_classification():
 
 
 def data_gen_for_question_answering():
-    # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
     data["start_positions"] = torch.tensor([0])
@@ -85,8 +80,3 @@ model_zoo.register(
 
 # TODO The loss and gradient check in the test are failing, to be fixed.
 # model_zoo.register(name='transformers_opt_for_sequence_classification',
-#                    model_fn=lambda: transformers.OPTForSequenceClassification(config),
-#                    data_gen_fn=data_gen_for_sequence_classification,
-#                    output_transform_fn=output_transform_fn,
-#                    loss_fn=loss_fn_for_lm,
-#                    model_attribute=ModelAttribute(has_control_flow=True))

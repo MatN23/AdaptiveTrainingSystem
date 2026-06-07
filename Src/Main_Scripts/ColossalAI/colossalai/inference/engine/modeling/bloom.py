@@ -101,7 +101,6 @@ class BloomInferenceForwards:
                 FutureWarning,
             )
 
-        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
             output_attentions = False
@@ -182,9 +181,7 @@ class BloomInferenceForwards:
         # head_mask has shape n_layer x batch x num_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
-        # first stage
         if stage_manager.is_first_stage():
-            # check inputs and inputs embeds
             if input_ids is not None and inputs_embeds is not None:
                 raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
             elif input_ids is not None:
@@ -209,7 +206,6 @@ class BloomInferenceForwards:
             past_key_values_length = infer_state.max_len_in_batch - 1
 
         if seq_length != 1:
-            # prefill stage
             infer_state.is_context_stage = True  # set prefill stage, notify attention layer
             infer_state.context_mem_index = infer_state.cache_manager.alloc(infer_state.total_token_num)
             BatchInferState.init_block_loc(
@@ -328,7 +324,6 @@ class BloomInferenceForwards:
 
         layernorm_output = self.post_attention_layernorm(attention_output)
 
-        # Get residual
         if self.apply_residual_connection_post_layernorm:
             residual = layernorm_output
         else:
@@ -378,7 +373,6 @@ class BloomInferenceForwards:
             copy_kv_cache_to_dest(k, infer_state.context_mem_index, mem_manager.key_buffer[layer_id])
             copy_kv_cache_to_dest(v, infer_state.context_mem_index, mem_manager.value_buffer[layer_id])
 
-            # output = self.output[:batch_size*q_length, :, :]
             output = torch.empty_like(q)
 
             if HAS_LIGHTLLM_KERNEL:
@@ -388,13 +382,11 @@ class BloomInferenceForwards:
 
             context_layer = output.view(batch_size, q_length, H * D_HEAD)
         else:
-            # query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
             # need shape: batch_size, H, D_HEAD (q_length == 1), input q shape : (batch_size, q_length(1), H, D_HEAD)
             assert q_length == 1, "for non-context process, we only support q_length == 1"
             q = query_layer.reshape(-1, H, D_HEAD)
 
             if infer_state.decode_is_contiguous:
-                # if decode is contiguous, then we copy to key cache and value cache in cache manager directly
                 cache_k = infer_state.cache_manager.key_buffer[layer_id][
                     infer_state.decode_mem_start : infer_state.decode_mem_end, :, :
                 ]
@@ -404,7 +396,6 @@ class BloomInferenceForwards:
                 cache_k.copy_(k)
                 cache_v.copy_(v)
             else:
-                # if decode is not contiguous, use triton kernel to copy key and value cache
                 # k, v shape: [batch_size, num_heads, head_dim/embed_size_per_head]
                 copy_kv_cache_to_dest(k, infer_state.decode_mem_index, mem_manager.key_buffer[layer_id])
                 copy_kv_cache_to_dest(v, infer_state.decode_mem_index, mem_manager.value_buffer[layer_id])

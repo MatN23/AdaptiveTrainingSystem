@@ -1,4 +1,3 @@
-# Copyright (c) 2025 Matias Nielsen. All rights reserved.
 # Licensed under the Custom License below.
 
 import os
@@ -102,7 +101,6 @@ def create_training_report(experiment_path: str, output_path: str = None):
     if output_path is None:
         output_path = experiment_dir / "training_report.html"
     
-    # Load training summary
     summary_file = experiment_dir / "training_summary.json"
     if not summary_file.exists():
         logging.error(f"Training summary not found: {summary_file}")
@@ -111,7 +109,6 @@ def create_training_report(experiment_path: str, output_path: str = None):
     with open(summary_file, 'r') as f:
         summary = json.load(f)
     
-    # Load metrics
     metrics_file = experiment_dir / "logs" / summary['experiment_name'] / "metrics.jsonl"
     metrics = []
     if metrics_file.exists():

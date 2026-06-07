@@ -26,10 +26,8 @@ class OutputModel(nn.Module):
 def test_output_handler(output_option):
     model = OutputModel()
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %x : torch.Tensor [#users=2] = placeholder[target=x]
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%x, 2), kwargs = {})
-    #     return (x, mul)
     meta_args = {"x": torch.rand(4, 4, 64, 64).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -50,7 +48,6 @@ def test_output_handler(output_option):
     )
 
     output_handler.register_strategy(compute_resharding_cost=False)
-    # check operation data mapping
     mapping = output_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

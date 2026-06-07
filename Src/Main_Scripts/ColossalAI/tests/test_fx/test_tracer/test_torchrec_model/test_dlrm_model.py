@@ -59,7 +59,6 @@ def test_torchrec_dlrm_models():
         data = data_gen_fn()
 
         # dlrm_interactionarch is not supported
-        # TODO(FrankLeeeee): support this model
         if name == "dlrm_interactionarch":
             continue
 

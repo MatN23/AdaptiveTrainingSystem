@@ -190,10 +190,8 @@ def save_checkpoint(
     if gpc.get_global_rank() == 0:
         checkpoint["model"] = model_state
 
-        # if optimizer is not None:
         #     checkpoint['optimizer'] = optimizer.state_dict()
 
-        # if lr_scheduler is not None:
         #     checkpoint['lr_scheduler'] = lr_scheduler.state_dict()
 
         torch.save(checkpoint, file, **kwargs)
@@ -269,14 +267,10 @@ def load_checkpoint(
     state_dict = broadcast_state_dict(state_dict, ParallelMode.MODEL)
 
     # # optimizer states
-    # if optimizer is not None and 'optimizer' in state_dict:
-    #     optimizer.load_state_dict(state_dict['optimizer'])
 
     # # lr scheduler states
-    # if lr_scheduler is not None and 'lr_scheduler' in state_dict:
     #     lr_scheduler.load_state_dict(state_dict['lr_scheduler'])
 
-    # last epoch
     last_epoch = state_dict.pop("epoch", -1)
 
     return last_epoch

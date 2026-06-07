@@ -101,11 +101,9 @@ def check_layout_converting(rank, world_size, port):
 
     transform_path, comm_action_sequence = layout_converter.layout_converting(source_layout, target_layout)
 
-    # check transform path
     transform_path_str = "->".join([str(layout.sharding_spec.sharding_sequence) for layout in transform_path])
     assert transform_path_str == "[R, S01, R]->[R, S0, R]->[S0, R, R]->[S01, R, R]"
 
-    # check comm action sequence
     # all-gather(S01) -> S0
     assert comm_action_sequence[0].comm_pattern == CollectiveCommPattern.GATHER_FWD_SPLIT_BWD
     assert comm_action_sequence[0].gather_dim == 1
@@ -117,7 +115,6 @@ def check_layout_converting(rank, world_size, port):
     assert comm_action_sequence[1].shard_dim == 0
     assert comm_action_sequence[1].logical_process_axis == 0
 
-    # shard(S0) -> [S01]
     assert comm_action_sequence[2].comm_pattern == CollectiveCommPattern.SPLIT_FWD_GATHER_BWD
     assert comm_action_sequence[2].shard_dim == 0
     assert comm_action_sequence[2].logical_process_axis == 1

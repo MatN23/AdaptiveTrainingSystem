@@ -18,9 +18,7 @@ from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDP
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.optimizer import HybridAdam
 
-# ==============================
 # Prepare Hyperparameters
-# ==============================
 NUM_EPOCHS = 1
 BATCH_SIZE = 32
 LEARNING_RATE = 2.4e-5
@@ -95,7 +93,6 @@ def train_epoch(
             outputs = model(**batch)
             loss = outputs[0]
 
-            # Backward and optimize
             booster.backward(loss, optimizer)
             optimizer.step()
             optimizer.zero_grad()
@@ -106,9 +103,7 @@ def train_epoch(
 
 
 def main():
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--task", default="mrpc", help="GLUE task to run")
     parser.add_argument(
@@ -122,19 +117,14 @@ def main():
     parser.add_argument("--target_f1", type=float, default=None, help="target f1 score. Raise exception if not reached")
     args = parser.parse_args()
 
-    # ==============================
     # Launch Distributed Environment
-    # ==============================
     colossalai.launch_from_torch(config={}, seed=42)
     coordinator = DistCoordinator()
 
-    # local_batch_size = BATCH_SIZE // coordinator.world_size
     lr = LEARNING_RATE * coordinator.world_size
     model_name = "bert-base-uncased"
 
-    # ==============================
     # Instantiate Plugin and Booster
-    # ==============================
     booster_kwargs = {}
     if args.plugin == "torch_ddp_fp16":
         booster_kwargs["mixed_precision"] = "fp16"
@@ -147,18 +137,14 @@ def main():
 
     booster = Booster(plugin=plugin, **booster_kwargs)
 
-    # ==============================
     # Prepare Dataloader
-    # ==============================
     data_builder = GLUEDataBuilder(
         model_name, plugin, args.task, train_batch_size=BATCH_SIZE, eval_batch_size=BATCH_SIZE
     )
     train_dataloader = data_builder.train_dataloader()
     test_dataloader = data_builder.test_dataloader()
 
-    # ====================================
     # Prepare model, optimizer
-    # ====================================
     # bert pretrained model
     config = AutoConfig.from_pretrained(model_name, num_labels=data_builder.num_labels)
     model = BertForSequenceClassification.from_pretrained(model_name, config=config)
@@ -187,14 +173,10 @@ def main():
         num_training_steps=total_steps,
     )
 
-    # ==============================
     # Boost with ColossalAI
-    # ==============================
     model, optimizer, _, _, lr_scheduler = booster.boost(model, optimizer, lr_scheduler=lr_scheduler)
 
-    # ==============================
     # Train model
-    # ==============================
     for epoch in range(NUM_EPOCHS):
         train_epoch(epoch, model, optimizer, lr_scheduler, train_dataloader, booster, coordinator)
 

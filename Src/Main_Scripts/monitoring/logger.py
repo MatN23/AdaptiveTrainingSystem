@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import time
@@ -60,7 +59,6 @@ class MetricsCollector:
             'timestamp': time.time()
         })
         
-        # Check for alerts
         self._check_metric_alerts(name, value, step)
     
     def _check_metric_alerts(self, name: str, value: float, step: int):

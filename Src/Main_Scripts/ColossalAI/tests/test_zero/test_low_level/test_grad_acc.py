@@ -30,10 +30,8 @@ def exam_zero_1_2_grad_acc():
     local_rank = torch.distributed.get_rank()
     seed_all(2009)
     device = get_accelerator().get_current_device()
-    # create model
     zero1_model = MlpModel().to(device)
     zero2_model = copy.deepcopy(zero1_model)
-    # create optimizer
     zero1_optimizer = torch.optim.Adam(zero1_model.parameters(), lr=1)
     zero2_optimizer = torch.optim.Adam(zero2_model.parameters(), lr=1)
     zero1_optimizer = LowLevelZeroOptimizer(
@@ -42,7 +40,6 @@ def exam_zero_1_2_grad_acc():
     zero2_optimizer = LowLevelZeroOptimizer(
         zero2_optimizer, overlap_communication=True, partition_grad=True, initial_scale=32, clip_grad_norm=1.0
     )
-    # create data
     seed_all(2021 + local_rank)
     input_data1 = torch.randn(32, 128, device=device)
     input_data2 = torch.randn(32, 128, device=device)
@@ -60,11 +57,9 @@ def exam_zero_1_2_grad_acc():
     fwd_bwd_func(0, input_data1, True)
     fwd_bwd_func(1, input_data2, False)
 
-    # step
     zero1_optimizer.step()
     zero2_optimizer.step()
 
-    # check updated param
     for z1p, z2p in zip(zero1_model.parameters(), zero2_model.parameters()):
         assert torch.equal(z1p.data, z2p.data)
 
@@ -74,7 +69,6 @@ def exam_zero_1_grad_acc(sync):
     seed_all(2008)
     device = get_accelerator().get_current_device()
 
-    # create models
     zero_model = MlpModel()
     torch_model = copy.deepcopy(zero_model)
 
@@ -82,7 +76,6 @@ def exam_zero_1_grad_acc(sync):
     zero_model = zero_model.to(device)
     torch_model = DDP(torch_model.to(device), bucket_cap_mb=0)
 
-    # create optimizer
     zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1)
 
     # we only test stage 1 here
@@ -94,7 +87,6 @@ def exam_zero_1_grad_acc(sync):
 
     torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
 
-    # create data
     seed_all(2022 + local_rank)
     input_data1 = torch.randn(32, 128, device=device)
     input_data2 = torch.randn(32, 128, device=device)
@@ -112,7 +104,6 @@ def exam_zero_1_grad_acc(sync):
             torch_output.sum().backward()
 
         if check_flag:
-            # check grad
             for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
                 assert torch.equal(p.grad, z1p.grad)
 
@@ -123,9 +114,7 @@ def exam_zero_1_grad_acc(sync):
     torch.nn.utils.clip_grad_norm_(torch_model.parameters(), 1.0)
     torch_optimizer.step()
 
-    # check updated param
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        # print(n, p.shape, torch.max(p.data), torch.max(z1p.data), torch.max(torch.abs(p.data - z1p.data)))
         assert_close(p.data, z1p.data)
 
 

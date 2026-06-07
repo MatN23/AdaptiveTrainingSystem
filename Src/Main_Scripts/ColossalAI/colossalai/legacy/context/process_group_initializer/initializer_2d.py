@@ -10,7 +10,6 @@ from .process_group_initializer import ProcessGroupInitializer
 
 
 def _check_summa_env_var(summa_dim):
-    # check environment variable for SUMMA
     env_summa_dim = env.summa_dim
 
     if env_summa_dim:

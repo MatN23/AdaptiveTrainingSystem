@@ -1,17 +1,12 @@
-# coding=utf-8
 # Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
-#
 # This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
 # and OPT implementations in this library. It has been modified from its
 # original forms to accommodate minor architectural differences compared
 # to GPT-NeoX and OPT used by the Meta AI team that trained the model.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -187,7 +182,6 @@ def apply_rotary_embedding(q, k, cos, sin, decode=False, rotary_index=None):
     sin = sin.to(q.dtype)
 
     if len(k.shape) == 3:
-        # for multi query attention
         k = k.unsqueeze(2)
         multiquery = True
     else:
@@ -655,7 +649,6 @@ class OpenMoeModel(OpenMoePreTrainedModel):
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         self.gradient_checkpointing = False
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_input_embeddings(self):
@@ -666,7 +659,6 @@ class OpenMoeModel(OpenMoePreTrainedModel):
 
     # Copied from transformers.models.bart.modeling_bart.BartDecoder._prepare_decoder_attention_mask
     def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
-        # create causal mask
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
         combined_attention_mask = None
         if input_shape[-1] > 1:
@@ -818,7 +810,6 @@ class OpenMoeModel(OpenMoePreTrainedModel):
 
 
 class OpenMoeForCausalLM(OpenMoePreTrainedModel):
-    # _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
         super().__init__(config)
@@ -827,7 +818,6 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_input_embeddings(self):
@@ -889,7 +879,6 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
-        # reset moe loss
         MOE_MANAGER.reset_loss()
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -918,7 +907,6 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
             logits = torch.cat(logits, dim=-1)
 
         loss = None
-        # if no training, just do forward
         if labels is None:
             logits = self.lm_head(hidden_states)
             logits = logits.float()
@@ -981,13 +969,11 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
                 position_ids = position_ids[:, -1].unsqueeze(-1)
 
-        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
             model_inputs = {"inputs_embeds": inputs_embeds}
         else:
@@ -1050,7 +1036,6 @@ class OpenMoeForCausalLM(OpenMoePreTrainedModel):
         )
         soft_targets = soft_targets.to(torch.float32)
 
-        # cross entropy
         total_loss = ZLossCrossEntropy.apply(logits, soft_targets, self.config.z_loss_factor)
         total_loss = total_loss - normalizing_constant
         total_loss = torch.mean(torch.sum(total_loss, dim=-1), dim=0)

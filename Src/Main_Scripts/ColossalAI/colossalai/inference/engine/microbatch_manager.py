@@ -38,7 +38,6 @@ class MicroBatchDescription:
         self.infer_state = BatchInferState.init_from_batch(
             batch=inputs_dict, max_input_len=max_input_len, max_output_len=max_output_len, cache_manager=cache_manager
         )
-        # print(f"[init] {inputs_dict}, {max_input_len}, {max_output_len}, {cache_manager}, {self.infer_state}")
 
     def update(self, *args, **kwargs):
         pass

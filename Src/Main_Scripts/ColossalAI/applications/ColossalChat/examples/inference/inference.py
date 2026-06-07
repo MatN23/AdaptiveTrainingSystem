@@ -128,7 +128,6 @@ def main(args):
             chat_io = dummy_io
         else:
             raise ValueError(f"Unknown io type: {args.io}")
-        # raw_text = print(">>> Human:", end=" ")
         inp = chat_io.prompt_for_input("user")
 
         if not inp:
@@ -168,7 +167,6 @@ def main(args):
             **model_kwargs,
         )
 
-        # print(f">>> Assistant:", end=" ")
         outputs = chat_io.stream_output(output_stream)
 
         conv.append_message("assistant", outputs.strip())
@@ -178,7 +176,6 @@ def main(args):
             f.write(f"round {round}:\n{conv.save_prompt()}\n\n")
             f.write("=" * 10 + "\n")
 
-        # print(f">>> Assistant:", end=" ")
 
         round += 1
 

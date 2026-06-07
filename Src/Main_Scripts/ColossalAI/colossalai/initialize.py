@@ -56,7 +56,6 @@ def launch(
     dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=init_method)
 
     # set cuda device
-    # if local rank is not given, calculate automatically
     if cur_accelerator.support_set_device:
         cur_accelerator.set_device(local_rank)
 

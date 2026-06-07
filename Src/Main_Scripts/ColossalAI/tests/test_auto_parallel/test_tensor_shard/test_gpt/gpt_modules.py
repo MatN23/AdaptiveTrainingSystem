@@ -23,7 +23,6 @@ class GPT2MLP(nn.Module):
         hidden_states = self.act(hidden_states)
         hidden_states = self.c_proj(hidden_states)
         # TODO: the rng state need to be fixed for distributed runtime
-        # hidden_states = self.dropout(hidden_states)
         return hidden_states
 
 
@@ -73,7 +72,6 @@ class GPT2Attention(nn.Module):
         if self.scale_attn_by_inverse_layer_idx:
             attn_weights = attn_weights / float(self.layer_idx + 1)
 
-        # if only "normal" attention layer implements causal mask
         query_length, key_length = query.size(-2), key.size(-2)
         causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].to(torch.bool)
         attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
@@ -84,9 +82,7 @@ class GPT2Attention(nn.Module):
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
 
-        # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
         attn_weights = attn_weights.type(value.dtype)
-        # attn_weights = self.attn_dropout(attn_weights)
 
         # Mask heads if we want to
         if head_mask is not None:
@@ -115,16 +111,12 @@ class GPT2Attention(nn.Module):
         # query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
         qkv = self.c_attn(hidden_states)
 
-        # query = self._split_heads(query, self.num_heads, self.head_dim)
-        # key = self._split_heads(key, self.num_heads, self.head_dim)
-        # value = self._split_heads(value, self.num_heads, self.head_dim)
         query, key, value = self._split_heads(qkv, self.num_heads, 3 * self.head_dim).split(self.head_dim, dim=3)
         (key, value)
 
         attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
-        # attn_output = self.resid_dropout(attn_output)
         return attn_output
 
 
@@ -178,7 +170,6 @@ class GPT2Model(GPT2PreTrainedModel):
         self.h = nn.ModuleList([GPT2Block(config, layer_idx=i) for i in range(config.num_hidden_layers)])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def forward(
@@ -239,11 +230,9 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         self.transformer = GPT2Model(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-        # Model parallel
         self.model_parallel = False
         self.device_map = None
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def forward(

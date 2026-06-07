@@ -70,7 +70,6 @@ def debug_training():
         
         loss.backward()
         
-        # Check gradients
         grad_norms = []
         for name, param in model.named_parameters():
             if param.grad is not None:

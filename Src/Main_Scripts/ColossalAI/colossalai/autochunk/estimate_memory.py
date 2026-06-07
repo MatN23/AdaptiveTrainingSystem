@@ -50,7 +50,6 @@ class EstimateMemory(object):
             # dont remove free nodes
             elif node.op == "placeholder":
                 delete_node_dict[node] = len(node_mgr.get_node_list())
-            # node no user
             elif len(node.users) == 0:
                 delete_node_dict[node] = idx
             # log max use
@@ -178,7 +177,6 @@ class EstimateMemory(object):
             chunk_sizes = [i["chunk_size"] if "chunk_size" in i else 1 for i in chunk_infos]
 
         for idx, node in enumerate(node_mgr.get_node_list()):
-            # if node in chunk start nodes, change chunk ratio and add chunk_tensor
             if use_chunk and idx in chunk_starts:
                 chunk_within = True
                 chunk_region_idx = chunk_starts.index(idx)
@@ -194,7 +192,6 @@ class EstimateMemory(object):
             self._add_active_node(node, active_nodes, chunk_ratio)
             act_memory = self._get_memory_from_active_nodes(active_nodes)
 
-            # if node is placeholder, just add the size of the node
             if node.op == "placeholder":
                 act_memory_peak_log.append(act_memory)
             # skip output
@@ -211,10 +208,8 @@ class EstimateMemory(object):
                 # record max act memory
                 act_memory_peak_log.append(act_memory + tmp_memory)
 
-            # remove_deactive_node
             self._remove_deactive_node(idx, node, active_nodes, delete_node_dict, kept_nodes=chunk_inputs_all)
 
-            # if node in chunk end nodes, restore chunk settings
             if use_chunk and idx in chunk_ends:
                 self._remove_deactive_node(idx, node, active_nodes, delete_node_dict)  # dont provide kept nodes now
                 chunk_within = False
@@ -229,6 +224,4 @@ class EstimateMemory(object):
             print("with chunk" if use_chunk else "without chunk")
             self._print_compute_op_mem_log(act_memory_peak_log, node_mgr.get_node_list(), "peak")
 
-        # param_memory = parameter_size(gm)
-        # all_memory = act_memory + param_memory
         return act_memory_peak_log, act_memory_after_node_log, active_nodes_log

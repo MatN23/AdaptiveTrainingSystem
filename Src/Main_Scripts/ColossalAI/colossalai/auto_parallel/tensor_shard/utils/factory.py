@@ -107,7 +107,6 @@ def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_lengt
         common_length_threshold (int): the threshold of the repeat block length.
     """
 
-    # graph = gm.graph
 
     def _process_args(args):
         new_args = []
@@ -175,7 +174,6 @@ def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_lengt
             hash_value_to_node_dict[hash_value] = []
         hash_value_to_node_dict[hash_value].append(index)
 
-    # node_list = list(graph.nodes)
 
     node_list_start = 0
     max_common_length = common_length_threshold
@@ -195,7 +193,6 @@ def find_repeat_blocks(node_list: List[torch.fx.Node], root_module, common_lengt
                 max_step = len(node_list) - common_blocks_index[-1] - max_common_length - 1
 
                 for i in range(max_step):
-                    # add assertion to avoid out of index
                     next_node_list = [node_list[index + max_common_length + i] for index in start_index_list]
                     if not _all_equal(next_node_list, _check_node_equal):
                         max_step = i

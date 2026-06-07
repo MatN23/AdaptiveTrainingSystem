@@ -53,10 +53,8 @@ class DeepSpeedBackend:
         self.original_model = model
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Create DeepSpeed configuration
         ds_config = self._create_deepspeed_config()
         
-        # Initialize DeepSpeed
         if model_parameters is None:
             model_parameters = model.parameters()
         
@@ -204,9 +202,7 @@ class DeepSpeedBackend:
         
         return possible_sizes[-1] if possible_sizes else 1
     
-    # ========================================================================
     # UNIFIED API - Forward Pass
-    # ========================================================================
     
     def __call__(self, *args, **kwargs):
         """Forward pass - matches PyTorch model interface."""
@@ -216,9 +212,7 @@ class DeepSpeedBackend:
         """Explicit forward pass."""
         return self.engine(*args, **kwargs)
     
-    # ========================================================================
     # UNIFIED API - Training Methods
-    # ========================================================================
     
     def backward(self, loss: torch.Tensor):
         """
@@ -247,9 +241,7 @@ class DeepSpeedBackend:
         # DeepSpeed handles gradient zeroing internally
         pass
     
-    # ========================================================================
     # UNIFIED API - Model State
-    # ========================================================================
     
     def train(self):
         """Set model to training mode."""
@@ -275,9 +267,7 @@ class DeepSpeedBackend:
         """Load model state dict."""
         self.engine.module.load_state_dict(state_dict)
     
-    # ========================================================================
     # UNIFIED API - Learning Rate
-    # ========================================================================
     
     def get_lr(self) -> float:
         """Get current learning rate."""
@@ -294,9 +284,7 @@ class DeepSpeedBackend:
         """Get last learning rate (scheduler compatibility)."""
         return [self.get_lr()]
     
-    # ========================================================================
     # UNIFIED API - Gradient Information
-    # ========================================================================
     
     def get_global_grad_norm(self) -> float:
         """Get global gradient norm."""
@@ -309,9 +297,7 @@ class DeepSpeedBackend:
             pass
         return 0.0
     
-    # ========================================================================
     # UNIFIED API - Checkpointing
-    # ========================================================================
     
     def save_checkpoint(
         self,
@@ -335,10 +321,8 @@ class DeepSpeedBackend:
         checkpoint_path = Path(checkpoint_dir) / f"checkpoint_epoch_{epoch}_step_{global_step}"
         checkpoint_path.mkdir(parents=True, exist_ok=True)
         
-        # Save DeepSpeed checkpoint
         self.engine.save_checkpoint(str(checkpoint_path))
         
-        # Save additional metadata
         if additional_state is not None:
             metadata_path = checkpoint_path / "metadata.json"
             metadata = {
@@ -374,14 +358,12 @@ class DeepSpeedBackend:
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
         
-        # Load DeepSpeed checkpoint
         _, client_state = self.engine.load_checkpoint(
             str(checkpoint_path),
             load_optimizer_states=load_optimizer_states,
             load_lr_scheduler_states=load_lr_scheduler_states
         )
         
-        # Load metadata if exists
         metadata_path = checkpoint_path / "metadata.json"
         metadata = {}
         if metadata_path.exists():
@@ -391,9 +373,7 @@ class DeepSpeedBackend:
         logging.info(f"DeepSpeed checkpoint loaded: {checkpoint_path}")
         return metadata
     
-    # ========================================================================
     # UNIFIED API - Device Management
-    # ========================================================================
     
     def to(self, device):
         """Device movement (no-op for DeepSpeed, handles internally)."""
@@ -407,9 +387,7 @@ class DeepSpeedBackend:
         """Move to CPU (no-op for DeepSpeed)."""
         return self
     
-    # ========================================================================
     # Backend-Specific Properties
-    # ========================================================================
     
     @property
     def module(self):
@@ -431,9 +409,7 @@ class DeepSpeedBackend:
         """Get backend name."""
         return "deepspeed"
     
-    # ========================================================================
     # Utility Methods
-    # ========================================================================
     
     def is_main_process(self) -> bool:
         """Check if this is the main process."""
@@ -467,9 +443,7 @@ class DeepSpeedBackend:
                 f"zero_stage={getattr(self.config, 'zero_stage', 'N/A')})")
 
 
-# ============================================================================
 # Factory Function
-# ============================================================================
 
 def create_deepspeed_backend(
     model: nn.Module,

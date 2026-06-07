@@ -220,7 +220,6 @@ def matmul_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
     input_tensors = [args[0].data, args[1].data]
     output_tensors = [args[-1].data]
 
-    # Check dimension
     if all(len(tensor.shape) == 1 for tensor in input_tensors):
         # Dot
         fwd_compute_cost = flop_mapping[torch.ops.aten.matmul.default](input_tensors, output_tensors)
@@ -428,10 +427,8 @@ def matmul_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
                 temp=compute_size_in_bytes([extended_input_0, extended_input_1]),
             )
 
-    # compute cost
     compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
 
-    # memory cost
     total_cost = MemoryCost(
         activation=fwd_mem_cost.activation + bwd_mem_cost.activation,
         parameter=fwd_mem_cost.parameter + bwd_mem_cost.parameter,

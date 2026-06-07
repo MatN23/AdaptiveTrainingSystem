@@ -170,7 +170,6 @@ def split_module(
             continue
         partition_name = str(split_callback(node))
 
-        # add node to partitions
         partition = partitions.get(partition_name)
         if partition is None:
             partitions[partition_name] = partition = Partition(partition_name)
@@ -187,7 +186,6 @@ def split_module(
         if not len(partition.partitions_dependent_on):
             root_partitions.append(partition_name)
 
-    # check partitions for circular dependencies and create topological partition ordering
     sorted_partitions: List[str] = []
     while root_partitions:
         root_partition = root_partitions.pop()
@@ -199,7 +197,6 @@ def split_module(
     if len(sorted_partitions) != len(partitions):
         raise RuntimeError("cycle exists between partitions!")
 
-    # add placeholders to partitions
     for partition_name in sorted_partitions:
         partition = partitions[partition_name]
         for input in partition.inputs:
@@ -226,7 +223,6 @@ def split_module(
                     if not hasattr(target_attr, atom):
                         raise RuntimeError(f"Operator target {node.target} not found!")
                     target_attr = getattr(target_attr, atom)
-                # target = target_atoms[-1]
                 target = "_".join(target_atoms)
                 partition.targets[target] = target_attr
 

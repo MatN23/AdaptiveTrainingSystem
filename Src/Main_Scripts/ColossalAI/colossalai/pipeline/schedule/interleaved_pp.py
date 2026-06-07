@@ -296,8 +296,6 @@ class InterleavedSchedule(PipelineSchedule):
         """
         micro_batch = self.load_micro_batch(model_chunk_id=model_chunk_id)
 
-        # for the first stage, input_obj is None
-        # for the non-first stage, input_obj is the output of the previous stage and it's must be a dict
 
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if isinstance(model_chunk, ModuleList):
@@ -465,7 +463,6 @@ class InterleavedSchedule(PipelineSchedule):
 
             model_chunk_id = self.get_model_chunk_id(i + num_warmup_microbatch, is_forward=True)
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
-            # Add input_obj and output_obj to end of list.
             input_objs[model_chunk_id].append(input_obj)
             output_objs[model_chunk_id].append(output_obj)
 
@@ -518,7 +515,6 @@ class InterleavedSchedule(PipelineSchedule):
             model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
             _input_obj = input_objs[model_chunk_id].pop(0)
             _output_obj = output_objs[model_chunk_id].pop(0)
-            # output_obj_grad = self.recv_backward(model_chunk_id)
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
 
             if not last_iteration:

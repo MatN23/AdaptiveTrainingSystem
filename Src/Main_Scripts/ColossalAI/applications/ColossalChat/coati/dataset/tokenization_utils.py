@@ -126,7 +126,6 @@ def supervised_tokenize_sft(
     except TypeError as e:
         raise TypeError(str(e) + f"\nUnable to decode input_ids: {tokenized}")
 
-    # Check if all labels are ignored, this may happen when the tokenized length is too long
     if labels.count(ignore_index) == len(labels):
         return dict(
             input_ids=None,
@@ -353,7 +352,6 @@ def tokenize_rlhf(
             rejected_data_packed["label_decode"],
         )
 
-        # Check if loss mask is all 0s (no loss), this may happen when the tokenized length is too long
         if chosen_loss_mask.count(0) == len(chosen_loss_mask) or rejected_loss_mask.count(0) == len(rejected_loss_mask):
             return dict(
                 chosen_input_ids=None,

@@ -1,4 +1,3 @@
-# for PyTorch 1.11 compatibility uses
 
 from torch.fx import Node
 

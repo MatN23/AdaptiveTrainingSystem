@@ -165,11 +165,9 @@ class LayerNorm1D(ColossalaiModule):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
-            # bias
             bias = state_dict.pop(bias_key, None)
             if bias is not None:
                 local_state[bias_key] = bias
@@ -220,7 +218,6 @@ class Classifier1D(ParallelLayer):
         self.input_size_per_partition = divide(in_features, gpc.tensor_parallel_size)
 
         # Parameters.
-        # Initialize weight.
         factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         if weight is not None:
             self.weight = weight
@@ -256,12 +253,10 @@ class Classifier1D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             if self.has_weight:
                 weight = state_dict.pop(weight_key, None)
                 if weight is not None:
                     local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -356,7 +351,6 @@ class VocabParallelClassifier1D(ParallelLayer):
         self.num_classes_per_partition = divide(num_classes, gpc.tensor_parallel_size)
 
         # Parameters.
-        # Initialize weight.
         factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         if weight is not None:
             self.weight = weight
@@ -393,12 +387,10 @@ class VocabParallelClassifier1D(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             if self.has_weight:
                 weight = state_dict.pop(weight_key, None)
                 if weight is not None:
                     local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -498,7 +490,6 @@ class Linear1D_Col(ParallelLayer):
         self.out_features_per_partition = divide(out_features, gpc.tensor_parallel_size)
 
         # Parameters.
-        # Initialize weight.
         factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         self.weight = Parameter(torch.empty(self.out_features_per_partition, self.in_features, **factory_kwargs))
 
@@ -529,11 +520,9 @@ class Linear1D_Col(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -569,11 +558,9 @@ class Linear1D_Col(ParallelLayer):
             input_.shape, self.weight.shape, self.weight.shape[-1]
         )
         # Set up backprop all-reduce.
-        # input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
         input_parallel = input_
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-        # output_parallel = F.linear(input_parallel, self.weight, bias)
         output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, ParallelMode.PARALLEL_1D, True)
         if self.gather_output:
             # All-gather across the partitions.
@@ -637,12 +624,10 @@ class Linear1D_Row(ParallelLayer):
         self.input_size_per_partition = divide(in_features, gpc.tensor_parallel_size)
 
         # Parameters.
-        # Initialize weight.
         factory_kwargs = {"device": get_accelerator().get_current_device(), "dtype": dtype}
         self.weight = Parameter(torch.empty(self.out_features, self.input_size_per_partition, **factory_kwargs))
 
         if self.stream_chunk_num > 1:
-            # TODO() work for inference only
             self.chunk_weight()
         if bias:
             self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
@@ -672,11 +657,9 @@ class Linear1D_Row(ParallelLayer):
         weight_key = prefix + "weight"
         bias_key = prefix + "bias"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
-            # bias
             if self.bias is not None:
                 bias = state_dict.pop(bias_key, None)
                 if bias is not None:
@@ -740,7 +723,6 @@ class Linear1D_Row(ParallelLayer):
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
             output_parallel = F.linear(input_, self.weight)
-            # output_parallel = linear_with_async_comm(input_, self.weight, None, ParallelMode.PARALLEL_1D, False)
             output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
         if not self.skip_bias_add:
             if self.bias is not None:
@@ -829,7 +811,6 @@ class Embedding1D(ParallelLayer):
         local_state = OrderedDict()
         weight_key = prefix + "weight"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight
@@ -948,7 +929,6 @@ class VocabParallelEmbedding1D(ParallelLayer):
         local_state = OrderedDict()
         weight_key = prefix + "weight"
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
-            # weight
             weight = state_dict.pop(weight_key, None)
             if weight is not None:
                 local_state[weight_key] = weight

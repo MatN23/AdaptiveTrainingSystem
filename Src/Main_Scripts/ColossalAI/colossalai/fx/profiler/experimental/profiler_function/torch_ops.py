@@ -37,7 +37,6 @@ def torch_zero_flops_op(*args, **kwargs) -> Tuple[int, int]:
 
 @meta_profiler_function.register(torch.where)
 def torch_where(condition: torch.Tensor, x: Any, y: Any) -> Tuple[int, int]:
-    # torch.where returns the broadcasted tensor of condition, x, and y,
     # so hack it by using addition
     flops = condition.numel()
     macs = 0

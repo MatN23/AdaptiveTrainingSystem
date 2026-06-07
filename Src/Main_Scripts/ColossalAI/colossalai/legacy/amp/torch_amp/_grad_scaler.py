@@ -125,7 +125,6 @@ class GradScaler(object):
         else:
             self._enabled = enabled
 
-        # check version
         torch_version = version.parse(torch.__version__)
         assert torch_version.major == 1
         if torch_version.minor > 8:
@@ -223,8 +222,6 @@ class GradScaler(object):
                     if (not allow_fp16) and param.grad.dtype == torch.float16:
                         raise ValueError("Attempting to unscale FP16 gradients.")
                     if param.grad.is_sparse:
-                        # is_coalesced() == False means the sparse grad has values with duplicate indices.
-                        # coalesce() deduplicates indices and adds all values that have the same index.
                         # For scaled fp16 values, there's a good chance coalescing will cause overflow,
                         # so we should check the coalesced _values().
                         if param.grad.dtype is torch.float16:

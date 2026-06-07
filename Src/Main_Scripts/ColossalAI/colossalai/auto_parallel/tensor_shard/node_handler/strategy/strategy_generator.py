@@ -31,7 +31,6 @@ class StrategyGenerator(ABC):
         self.op_data = operation_data_mapping
         self.device_mesh = device_mesh
 
-        # validate the whether operation data is of desired value
         self.validate()
 
     @property
@@ -177,8 +176,6 @@ class StrategyGenerator(ABC):
             comm_cost.bwd += num_ele_in_comm["backward"]
             comm_cost.total += num_ele_in_comm["total"]
 
-        # check if communication action exists
-        # if so, loop over each action and compute the cost of each action
         if strategy.communication_actions is not None:
             for operand, comm_action in strategy.communication_actions.items():
                 if isinstance(comm_action, CommAction):
@@ -242,7 +239,6 @@ class StrategyGenerator(ABC):
                 if isinstance(meta_data, torch.Tensor):
                     element_bytes = _compute_size_in_bytes_helper(sharding_spec, meta_data)
                 else:
-                    # if meta_data is not a tensor, we count the memory as 0
                     element_bytes = 0
                 total_bytes += element_bytes
 
@@ -250,7 +246,6 @@ class StrategyGenerator(ABC):
             if isinstance(op_data.data, torch.Tensor):
                 total_bytes = _compute_size_in_bytes_helper(strategy.sharding_specs[op_data], op_data.data)
             else:
-                # if op_data.data is not a tensor, we count the memory as 0
                 total_bytes = 0
 
         return total_bytes

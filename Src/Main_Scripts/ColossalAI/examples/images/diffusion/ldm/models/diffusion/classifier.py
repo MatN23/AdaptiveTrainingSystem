@@ -146,7 +146,6 @@ class NoisyLatentImageClassifier(pl.LightningModule):
                 h, w = targets.shape[-2:]
                 targets = F.interpolate(targets, size=(h // 2, w // 2), mode="nearest")
 
-            # targets = rearrange(targets,'b c h w -> b h w c')
 
         return targets
 
@@ -158,7 +157,6 @@ class NoisyLatentImageClassifier(pl.LightningModule):
             return (top_ks == labels[:, None]).float().sum(dim=-1)
 
     def on_train_epoch_start(self):
-        # save some memory
         self.diffusion_model.model.to("cpu")
 
     @torch.no_grad()

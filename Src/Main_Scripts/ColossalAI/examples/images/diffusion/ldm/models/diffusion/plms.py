@@ -44,7 +44,6 @@ class PLMSSampler(object):
         self.register_buffer("sqrt_recip_alphas_cumprod", to_torch(np.sqrt(1.0 / alphas_cumprod.cpu())))
         self.register_buffer("sqrt_recipm1_alphas_cumprod", to_torch(np.sqrt(1.0 / alphas_cumprod.cpu() - 1)))
 
-        # ddim sampling parameters
         ddim_sigmas, ddim_alphas, ddim_alphas_prev = make_ddim_sampling_parameters(
             alphacums=alphas_cumprod.cpu(), ddim_timesteps=self.ddim_timesteps, eta=ddim_eta, verbose=verbose
         )

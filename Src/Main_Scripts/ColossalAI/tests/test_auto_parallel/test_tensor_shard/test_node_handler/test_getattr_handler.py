@@ -26,10 +26,8 @@ class GetattrModel(nn.Module):
 def test_getattr_handler():
     model = GetattrModel()
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=0] = placeholder[target=input]
     #     %conv_weight : [#users=1] = get_attr[target=conv.weight]
-    #     return conv_weight
     meta_args = {"input": torch.rand(4, 4, 64, 64).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -47,7 +45,6 @@ def test_getattr_handler():
 
     getattr_handler.register_strategy(compute_resharding_cost=False)
 
-    # check operation data mapping
     mapping = getattr_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

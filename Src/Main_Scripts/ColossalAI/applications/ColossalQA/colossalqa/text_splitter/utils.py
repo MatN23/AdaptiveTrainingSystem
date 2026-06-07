@@ -2,7 +2,6 @@ import re
 
 
 def remove_format(text: str) -> str:
-    # if the accout of \t, \r, \v, \f is less than 3, replace \t, \r, \v, \f with space
     if len(re.findall(r"\s", text.replace(" ", ""))) > 3:
         # in case this is a line of a table
         return text

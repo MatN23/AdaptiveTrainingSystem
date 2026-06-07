@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import os
@@ -15,7 +14,6 @@ from dataclasses import dataclass, field
 import torch
 import torch.nn.functional as F
 
-# Add project root to path
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -27,9 +25,7 @@ from config.config_manager import Config
 logging.basicConfig(level=logging.ERROR)
 
 
-# ============================================================================
 # HARDCODED CONFIGURATION - MODIFY THESE VALUES
-# ============================================================================
 
 class HardcodedConfig:
     """All configuration in one place - edit these values as needed"""
@@ -84,7 +80,6 @@ class HardcodedConfig:
         }
     }
     
-    # STOP TOKENS
     STOP_TOKENS = [
         '<|im_end|>',
         '<|endoftext|>',
@@ -101,9 +96,7 @@ class HardcodedConfig:
     FORCE_DEVICE = None
 
 
-# ============================================================================
 # SESSION TRACKING
-# ============================================================================
 
 @dataclass  
 class SessionStats:
@@ -125,9 +118,7 @@ class SessionStats:
         return 0.0
 
 
-# ============================================================================
 # CHECKPOINT LOADING
-# ============================================================================
 
 def load_checkpoint_smart(checkpoint_path: str, device: torch.device) -> Tuple[Dict, Optional[Dict]]:
     """Load checkpoint with support for single files and ZeRO shards"""
@@ -183,7 +174,6 @@ def load_zero_shards(checkpoint_dir: Path, device: torch.device) -> Tuple[Dict, 
     
     print(f"   Found {len(shard_files)} shard(s)")
     
-    # Load and merge
     merged_state_dict = {}
     config_dict = None
     
@@ -332,16 +322,12 @@ def find_latest_checkpoint() -> Optional[Path]:
     if not candidates:
         return None
     
-    # Return most recent
     candidates.sort(reverse=True, key=lambda x: x[0])
     found = candidates[0][1]
     print(f"    Found: {found}")
     return found
 
 
-# ============================================================================
-# GENERATION ENGINE
-# ============================================================================
 
 class GenerationEngine:
     """Handle token generation with streaming support"""
@@ -451,7 +437,6 @@ class GenerationEngine:
                 probs = F.softmax(next_token_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1).item()
                 
-                # Check stop conditions
                 if next_token == 0:
                     break
 
@@ -508,9 +493,6 @@ class GenerationEngine:
         return generated_tokens, metrics
 
 
-# ============================================================================
-# CHAT INTERFACE
-# ============================================================================
 
 class ChatInterface:
     """Main chat interface"""
@@ -524,7 +506,6 @@ class ChatInterface:
         self.system_prompt = HardcodedConfig.DEFAULT_SYSTEM_PROMPT
         self.current_mode = HardcodedConfig.DEFAULT_MODE
         
-        # Initialize components
         print("\n" + "="*70)
         print(" "*20 + "CHAT INTERFACE")
         print("="*70 + "\n")
@@ -569,7 +550,6 @@ class ChatInterface:
         
         self.checkpoint_path = checkpoint_path
         
-        # Load checkpoint
         state_dict, config_dict = load_checkpoint_smart(str(checkpoint_path), self.device)
         
         # Get configuration
@@ -582,11 +562,9 @@ class ChatInterface:
         else:
             self.model_config = infer_config_from_state_dict(state_dict)
         
-        # Create model
         print("\n  Initializing model...")
         self.model = DeepSeekTransformer(self.model_config).to(self.device)
         
-        # Load weights
         print(" Loading model weights...")
         missing_keys, unexpected_keys = self.model.load_state_dict(state_dict, strict=False)
         
@@ -648,7 +626,6 @@ class ChatInterface:
     def _generate_response(self, user_message: str) -> Tuple[str, Dict[str, Any]]:
         """Generate response to user message"""
         
-        # Format prompt
         prompt = self._format_prompt(user_message)
         
         # Tokenize
@@ -815,7 +792,6 @@ class ChatInterface:
             print("\n No conversation to save\n")
             return
         
-        # Create save directory
         save_dir = Path(HardcodedConfig.CONVERSATIONS_DIR)
         save_dir.mkdir(exist_ok=True)
         
@@ -828,7 +804,6 @@ class ChatInterface:
         
         filepath = save_dir / filename
         
-        # Save data
         data = {
             'timestamp': timestamp,
             'model': str(self.checkpoint_path),
@@ -886,7 +861,6 @@ class ChatInterface:
         
         self._print_header()
         
-        # Setup signal handler for graceful exit
         def signal_handler(signum, frame):
             print("\n\n" + "="*70)
             print("CHAT SESSION ENDED")
@@ -955,9 +929,6 @@ class ChatInterface:
             print("\n Goodbye!\n")
 
 
-# ============================================================================
-# MAIN ENTRY POINT
-# ============================================================================
 
 def main():
     """Main entry point - fully hardcoded, no arguments needed"""
@@ -970,7 +941,6 @@ def main():
     print(" Just run this script - no arguments needed!\n")
     
     try:
-        # Initialize and run chat
         chat = ChatInterface()
         chat.run()
         return 0

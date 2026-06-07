@@ -100,14 +100,10 @@ class GraphAnalyser:
         unique_live_vars = LiveVariableVector()
 
         for idx, node in enumerate(compute_nodes):
-            #############################
             # find new living variables #
-            #############################
             # detect whether the current op is an in-place op
-            # if it is an in-place op, we would deem it as a duplicate var
             is_inplace = False
             if node.op == "call_function":
-                # check if this is an inplace op such as torch.nn.functional.relu(x, inplace=True)
                 if node.kwargs.get("inplace", False):
                     is_inplace = True
             elif node.op == "call_module":
@@ -124,7 +120,6 @@ class GraphAnalyser:
             checked_variables.append(live_var)
             all_live_variables.append(live_var)
 
-            # check if any input is not checked yet
             for arg in node.args:
                 if not isinstance(arg, Node):
                     continue
@@ -138,14 +133,12 @@ class GraphAnalyser:
             # TODO: add the logic to remove live variables
             # this should be completed if we are able to trace the backward compute graph
 
-            # add this stage to liveness dict
             stage = LiveStage(
                 name=node.name,
                 node=node,
                 all_live_vars=all_live_variables.copy(),
                 unique_live_vars=unique_live_vars.copy(),
             )
-            # if a LiveStage is covered by another LiveStage, we just keep the larger one.
             replace = False
             for index, prev_stage in enumerate(liveness_list):
                 all_covered = True

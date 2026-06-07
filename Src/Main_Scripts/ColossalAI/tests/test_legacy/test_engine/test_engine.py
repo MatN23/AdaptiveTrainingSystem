@@ -43,9 +43,7 @@ def run_train(model_name, amp_mode):
             engine.step()
             break
     except IndexError:
-        # if using apex amp, NetWithRepeatedlyComputedLayers will raise an index out of range issue
         # the following check fails in apex
-        # if cached_x.grad_fn.next_functions[1][0].variable is not x:
         pass
 
 

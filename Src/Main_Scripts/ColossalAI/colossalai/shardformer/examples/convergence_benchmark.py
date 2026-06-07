@@ -47,7 +47,6 @@ def train(args):
 
     model.to(torch.cuda.current_device())
 
-    # if multiple GPUs, shard the model
     if dist.get_world_size() > 1:
         tp_group = dist.new_group(backend="nccl")
         shard_config = ShardConfig(

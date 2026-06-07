@@ -69,30 +69,22 @@ class TableLoader:
                 self.load_data(file)
 
         if path.endswith(".csv"):
-            # Load csv
             self.data[path] = pd.read_csv(path)
         elif path.endswith(".xlsx") or path.endswith(".xls"):
-            # Load excel
             self.data[path] = pd.read_excel(path)  # You can adjust the sheet_name as needed
         elif path.endswith(".json"):
-            # Load json
             self.data[path] = pd.read_json(path)
         elif path.endswith(".html"):
-            # Load html
             html_tables = pd.read_html(path)
             # Choose the desired table from the list of DataFrame objects
             self.data[path] = html_tables[0]  # You may need to adjust this index
         elif path.endswith(".h5") or path.endswith(".hdf5"):
-            # Load h5
             self.data[path] = pd.read_hdf(path, key=self.kwargs.get("key", "data"))  # You can adjust the key as needed
         elif path.endswith(".parquet"):
-            # Load parquet
             self.data[path] = pd.read_parquet(path, engine="fastparquet")
         elif path.endswith(".feather"):
-            # Load feather
             self.data[path] = pd.read_feather(path)
         elif path.endswith(".dta"):
-            # Load dta
             self.data[path] = pd.read_stata(path)
         else:
             raise ValueError("Unsupported file format")

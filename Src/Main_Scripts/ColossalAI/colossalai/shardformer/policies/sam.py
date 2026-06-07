@@ -147,7 +147,6 @@ class SamPolicy(Policy):
                 ],
             )
 
-            # add `DropoutForParallelInput` layer to replace the useage of `nn.functional.dropout`
             policy[SamVisionAttention] = ModulePolicyDescription(
                 attribute_replacement={
                     "dropout_layer": col_nn.DropoutForParallelInput(self.model.config.vision_config.attention_dropout)
@@ -209,22 +208,15 @@ class SamPolicy(Policy):
             target_key=SamTwoWayTransformer,
         )
 
-        # use flash attention
         if self.shard_config.enable_flash_attention:
             warnings.warn("Flash attention is not supported in SAM model. Fallback to normal attention.")
             # self.append_or_create_method_replacement(
-            #     description={
             #         "forward": get_sam_flash_attention_forward(),
             #     },
-            #     policy=policy,
-            #     target_key=SamAttention,
             # )
             # self.append_or_create_method_replacement(
-            #     description={
             #         "forward": get_sam_vision_flash_attention_forward(),
             #     },
-            #     policy=policy,
-            #     target_key=SamVisionAttention,
             # )
 
         return policy
@@ -233,7 +225,6 @@ class SamPolicy(Policy):
         return self.model
 
 
-# SamModel
 class SamModelPolicy(SamPolicy):
     def __init__(self) -> None:
         super().__init__()

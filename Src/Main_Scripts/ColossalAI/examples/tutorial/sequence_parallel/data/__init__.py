@@ -24,13 +24,7 @@ def build_train_valid_test_data_iterators(
     logger.info("> building train, validation, and test datasets ...", ranks=[0])
 
     # Backward compatibility, assume fixed batch size.
-    # if iteration > 0 and consumed_train_samples == 0:
-    #     assert train_samples is None, \
     #         'only backward compatibility support for iteration-based training'
-    #     consumed_train_samples = iteration * global_batch_size
-    # if iteration > 0 and consumed_valid_samples == 0:
-    #     if train_samples is None:
-    #         consumed_valid_samples = (iteration // eval_interval) * \
     #             eval_iters * global_batch_size
 
     # Data loader only on rank 0 of each model parallel group.

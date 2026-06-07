@@ -146,7 +146,6 @@ class WorkerBase(ABC):
         # context to maintain loop
         self._initialize_context_container()
 
-        # main loop
         self.main_loop_thread = threading.Thread(target=self._work_loop, name=f"rank_{pp_rank}", daemon=True)
         self.main_loop_thread.start()
 
@@ -223,12 +222,10 @@ class WorkerBase(ABC):
         assert pp_rank_to_worker_rref is not None, "stage_to_workers must be a dict instead of None"
         self.pp_rank_to_worker_rref = pp_rank_to_worker_rref
 
-        # for some schedule need the other worker's info to initialise partition (like Chimera)
         # construction of partition is executed after the registration of pp_rank_to_worker_rref
         self._initialize_partition()
 
     # res_use works for lifecycle counter,
-    # if ref_use is True, lifecycle won't add.
     # offset supports get partial output to reduce comm costs.
     def get_output_by_key(self, key: UniqueKey, ref_use=False, rank=None, offsets=None) -> Any:
         output = self._get_output_all(key, ref_use, rank)
@@ -393,10 +390,9 @@ class WorkerBase(ABC):
             producer_stage_ids = self.get_producer_stage_ids()
             producer_num = len(producer_stage_ids)
             if self.need_model_input():
-                producer_num += 1  # for input partition
+                producer_num += 1
             subscribe_forward_futures: List[Future] = [None] * producer_num
 
-            # TODO(jiangziyue) get single value instead of the whole output
             if self.need_model_input():
                 producer_stage_id = 0
                 producer_output_key = UniqueKey(microbatch_id, Phase.INPUT)
@@ -447,7 +443,6 @@ class WorkerBase(ABC):
 
         return work_item_from_producer
 
-    # TODO(jiangziyue) Profile the side effect of the lock for lifecycle protection and consider a better one.
     def subscribe_producer(self, microbatch_id: int, forward_only: bool):
         key = UniqueKey(microbatch_id, Phase.FORWARD)
         with self.work_list_condition_lock:
@@ -616,7 +611,7 @@ class WorkerBase(ABC):
             # when output_len = 1, not iterable
             if target_index == src_index:
                 if output_len == 1:
-                    res = None  # offset = None to get all outputs
+                    res = None
                     return res
                 else:
                     res.append(src_offset)
@@ -643,13 +638,12 @@ class WorkerBase(ABC):
                         break
                 if target_index == dst_index:
                     if input_len == 1:
-                        res = None  # offset = None to get all outputs
+                        res = None
                         return res
                     else:
                         res.append(dst_offset)
         return res
 
-    # TODO(jiangziyue) get single value instead of the whole output
     def _get_real_args_kwargs_fwd(self, args_or_kwargs):
         if not self.use_middleware():
             args_or_kwargs = pytree_map(args_or_kwargs, fn=lambda x: x.wait(), process_types=Future)
@@ -711,7 +705,6 @@ class WorkerBase(ABC):
                     args_or_kwargs = flatten_args
         return args_or_kwargs
 
-    # TODO(jiangziyue) get single value instead of the whole output
     def _get_real_args_kwargs_bwd(self, args_or_kwargs):
         if not self.use_middleware():
             args_or_kwargs = pytree_map(args_or_kwargs, fn=lambda x: x.wait(), process_types=Future)
@@ -906,9 +899,8 @@ class WorkerBase(ABC):
                 consume_result, fn=lambda x: x.to("cpu"), process_types=torch.Tensor
             )  # torch rpc doesn't support args or rets in
 
-            # if not forward_only, do the backward
             if not forward_only:
-                if is_last_stage:  # if it is the last stage, trigger backward automatic
+                if is_last_stage:
                     self._begin_backward(microbatch_id)
 
         elif phase == Phase.BACKWARD:
@@ -940,7 +932,6 @@ class WorkerBase(ABC):
                 grad_tensors = None
 
             # take tensor only (for only tensor can do backward)
-            # TODO(jiangziyue) : All values which should do bp are torch.Tensor?
             stage_outputs = pytree_filter(lambda x: True, stage_outputs, process_types=torch.Tensor)
             grad_tensors = pytree_filter(lambda x: True, grad_tensors, process_types=torch.Tensor)
 
@@ -1012,11 +1003,9 @@ class WorkerBase(ABC):
 
     # do the main loop to consume ready_list
     def _work_loop(self):
-        # for init
         self._get_producer_consumer()
         torch.cuda.set_device(ppg.get_local_pp_rank())
 
-        # main loop
         while True:
             work_item_key = self._get_work_item_key()
             # move current work item to output_list to activate subscribe in advance
@@ -1025,7 +1014,6 @@ class WorkerBase(ABC):
                 work_item = self.work_list[work_item_key]
 
             with self.output_list_condition_lock:
-                # assert work_item_key not in self.output_list
                 self.output_list[work_item_key] = work_item
                 self.output_list_condition_lock.notify_all()
 
@@ -1035,7 +1023,6 @@ class WorkerBase(ABC):
                 self.work_list.pop(work_item_key)
             work_item.output.set_result(consume_result)
 
-            # if is last step in one batch reset context and do step
             if self._is_last_step(work_item):
                 self._wait_for_reset()
 
@@ -1104,7 +1091,6 @@ class PipelineEngineBase(ABC, nn.Module):
         self.virtual_stage_num = self.stage_num * self.chunk
         assert self.stage_num <= torch.cuda.device_count(), "stage_num must be smaller than device count!"
 
-        # check data_process_func
         data_process_func = self.data_process_func
         if data_process_func is not None:
             assert callable(data_process_func), "data_process_func must be a function"
@@ -1259,7 +1245,6 @@ class PipelineEngineBase(ABC, nn.Module):
             # TODO : add relationship between output_pp_ranks and parts of microlabels
             worker_rref.remote().set_labels(microbatch_id, microlabels)
 
-    # TODO(jiangziyue) : get model output with single value, instead of merging into last stage.
     def _subscribe_forward(self, microbatch_id: int, output_pp_ranks: List[int], ret_future: Dict[int, List[Future]]):
         key = UniqueKey(microbatch_id, Phase.FORWARD)
         for pp_rank in output_pp_ranks:
@@ -1341,9 +1326,7 @@ class PipelineEngineBase(ABC, nn.Module):
             microbatch = split_batch(batch, batch_start, batch_end, device)
             self._set_input(input_pp_ranks, microbatch_id, microbatch, forward_only)
 
-            # set labels
             if labels is not None:
-                # microlabels = labels[microbatch_size * microbatch_id:microbatch_size * (microbatch_id + 1)]
                 microlabels = split_batch(labels, batch_start, batch_end, device)
                 self._set_labels(output_pp_ranks, microbatch_id, microlabels)
 
@@ -1353,7 +1336,6 @@ class PipelineEngineBase(ABC, nn.Module):
         # wait for first rank to ensure all backwards are done
         self._ensure_backward(forward_only, input_pp_ranks)
 
-        # collect forward result
         forward_result = self._collect_forward_result(output_pp_ranks, ret_future)
 
         if not forward_only and hasattr(self, "optimizer_class"):

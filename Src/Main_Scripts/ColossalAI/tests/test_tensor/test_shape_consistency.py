@@ -123,7 +123,6 @@ def test_shape_consistency():
     assert comm_action_sequence[1].shard_dim == 0
     assert comm_action_sequence[1].logical_process_axis == 0
 
-    # shard(S0) -> [S01]
     assert comm_action_sequence[2].comm_pattern == CollectiveCommPattern.SPLIT_FWD_GATHER_BWD
     assert comm_action_sequence[2].shard_dim == 0
     assert comm_action_sequence[2].logical_process_axis == 1

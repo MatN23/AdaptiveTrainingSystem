@@ -11,8 +11,8 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo
 
 PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},  # zero2-offload
+    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},
+    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.5},  # zero2-offload-half
     {"placement_policy": "auto"},
 ]
@@ -38,7 +38,7 @@ def exam_zero_optim_state_dict(placement_config, keep_gathered):
     model = GeminiDDP(model, config_dict, **placement_config, pin_memory=True)
 
     optimizer = HybridAdam(model.parameters())
-    optim = GeminiOptimizer(optimizer, model, initial_scale=32)  # initialize the link between chunk16 and chunk32
+    optim = GeminiOptimizer(optimizer, model, initial_scale=32)
 
     set_seed(dist.get_rank() * 3 + 128)
     model.train()

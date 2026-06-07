@@ -34,22 +34,13 @@ class ConvModel(torch.nn.Module):
 def test_linear_module():
     model = LinearModel(3, 6)
     tracer = ColoTracer()
-    # graph():
     #     %x : torch.Tensor [#users=1] = placeholder[target=x]
     #     %linear_weight : [#users=1] = get_attr[target=linear.weight]
     #     %linear_bias : [#users=1] = get_attr[target=linear.bias]
     #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%x, %linear_weight), kwargs = {})
     #     %add : [#users=1] = call_function[target=operator.add](args = (%linear, %linear_bias), kwargs = {})
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%add, 2), kwargs = {})
-    #     return mul
     graph = tracer.trace(root=model, meta_args={"x": torch.rand(3, 3).to("meta")})
-    # def forward(self, x : torch.Tensor):
-    #     linear_weight = self.linear.weight
-    #     linear_bias = self.linear.bias
-    #     linear = torch._C._nn.linear(x, linear_weight);  x = linear_weight = None
-    #     add = linear + linear_bias;  linear = linear_bias = None
-    #     mul = add * 2;  add = None
-    #     return mul
     gm = ColoGraphModule(model, graph)
     gm.recompile()
     node_list = list(graph.nodes)
@@ -71,7 +62,6 @@ def test_linear_module():
 def test_conv_module():
     model = ConvModel(3, 6, 2)
     tracer = ColoTracer()
-    # graph():
     #     %x : torch.Tensor [#users=1] = placeholder[target=x]
     #     %conv_weight : [#users=1] = get_attr[target=conv.weight]
     #     %conv_bias : [#users=1] = get_attr[target=conv.bias]
@@ -79,16 +69,7 @@ def test_conv_module():
     #     %view : [#users=1] = call_method[target=view](args = (%conv_bias, [1, -1, 1, 1]), kwargs = {})
     #     %add : [#users=1] = call_function[target=operator.add](args = (%conv2d, %view), kwargs = {})
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%add, 2), kwargs = {})
-    #     return mul
     graph = tracer.trace(root=model, meta_args={"x": torch.rand(4, 3, 64, 64).to("meta")})
-    # def forward(self, x : torch.Tensor):
-    #     conv_weight = self.conv.weight
-    #     conv_bias = self.conv.bias
-    #     conv2d = torch.conv2d(x, conv_weight);  x = conv_weight = None
-    #     view = conv_bias.view([1, -1, 1, 1]);  conv_bias = None
-    #     add = conv2d + view;  conv2d = view = None
-    #     mul = add * 2;  add = None
-    #     return mul
     gm = ColoGraphModule(model, graph)
 
     gm.recompile()

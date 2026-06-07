@@ -115,7 +115,6 @@ def main():
     set_cpu_maximum_parallelism()
     args = parse_args()
 
-    # if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
     if args.distplan not in ["CAI_ZeRO1", "CAI_ZeRO2", "CAI_Gemini", "Pytorch_DDP", "Pytorch_ZeRO"]:
         raise TypeError(f"{args.distplan} is error")
 
@@ -196,7 +195,6 @@ def main():
     logger.info(f"the size of testing model size is {model_size_formatter(numel)}.")
     logger.info(get_mem_info(prefix="After init model, "), ranks=[0])
 
-    # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
     # = (batch_per_DP_group * dp_degree) * (numel * tp_degree) * seq_len * 8 / (tp_degree * dp_degree)
     # = batch_per_DP_group * numel * seq_len * 8
     get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LEN)

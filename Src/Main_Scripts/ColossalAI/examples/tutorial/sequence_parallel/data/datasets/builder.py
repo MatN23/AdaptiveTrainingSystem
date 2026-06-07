@@ -66,7 +66,6 @@ def _build_train_valid_test_datasets(
             doc_idx_ptr = indexed_dataset.get_doc_idx()
             # Slice the doc-idx
             start_index = splits[index]
-            # Add +1 so we can index into the dataset to get the upper bound.
             end_index = splits[index + 1] + 1
             # New doc_idx view.
             indexed_dataset.set_doc_idx(doc_idx_ptr[start_index:end_index])

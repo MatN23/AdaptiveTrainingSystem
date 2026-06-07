@@ -35,20 +35,16 @@ if __name__ == "__main__":
     colossal_api = ColossalAPI.get_api(args.model_name, args.model_path)
     llm = ColossalLLM(n=1, api=colossal_api)
 
-    # Define the retriever
     information_retriever = CustomRetriever(k=3, sql_file_path=args.sql_file_path, verbose=True)
 
-    # Setup embedding model locally
     embedding = HuggingFaceEmbeddings(
         model_name="moka-ai/m3e-base", model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": False}
     )
 
-    # Define memory with summarization ability
     memory = ConversationBufferWithSummary(
         llm=llm, max_tokens=2000, llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True}
     )
 
-    # Define the chain to preprocess the input
     # Disambiguate the input. e.g. "What is the capital of that country?" -> "What is the capital of France?"
     llm_chain_disambiguate = LLMChain(
         llm=llm, prompt=PROMPT_DISAMBIGUATE_EN, llm_kwargs={"max_new_tokens": 30, "temperature": 0.6, "do_sample": True}
@@ -58,7 +54,6 @@ if __name__ == "__main__":
         out = llm_chain_disambiguate.run(input=input, chat_history=memory.buffer, stop=["\n"])
         return out.split("\n")[0]
 
-    # Load data to vector store
     print("Select files for constructing retriever")
     documents = []
     while True:
@@ -74,11 +69,9 @@ if __name__ == "__main__":
         separator = separator if separator != "" else "\n\n"
         retriever_data = DocumentLoader([[file, data_name.replace(" ", "_")]]).all_data
 
-        # Split
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
         splits = text_splitter.split_documents(retriever_data)
         documents.extend(splits)
-    # Create retriever
     information_retriever.add_documents(docs=documents, cleanup="incremental", mode="by_source", embedding=embedding)
 
     # Set document retrieval chain, we need this chain to calculate prompt length
@@ -91,7 +84,6 @@ if __name__ == "__main__":
         },
     )
 
-    # Define retrieval chain
     retrieval_chain = RetrievalQA.from_chain_type(
         llm=llm,
         verbose=False,
@@ -100,10 +92,8 @@ if __name__ == "__main__":
         chain_type_kwargs={"prompt": PROMPT_RETRIEVAL_QA_EN, "memory": memory},
         llm_kwargs={"max_new_tokens": 50, "temperature": 0.75, "do_sample": True},
     )
-    # Set disambiguity handler
     information_retriever.set_rephrase_handler(disambiguity)
 
-    # Start conversation
     while True:
         user_input = input("User: ")
         if "END" == user_input:

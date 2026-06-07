@@ -59,9 +59,7 @@ class DetachedPPOTrainer(DetachedTrainer):
         # set environment variables
         if env_info:
             set_dist_env(env_info=env_info)
-        # configure strategy
         self.strategy = strategy_fn()
-        # configure models, loss and optimizers
         with self.strategy.model_init_context():
             self.actor, self.critic = model_fn()
 
@@ -82,7 +80,6 @@ class DetachedPPOTrainer(DetachedTrainer):
             (self.actor, self.actor_optim), (self.critic, self.critic_optim)
         )
 
-        # configure trainer
         self.actor_loss_fn = PolicyLoss(eps_clip)
         self.critic_loss_fn = ValueLoss(value_clip)
 

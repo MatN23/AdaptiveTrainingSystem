@@ -35,10 +35,8 @@ def check_embedding_module_handler(rank, world_size, port):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = EmbeddingModule(num_embeddings=NUM_EMBEDDINGS, embedding_dims=EMBEDDING_DIMS).cuda()
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %embedding : [#users=1] = call_module[target=embedding](args = (%input_1,), kwargs = {})
-    #     return embedding
     input = torch.rand(4, 16, 16) * NUM_EMBEDDINGS
     input = input.to(torch.int64).cuda()
 
@@ -70,7 +68,6 @@ def check_embedding_module_handler(rank, world_size, port):
     # build handler
     handler = EmbeddingModuleHandler(node=embedding_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -98,10 +95,8 @@ def check_embedding_module_handler(rank, world_size, port):
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # RR = RR x RR
     assert "RR = R x RR" in strategy_name_list
 
-    # SR = SR x RR
     assert "S0R = S0 x RR_0" in strategy_name_list
     assert "S0R = S0 x RR_1" in strategy_name_list
     assert "S0R = S0 x RR_2" in strategy_name_list
@@ -109,7 +104,6 @@ def check_embedding_module_handler(rank, world_size, port):
     assert "S1R = S1 x RR_1" in strategy_name_list
     assert "S1R = S1 x RR_2" in strategy_name_list
 
-    # SS = SR x RS
     assert "S0S1 = S0 x RS1_0" in strategy_name_list
     assert "S0S1 = S0 x RS1_1" in strategy_name_list
     assert "S0S1 = S0 x RS1_2" in strategy_name_list
@@ -117,16 +111,13 @@ def check_embedding_module_handler(rank, world_size, port):
     assert "S1S0 = S1 x RS0_1" in strategy_name_list
     assert "S1S0 = S1 x RS0_2" in strategy_name_list
 
-    # RS= RR x RS
     assert "RS0 = R x RS0" in strategy_name_list
     assert "RS1 = R x RS1" in strategy_name_list
 
-    # S01R = S01R x RR
     assert "S01R = S01 x RR_0" in strategy_name_list
     assert "S01R = S01 x RR_1" in strategy_name_list
     assert "S01R = S01 x RR_2" in strategy_name_list
 
-    # RS01 = RR x RS01
     assert "RS01 = R x RS01" in strategy_name_list
 
     for strategy in strategies_vector:
@@ -174,11 +165,9 @@ def check_embedding_function_handler(rank, world_size, port):
         input_kwargs=input_kwargs,
     )
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %others : torch.Tensor [#users=1] = placeholder[target=others]
     #     %embedding : [#users=1] = call_function[target=torch.nn.functional.embedding](args = (%input_1, %others), kwargs = {padding_idx: None, max_norm: None, norm_type: 2.0, scale_grad_by_freq: False, sparse: False})
-    #     return embedding
     meta_args = {
         "input": torch.randint(NUM_EMBEDDINGS, (4, 16, 16)).to("meta"),
         "others": torch.rand(NUM_EMBEDDINGS, EMBEDDING_DIMS).to("meta"),
@@ -195,7 +184,6 @@ def check_embedding_function_handler(rank, world_size, port):
         node=embedding_node, device_mesh=device_mesh, strategies_vector=strategies_vector
     )
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -225,10 +213,8 @@ def check_embedding_function_handler(rank, world_size, port):
     handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # RR = RR x RR
     assert "RR = R x RR" in strategy_name_list
 
-    # SR = SR x RR
     assert "S0R = S0 x RR_0" in strategy_name_list
     assert "S0R = S0 x RR_1" in strategy_name_list
     assert "S0R = S0 x RR_2" in strategy_name_list
@@ -236,7 +222,6 @@ def check_embedding_function_handler(rank, world_size, port):
     assert "S1R = S1 x RR_1" in strategy_name_list
     assert "S1R = S1 x RR_2" in strategy_name_list
 
-    # SS = SR x RS
     assert "S0S1 = S0 x RS1_0" in strategy_name_list
     assert "S0S1 = S0 x RS1_1" in strategy_name_list
     assert "S0S1 = S0 x RS1_2" in strategy_name_list
@@ -244,16 +229,13 @@ def check_embedding_function_handler(rank, world_size, port):
     assert "S1S0 = S1 x RS0_1" in strategy_name_list
     assert "S1S0 = S1 x RS0_2" in strategy_name_list
 
-    # RS= RR x RS
     assert "RS0 = R x RS0" in strategy_name_list
     assert "RS1 = R x RS1" in strategy_name_list
 
-    # S01R = S01R x RR
     assert "S01R = S01 x RR_0" in strategy_name_list
     assert "S01R = S01 x RR_1" in strategy_name_list
     assert "S01R = S01 x RR_2" in strategy_name_list
 
-    # RS01 = RR x RS01
     assert "RS01 = R x RS01" in strategy_name_list
 
     for strategy in strategies_vector:

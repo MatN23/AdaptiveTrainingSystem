@@ -62,7 +62,6 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, t
         return repr(e)
 
 
-# TODO(ver217): CI does not support lazy now
 # @parameterize('init_method', ['lazy', 'none', 'colo'])
 
 

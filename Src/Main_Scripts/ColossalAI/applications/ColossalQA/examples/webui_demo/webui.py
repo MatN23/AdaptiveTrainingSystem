@@ -96,7 +96,6 @@ with gr.Blocks(css=CSS) as demo:
     # Click Upload Button: 1. upload files  2. send config to backend, initalize model 3. get response "conversation_ready" = True/False
     file_msg = btn.upload(add_file, [chatbot, btn], [chatbot], queue=False)
 
-    # restart
     restart_msg = restart_btn.click(restart, [chatbot, txt], [chatbot, txt], queue=False)
 
 
@@ -107,4 +106,4 @@ if __name__ == "__main__":
     gen_url = f"http://{args.http_host}:{args.http_port}/generate"
 
     demo.queue()
-    demo.launch(share=True)  # share=True will release a public link of the demo
+    demo.launch(share=True)

@@ -434,7 +434,6 @@ def main(args):
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # Load the tokenizer
     if args.tokenizer_name:
         logger.info(f"Loading tokenizer from {args.tokenizer_name}", ranks=[0])
         tokenizer = AutoTokenizer.from_pretrained(
@@ -450,10 +449,8 @@ def main(args):
             revision=args.revision,
             use_fast=False,
         )
-        # import correct text encoder class
     text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path)
 
-    # Load models and create wrapper for stable diffusion
 
     logger.info(f"Loading text_encoder from {args.pretrained_model_name_or_path}", ranks=[0])
 
@@ -531,10 +528,8 @@ def main(args):
         unet.parameters(), lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
     )
 
-    # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
-    # prepare dataset
     logger.info(f"Prepare dataset from {args.instance_data_dir}", ranks=[0])
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -648,7 +643,6 @@ def main(args):
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
             timesteps = timesteps.long()
 
-            # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
@@ -677,7 +671,6 @@ def main(args):
                 # Compute prior loss
                 prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
-                # Add the prior loss to the instance loss.
                 loss = loss + args.prior_loss_weight * prior_loss
             else:
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")

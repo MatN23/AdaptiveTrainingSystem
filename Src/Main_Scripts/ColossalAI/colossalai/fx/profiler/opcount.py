@@ -95,8 +95,6 @@ def baddbmm_flop_jit(inputs: List[Any], outputs: List[Any]) -> Number:
     """
     Count flops for the baddbmm(batch add and batch matmul) operation.
     """
-    # Inputs = [input, batch1, batch2]
-    # out = input + batch1 x batch2
     assert len(inputs) == 3, len(inputs)
     n, c, t = inputs[1].shape
     d = inputs[2].shape[-1]
@@ -238,7 +236,6 @@ if version.parse(torch.__version__) >= version.parse("1.12.0") and version.parse
         aten.addmm.default: addmm_flop_jit,
         aten.bmm.default: bmm_flop_jit,
         aten.baddbmm.default: baddbmm_flop_jit,
-        # convolution
         aten.convolution.default: conv_flop_jit,
         aten._convolution.default: conv_flop_jit,
         aten.convolution_backward.default: conv_backward_flop_jit,
@@ -320,7 +317,6 @@ if version.parse(torch.__version__) >= version.parse("1.12.0") and version.parse
         aten.tanh.default,
         aten.tanh_backward.default,
         aten.threshold_backward.default,
-        # dropout
         aten.native_dropout.default,
         aten.native_dropout_backward.default,
     ]

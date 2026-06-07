@@ -48,7 +48,7 @@ class StatefulTensor(object):
 
     def data_ptr(self):
         if self._payload is None:
-            return 0  # if a tensor has no storage, 0 should be returned
+            return 0
         return self._payload.data_ptr()
 
     def set_null(self) -> None:
@@ -59,7 +59,6 @@ class StatefulTensor(object):
 
     def is_null(self) -> bool:
         if self.state == TensorState.FREE:
-            # check sanity here
             assert self.payload is None
             return True
         return False

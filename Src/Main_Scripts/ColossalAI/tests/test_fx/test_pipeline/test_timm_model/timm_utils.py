@@ -35,7 +35,6 @@ def split_model_and_compare_output(model, data, meta_args=None):
     annotated_model = balanced_split_pass(gm, 2)
     split_model, split_submodules = split_with_split_nodes_pass(annotated_model)
 
-    # get split model
     model_part0 = list(split_model.children())[0]
     model_part1 = list(split_model.children())[1]
 

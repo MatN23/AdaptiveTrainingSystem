@@ -69,7 +69,6 @@ class AMPOptimizer(OptimizerWrapper):
 
         self.__init__optimizer()
 
-        # Grad scaler
         self.grad_scaler = DynamicGradScaler(
             initial_scale=initial_scale,
             min_scale=min_scale,

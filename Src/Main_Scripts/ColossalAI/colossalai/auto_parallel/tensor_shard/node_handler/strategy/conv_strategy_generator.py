@@ -89,13 +89,11 @@ class ConvStrategyGenerator(StrategyGenerator):
         backward_size_mapping = copy.deepcopy(forward_size_mapping)
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
-        # fwd_cost = input + other + bias + output
         fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
         fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
         fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)
 
         # compute bwd cost incurred
-        # bwd_cost = input_grad + other_grad + bias_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
         bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
@@ -121,7 +119,6 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         input_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["input"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
@@ -253,7 +250,6 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
@@ -328,7 +324,6 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
@@ -370,7 +365,6 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
@@ -407,7 +401,6 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         input_comm_action = self.get_communication_action(
             sharding_spec_mapping["input"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
@@ -523,7 +516,6 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
@@ -559,7 +551,6 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        # set communication action
         input_comm_action = self.get_communication_action(
             sharding_spec_mapping["input"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
@@ -578,40 +569,30 @@ class ConvStrategyGenerator(StrategyGenerator):
 
     def collate_strategies(self) -> List[ShardingStrategy]:
         strategies = []
-        # SS = SR x RS
         strategies.append(self.split_input_batch_weight_out_channel(0, 1))
         strategies.append(self.split_input_batch_weight_out_channel(1, 0))
 
-        # SR = SR x RR
         strategies.append(self.split_input_batch(0))
         strategies.append(self.split_input_batch(1))
 
-        # SR = SS x SR
         strategies.append(self.split_input_both_dim_weight_in_channel(0, 1))
         strategies.append(self.split_input_both_dim_weight_in_channel(1, 0))
 
-        # RS = RS x SS
         strategies.append(self.split_input_in_channel_weight_both_channel(0, 1))
         strategies.append(self.split_input_in_channel_weight_both_channel(1, 0))
 
-        # RR = RS x SR
         strategies.append(self.split_input_in_channel_weight_in_channel(0))
         strategies.append(self.split_input_in_channel_weight_in_channel(1))
 
-        # RS = RR x RS
         strategies.append(self.split_weight_out_channel(0))
         strategies.append(self.split_weight_out_channel(1))
 
-        # RR= RR x RR
         strategies.append(self.non_split())
 
-        # S01R = S01R x RR
         strategies.append(self.split_1d_parallel_on_input_batch(0, 1))
 
-        # RR = RS01 x S01R
         strategies.append(self.split_1d_parallel_on_in_channel(0, 1))
 
-        # RS01 = RR x RS01
         strategies.append(self.split_1d_parallel_on_out_channel(0, 1))
 
         return strategies

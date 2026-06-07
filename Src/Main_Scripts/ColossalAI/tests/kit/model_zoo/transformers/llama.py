@@ -11,21 +11,12 @@ except ImportError:
     HAS_LLAMA = False
 
 if HAS_LLAMA:
-    # ===============================
     # Register LLaMA
-    # ===============================
 
     def data_gen():
         # the input ids are corresponding to the sentence
         # 'Hello, my dog is cute'
-        #
         # the code is give below:
-        # -----------------------------------
-        # from transformers import LlamaTokenizerFast
-        # tokenizer = LlamaTokenizerFast.from_pretrained("hf-internal-testing/llama-tokenizer")
-        # input = 'Hello, my dog is cute'
-        # tokenized_input = tokenizer(input, return_tensors='pt').to('cuda')
-        # -----------------------------------
 
         input_ids = torch.Tensor(
             [

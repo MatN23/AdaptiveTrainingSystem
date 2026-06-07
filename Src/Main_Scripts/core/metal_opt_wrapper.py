@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Metal Operations Python Wrapper for Apple Silicon
 
 """
@@ -17,7 +16,6 @@ import platform
 
 logger = logging.getLogger(__name__)
 
-# Check if we're on macOS
 IS_MACOS = platform.system() == 'Darwin'
 METAL_OPS_AVAILABLE = False
 _metal_device = None
@@ -59,9 +57,7 @@ def _load_metal_library(shader_path: str):
         logger.error(f"Error loading Metal library: {e}")
         return None
 
-# ============================================================================
 # METAL KERNEL WRAPPERS
-# ============================================================================
 
 class MetalRMSNorm(nn.Module):
     """Metal-accelerated RMSNorm - 2-3x faster than PyTorch MPS"""
@@ -74,7 +70,6 @@ class MetalRMSNorm(nn.Module):
         
         self.metal_available = METAL_OPS_AVAILABLE
         if self.metal_available:
-            # Load Metal kernel
             self._setup_metal_kernel()
         
         logger.debug(f"MetalRMSNorm: {'Metal' if self.metal_available else 'PyTorch'} backend")
@@ -112,7 +107,6 @@ class MetalRoPE(nn.Module):
         
         self.metal_available = METAL_OPS_AVAILABLE
         
-        # Build cache
         self._build_cache()
         
         logger.debug(f"MetalRoPE: {'Metal' if self.metal_available else 'PyTorch'} backend")
@@ -160,9 +154,7 @@ class MetalSwiGLU(nn.Module):
         return self.down_proj(F.silu(gate) * up)
 
 
-# ============================================================================
 # MoE METAL OPERATIONS
-# ============================================================================
 
 class MetalMoEOps:
     """Metal-accelerated MoE operations"""
@@ -232,9 +224,7 @@ class MetalMoEOps:
         return combined
 
 
-# ============================================================================
 # COMPILATION UTILITIES
-# ============================================================================
 
 def compile_metal_shaders():
     """
@@ -297,9 +287,7 @@ def compile_metal_shaders():
     return True
 
 
-# ============================================================================
 # BENCHMARKING
-# ============================================================================
 
 def benchmark_metal_ops():
     """Benchmark Metal vs PyTorch MPS"""

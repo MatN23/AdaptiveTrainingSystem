@@ -48,7 +48,6 @@ class T5PipelineForwards:
 
         logger = logging.get_logger(__name__)
 
-        # TODO(baizhou): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
             logger.warning_once("Non-empty past_key_values is not supported for pipeline models at the moment.")
             past_key_values = None
@@ -117,7 +116,6 @@ class T5PipelineForwards:
         # required mask seq length can be calculated via length of past
         mask_seq_length = past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
 
-        # initialize past_key_values with `None` if past does not exist
         if past_key_values is None:
             past_key_values = [None] * len(self.block)
 
@@ -195,7 +193,6 @@ class T5PipelineForwards:
             hidden_states, present_key_value_state = layer_outputs[:2]
 
             # We share the position biases between the layers - the first layer store them
-            # layer_outputs = hidden-states, key-value-states (self-attention position bias), (self-attention weights),
             # (cross-attention position bias), (cross-attention weights)
             position_bias = layer_outputs[2]
 
@@ -279,7 +276,6 @@ class T5PipelineForwards:
 
         logger = logging.get_logger(__name__)
 
-        # TODO(baizhou): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
             logger.warning_once("Non-empty past_key_values is not supported for pipeline models at the moment.")
             past_key_values = None
@@ -335,7 +331,6 @@ class T5PipelineForwards:
         if not at_first_decoder_stage and hidden_states is None:
             raise ValueError("If not at the first layer of decoder, non-empty hidden_states must be provided.")
 
-        # Decode
         decoder_outputs = T5PipelineForwards.t5_stack_forward(
             self.decoder,
             input_ids=decoder_input_ids,
@@ -419,7 +414,6 @@ class T5PipelineForwards:
 
         logger = logging.get_logger(__name__)
 
-        # TODO(baizhou): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if past_key_values:
             logger.warning_once("Non-empty past_key_values is not supported for pipeline models at the moment.")
             past_key_values = None
@@ -480,7 +474,6 @@ class T5PipelineForwards:
             # get decoder inputs from shifting lm labels to the right
             decoder_input_ids = self._shift_right(labels)
 
-        # Decode
         decoder_outputs = T5PipelineForwards.t5_stack_forward(
             self.decoder,
             input_ids=decoder_input_ids,
@@ -652,7 +645,6 @@ def get_t5_flash_attention_forward():
                     hidden_states = past_key_value
             return hidden_states
 
-        # get query states
         query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
 
         # get key/value states
@@ -673,7 +665,6 @@ def get_t5_flash_attention_forward():
             else:
                 position_bias = self.compute_bias(real_seq_length, key_length, device=query_states.device)
 
-            # if key and values are already calculated
             # we want only the last query position bias
             if past_key_value is not None:
                 position_bias = position_bias[:, :, -hidden_states.size(1) :, :]

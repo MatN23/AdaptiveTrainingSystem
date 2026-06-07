@@ -62,7 +62,6 @@ def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, oth
     # build handler
     handler = BinaryElementwiseHandler(node=op_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -95,7 +94,6 @@ def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, oth
     # one strategy will be converted to different physical sharding spec
     assert len(strategy_name_list) == 9
 
-    # check if the sharding strategy is correct
     assert "[S0, S1] = [S0, S1] <binary-elementwise-op> [S0, S1]" in strategy_name_list
     assert "[S1, S0] = [S1, S0] <binary-elementwise-op> [S1, S0]" in strategy_name_list
     assert "[S01, R] = [S01, R] <binary-elementwise-op> [S01, R]" in strategy_name_list
@@ -186,7 +184,6 @@ def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_
     # build handler
     handler = BinaryElementwiseHandler(node=op_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     assert mapping["input"].name == "x1"
@@ -207,7 +204,6 @@ def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_
     # one strategy will be converted to different physical sharding spec
     assert len(strategy_name_list) == 9
 
-    # check if the sharding strategy is correct
     assert "[S0, S1] = [S0, S1] <binary-elementwise-op> [S0, S1]" in strategy_name_list
     assert "[S1, S0] = [S1, S0] <binary-elementwise-op> [S1, S0]" in strategy_name_list
     assert "[S01, R] = [S01, R] <binary-elementwise-op> [S01, R]" in strategy_name_list

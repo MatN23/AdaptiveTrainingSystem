@@ -72,7 +72,6 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         self.working_to_master_map: Dict[Parameter, Tensor] = {}
         self.master_to_working_map: Dict[Tensor, Parameter] = {}
 
-        # create master weights
         for group in self.optim.param_groups:
             master_params = []
             for p in group["params"]:

@@ -236,7 +236,6 @@ def generate(
     if is_greedy_gen_mode:
         raise NotImplementedError
     elif is_sample_gen_mode:
-        # Run sample
         res = _sample(
             model,
             input_ids,
@@ -345,7 +344,6 @@ def _sample_streaming(
         if update_model_kwargs_fn is not None:
             model_kwargs = update_model_kwargs_fn(outputs, model_kwargs)
 
-        # if eos_token was found in one sentence, set sentence to finished
         if eos_token_id is not None:
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
 
@@ -406,7 +404,6 @@ def generate_streaming(
         # run greedy search
         raise NotImplementedError
     elif is_sample_gen_mode:
-        # run sample
         for res in _sample_streaming(
             model,
             input_ids,

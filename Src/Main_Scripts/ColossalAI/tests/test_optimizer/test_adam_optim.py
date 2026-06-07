@@ -84,6 +84,5 @@ def test_adam_optim_on_bert(
         torch_optim.zero_grad()
         optim.zero_grad()
         for p, torch_p in zip(model.parameters(), torch_model.parameters()):
-            # if overflow, the weight won't be updated. so there will be no nan in p
             assert not torch.isnan(p).any()
             assert torch.allclose(p.float(), torch_p, rtol=rtol, atol=atol)

@@ -25,13 +25,11 @@ class TensorConstructorModel(nn.Module):
 def test_where_handler():
     model = TensorConstructorModel()
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %x : torch.Tensor [#users=2] = placeholder[target=x]
     #     %size : [#users=1] = call_method[target=size](args = (%x,), kwargs = {})
     #     %getitem : [#users=1] = call_function[target=operator.getitem](args = (%size, 0), kwargs = {})
     #     %arange : [#users=1] = call_function[target=torch.arange](args = (%getitem,), kwargs = {})
     #     %add : [#users=1] = call_function[target=operator.add](args = (%x, %arange), kwargs = {})
-    #     return add
     meta_args = {"x": torch.rand(10).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
     gm = ColoGraphModule(model, graph)
@@ -46,7 +44,6 @@ def test_where_handler():
     # build handler
     handler = TensorConstructorHandler(node=arange_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

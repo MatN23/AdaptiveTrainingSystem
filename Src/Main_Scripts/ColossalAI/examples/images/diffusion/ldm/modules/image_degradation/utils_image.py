@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from torchvision.utils import make_grid
 
-# import matplotlib.pyplot as plt   # TODO: check with Dominik, also bsrgan.py vs bsrgan_light.py
 
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -67,7 +66,7 @@ def surf(Z, cmap="rainbow", figsize=None):
 
 
 def get_image_paths(dataroot):
-    paths = None  # return None if dataroot is None
+    paths = None
     if dataroot is not None:
         paths = sorted(_get_paths_from_images(dataroot))
     return paths
@@ -100,8 +99,6 @@ def patches_from_image(img, p_size=512, p_overlap=64, p_max=800):
         h1 = list(np.arange(0, h - p_size, p_size - p_overlap, dtype=np.int))
         w1.append(w - p_size)
         h1.append(h - p_size)
-        #        print(w1)
-        #        print(h1)
         for i in w1:
             for j in h1:
                 patches.append(img[i : i + p_size, j : j + p_size, :])
@@ -142,7 +139,6 @@ def split_imageset(original_dataroot, taget_dataroot, n_channels=3, p_size=800, 
         img = imread_uint(img_path, n_channels=n_channels)
         patches = patches_from_image(img, p_size, p_overlap, p_max)
         imssave(patches, os.path.join(taget_dataroot, os.path.basename(img_path)))
-        # if original_dataroot == taget_dataroot:
         # del img_path
 
 
@@ -182,9 +178,7 @@ def mkdir_and_rename(path):
 """
 
 
-# --------------------------------------------
 # get uint8 image of size HxWxn_channles (RGB)
-# --------------------------------------------
 def imread_uint(path, n_channels=3):
     #  input: path
     # output: HxWx3(RGB or GGG), or HxWx1 (G)
@@ -200,9 +194,7 @@ def imread_uint(path, n_channels=3):
     return img
 
 
-# --------------------------------------------
 # matlab's imwrite
-# --------------------------------------------
 def imsave(img, img_path):
     img = np.squeeze(img)
     if img.ndim == 3:
@@ -217,9 +209,7 @@ def imwrite(img, img_path):
     cv2.imwrite(img_path, img)
 
 
-# --------------------------------------------
 # get single image of size HxWxn_channles (BGR)
-# --------------------------------------------
 def read_img(path):
     # read image by cv2
     # return: Numpy float32, HWC, BGR, [0,1]
@@ -244,9 +234,6 @@ def read_img(path):
 """
 
 
-# --------------------------------------------
-# numpy(single) [0, 1] <--->  numpy(unit)
-# --------------------------------------------
 
 
 def uint2single(img):
@@ -265,9 +252,6 @@ def single2uint16(img):
     return np.uint16((img.clip(0, 1) * 65535.0).round())
 
 
-# --------------------------------------------
-# numpy(unit) (HxWxC or HxW) <--->  tensor
-# --------------------------------------------
 
 
 # convert uint to 4-dimensional torch tensor
@@ -292,9 +276,6 @@ def tensor2uint(img):
     return np.uint8((img * 255.0).round())
 
 
-# --------------------------------------------
-# numpy(single) (HxWxC) <--->  tensor
-# --------------------------------------------
 
 
 # convert single (HxWxC) to 3-dimensional torch tensor
@@ -338,7 +319,6 @@ def single42tensor4(img):
     return torch.from_numpy(np.ascontiguousarray(img)).permute(2, 0, 1, 3).float()
 
 
-# from skimage.io import imread, imsave
 def tensor2img(tensor, out_type=np.uint8, min_max=(0, 1)):
     """
     Converts a torch Tensor into an image Numpy array of BGR channel order
@@ -595,7 +575,7 @@ def bgr2ycbcr(img, only_y=True):
 
 def channel_convert(in_c, tar_type, img_list):
     # conversion among BGR, gray and y
-    if in_c == 3 and tar_type == "gray":  # BGR to gray
+    if in_c == 3 and tar_type == "gray":
         gray_list = [cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) for img in img_list]
         return [np.expand_dims(img, axis=2) for img in gray_list]
     elif in_c == 3 and tar_type == "y":  # BGR to y
@@ -614,13 +594,8 @@ def channel_convert(in_c, tar_type, img_list):
 """
 
 
-# --------------------------------------------
-# PSNR
-# --------------------------------------------
 def calculate_psnr(img1, img2, border=0):
     # img1 and img2 have range [0, 255]
-    # img1 = img1.squeeze()
-    # img2 = img2.squeeze()
     if not img1.shape == img2.shape:
         raise ValueError("Input images must have the same dimensions.")
     h, w = img1.shape[:2]
@@ -635,16 +610,11 @@ def calculate_psnr(img1, img2, border=0):
     return 20 * math.log10(255.0 / math.sqrt(mse))
 
 
-# --------------------------------------------
-# SSIM
-# --------------------------------------------
 def calculate_ssim(img1, img2, border=0):
     """calculate SSIM
     the same outputs as MATLAB's
     img1, img2: [0, 255]
     """
-    # img1 = img1.squeeze()
-    # img2 = img2.squeeze()
     if not img1.shape == img2.shape:
         raise ValueError("Input images must have the same dimensions.")
     h, w = img1.shape[:2]
@@ -760,9 +730,7 @@ def calculate_weights_indices(in_length, out_length, scale, kernel, kernel_width
     return weights, indices, int(sym_len_s), int(sym_len_e)
 
 
-# --------------------------------------------
 # imresize for tensor image [0, 1]
-# --------------------------------------------
 def imresize(img, scale, antialiasing=True):
     # Now the scale should be the same for H and W
     # input: img: pytorch tensor, CHW or HW [0,1]
@@ -775,7 +743,6 @@ def imresize(img, scale, antialiasing=True):
     kernel_width = 4
     kernel = "cubic"
 
-    # Return the desired dimension order for performing the resize.  The
     # strategy is to perform the resize first along the dimension with the
     # smallest scale factor.
     # Now we do not support this.
@@ -835,9 +802,7 @@ def imresize(img, scale, antialiasing=True):
     return out_2
 
 
-# --------------------------------------------
 # imresize for numpy image [0, 1]
-# --------------------------------------------
 def imresize_np(img, scale, antialiasing=True):
     # Now the scale should be the same for H and W
     # input: img: Numpy, HWC or HW [0,1]
@@ -852,7 +817,6 @@ def imresize_np(img, scale, antialiasing=True):
     kernel_width = 4
     kernel = "cubic"
 
-    # Return the desired dimension order for performing the resize.  The
     # strategy is to perform the resize first along the dimension with the
     # smallest scale factor.
     # Now we do not support this.
@@ -915,6 +879,3 @@ def imresize_np(img, scale, antialiasing=True):
 
 if __name__ == "__main__":
     print("---")
-#    img = imread_uint('test.bmp', 3)
-#    img = uint2single(img)
-#    img_bicubic = imresize_np(img, 1/4)

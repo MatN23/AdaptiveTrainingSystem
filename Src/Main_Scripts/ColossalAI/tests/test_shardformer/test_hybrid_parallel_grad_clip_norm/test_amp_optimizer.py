@@ -45,8 +45,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     else:
         atol, rtol = 2e-2, 2e-2
 
-    # Check grads
-    # Save gradient tensors for comparison between the original model and the sharded model.
     grads_to_check = {}
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         col_layer_grads = get_grad_tensors_for_check(
@@ -59,7 +57,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         grads_to_check.update(row_layer_grads)
     check_all_grad_tensors(grads_to_check)
 
-    # Check gradient norm
     # Convert the gradient data of the working parameter to float and assign it to the master parameter's gradient
     # Note that this operation should have been done in the 'step' function, but it is performed here in advance for gradient norm calculation purposes.
     # Although it will be done again in the 'step' function, it does not affect correctness.
@@ -71,7 +68,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             if working_param.grad is not None:
                 p.grad = working_param.grad.data.float()
                 working_param.grad = None
-    # Create a list of parameter-gradient pairs containing working parameters and their gradients
     param_gradient_pairs = [
         (sharded_optimizer.master_to_working_map[p], p.grad)
         for group in sharded_optimizer.param_groups
@@ -97,7 +93,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
 
-    # Check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
@@ -110,7 +105,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
-    # Check weights
     if test_config["precision"] == "fp32":
         atol, rtol = 5e-3, 1e-3
     else:

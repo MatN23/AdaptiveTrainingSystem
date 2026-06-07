@@ -61,7 +61,6 @@ def check_2d_device_mesh(rank, module, world_size, port):
     # build handler
     handler = BMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
@@ -96,15 +95,12 @@ def check_2d_device_mesh(rank, module, world_size, port):
     # two batch dim
     assert "Sb01 = Sb01 x Sb01" in strategy_name_list
 
-    # SbSi = SbSi x Sb
     assert "Sb0Si1 = Sb0Si1 x Sb0" in strategy_name_list
     assert "Sb1Si0 = Sb1Si0 x Sb1" in strategy_name_list
 
-    # SbSj = SbR x SbSj
     assert "Sb0Sj1 = Sb0R x Sb0Sj1" in strategy_name_list
     assert "Sb1Sj0 = Sb1R x Sb1Sj0" in strategy_name_list
 
-    # SbR = SbSk x SbSk
     assert "Sb0R = Sb0Sk1 x Sb0Sk1" in strategy_name_list
     assert "Sb1R = Sb1Sk0 x Sb1Sk0" in strategy_name_list
 
@@ -155,7 +151,6 @@ def check_1d_device_mesh(rank, module, world_size, port):
     # build handler
     handler = BMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

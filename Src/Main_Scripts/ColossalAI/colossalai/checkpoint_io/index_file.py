@@ -49,7 +49,6 @@ class CheckpointIndexFile:
         Args:
             json_path (str): path to the json file.
         """
-        # load the json file
         with open(json_path, "r") as f:
             index = json.load(f)
 
@@ -69,7 +68,6 @@ class CheckpointIndexFile:
         Args:
             json_path (str): path to the json file.
         """
-        # create the index file
         index = dict()
         index["metadata"] = self.metadata
         index["weight_map"] = self.weight_map

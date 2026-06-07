@@ -58,7 +58,6 @@ class PipelineStageManager:
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
         self.is_interleave = enable_interleave
-        # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
         self.num_model_chunks: int = num_model_chunks
         if enable_interleave:
             # use circle p2p communication
@@ -68,9 +67,7 @@ class PipelineStageManager:
                 ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
-            # for shardformer, hold stage indices of model
             self.stage_indices: List[Tuple[int, int]]
-            # for shardformer, hold model chunk id
             self.model_chunk_id: Optional[int] = None
 
     def get_stage_index(

@@ -62,10 +62,8 @@ def run_schedule(rank, world_size, port):
     # build criterion
     criterion = torch.nn.CrossEntropyLoss()
 
-    # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0)
 
-    # initialize
     engine, train_dataloader, _, _ = colossalai.legacy.initialize(model, optimizer, criterion, train_dataloader)
 
     # build pipeline schedule

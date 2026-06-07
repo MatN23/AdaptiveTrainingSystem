@@ -65,7 +65,6 @@ def check_AB():
     C_master = torch.matmul(A_master, B_master)
     C = torch.chunk(C_master, TESSERACT_DIM, dim=0)[i]
     C = torch.chunk(C, TESSERACT_DIM, dim=-1)[j]
-    # check forward correctness
     check_equal(out, C)
     print_rank_0("AB forward: pass")
 
@@ -81,13 +80,11 @@ def check_AB():
     A_grad = A_master.grad
     A_grad = torch.chunk(A_grad, TESSERACT_DIM, dim=0)[i]
     A_grad = torch.chunk(A_grad, TESSERACT_DIM, dim=-1)[j]
-    # check backward correctness
     check_equal(A_grad, A.grad)
 
     B_grad = B_master.grad
     B_grad = torch.chunk(B_grad, TESSERACT_DIM, dim=0)[i]
     B_grad = torch.chunk(B_grad, TESSERACT_DIM, dim=-1)[j]
-    # check backward correctness
     check_equal(B_grad, B.grad)
     print_rank_0("AB backward: pass")
 
@@ -158,7 +155,6 @@ def check_ABT():
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
 
-    # backward
     out.backward(grad)
 
     A_master.backward(grad_master)

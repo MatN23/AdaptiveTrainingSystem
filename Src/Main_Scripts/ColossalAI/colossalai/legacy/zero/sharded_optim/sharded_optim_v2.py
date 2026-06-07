@@ -111,7 +111,6 @@ class ShardedOptimizerV2(OptimizerWrapper):
         self.optim_state: OptimState = OptimState.UNSCALED
         self.dp_process_group = dp_process_group or gpc.get_group(ParallelMode.DATA)
         self.mp_process_group = mp_process_group or gpc.get_group(ParallelMode.MODEL)
-        # Grad scaler
         self.grad_scaler = DynamicGradScaler(
             initial_scale=initial_scale,
             min_scale=min_scale,
@@ -333,7 +332,6 @@ class ShardedOptimizerV2(OptimizerWrapper):
                 # If reuse_fp16_shard, grad fp16 which wasn't be offloaded may be evicted to CPU
                 if not p.colo_attr.offload_grad:
                     colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
-                # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful information
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad
                 # We just set p.data = p.colo_attr.saved_grad.payload here
@@ -355,7 +353,6 @@ class ShardedOptimizerV2(OptimizerWrapper):
 
     def _copy_master_model_to_model_fp16(self):
         # Copy master param data (fp32) to payload of colo_attr (fp16)
-        # TODO() improve efficiency by gathering tensors into a chunk and transferring
         # a chunk.
         for group in self.optim.param_groups:
             for p in group["params"]:
@@ -379,7 +376,6 @@ class ShardedOptimizerV2(OptimizerWrapper):
                 torch.empty(p.data.shape, dtype=p.colo_attr.data_payload.dtype, device=p.colo_attr.data_payload.device)
             )
 
-        # TODO() optimize this line CPU (fp32) -> GPU (fp16)
         half_dtype = torch.bfloat16 if self.bf16 else torch.float16
         p.colo_attr.sharded_data_tensor.payload_copy(p.to(half_dtype).detach())
         p.colo_attr.set_data_none()

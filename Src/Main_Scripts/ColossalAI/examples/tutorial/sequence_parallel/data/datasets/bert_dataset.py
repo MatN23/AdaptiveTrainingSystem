@@ -1,12 +1,7 @@
-# coding=utf-8
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -171,7 +166,6 @@ def get_samples_mapping_(
             ranks=[0],
         )
     # This should be a barrier but nccl barrier assumes
-    # device_index=rank which is not the case for model
     # parallel case
     counts = torch.cuda.LongTensor([1])
     torch.distributed.all_reduce(counts, group=gpc.get_group(ParallelMode.DATA))
@@ -182,7 +176,6 @@ def get_samples_mapping_(
         // torch.distributed.get_world_size(group=gpc.get_group(ParallelMode.SEQUENCE))
     )
 
-    # Load indexed dataset.
     start_time = time.time()
     samples_mapping = np.load(indexmap_filename, allow_pickle=True, mmap_mode="r")
     logger.info(

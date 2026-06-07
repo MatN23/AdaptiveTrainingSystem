@@ -56,13 +56,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Launch ColossalAI
     colossalai.launch_from_torch(config={}, seed=args.seed)
     coordinator = DistCoordinator()
 
     config = MixtralConfig.from_pretrained(args.model_name)
     ep_size = min(dist.get_world_size(), config.num_local_experts)
-    # Set plugin
     if args.plugin == "ep":
         plugin = MoeHybridParallelPlugin(
             tp_size=1,
@@ -86,7 +84,6 @@ def main():
     # Prepare tokenizer and dataloader
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
-    # Set booster
     booster = Booster(plugin=plugin)
     model, _, _, _, _ = booster.boost(model=model)
     coordinator.print_on_master(f"Finish init booster")

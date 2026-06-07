@@ -206,9 +206,6 @@ def split_module_for_gpt2_test(
         def_partition_name = getattr(def_node, "_fx_partition", None)
         use_partition_name = getattr(use_node, "_fx_partition", None)
         if def_partition_name != use_partition_name:
-            # if 'tensor_meta' in def_node.meta:
-            #     if not _node_with_all_tensor_element(def_node.meta['tensor_meta']):
-            #         _move_all_ancestors_into_partition(use_node, def_partition_name)
             #         node_process_list.extend(use_node.all_input_nodes)
             #         node_process_list.extend(list(use_node.users))
             #         node_process_list.append(use_node)
@@ -236,15 +233,11 @@ def split_module_for_gpt2_test(
         if node.op in ["placeholder"]:
             continue
         if node.op == "output":
-            # partition_name = str(split_callback(node))
-            # def _set_output_args_partition(n, partition_name):
             #     n._fx_partition = partition_name
-            # torch.fx.graph.map_arg(node.args[0], lambda n: _set_output_args_partition(n, partition_name))
             torch.fx.graph.map_arg(node.args[0], lambda n: record_cross_partition_use(n, None))
             continue
         partition_name = str(split_callback(node))
 
-        # add node to partitions
         partition = partitions.get(partition_name)
         if partition is None:
             partitions[partition_name] = partition = Partition(partition_name)
@@ -263,7 +256,6 @@ def split_module_for_gpt2_test(
         if not len(partition.partitions_dependent_on):
             root_partitions.append(partition_name)
 
-    # check partitions for circular dependencies and create topological partition ordering
     sorted_partitions: List[str] = []
     while root_partitions:
         root_partition = root_partitions.pop()
@@ -275,7 +267,6 @@ def split_module_for_gpt2_test(
     if len(sorted_partitions) != len(partitions):
         raise RuntimeError("cycle exists between partitions!")
 
-    # add placeholders to partitions
     for partition_name in sorted_partitions:
         partition = partitions[partition_name]
         for input in partition.inputs:
@@ -302,7 +293,6 @@ def split_module_for_gpt2_test(
                     if not hasattr(target_attr, atom):
                         raise RuntimeError(f"Operator target {node.target} not found!")
                     target_attr = getattr(target_attr, atom)
-                # target = target_atoms[-1]
                 target = "_".join(target_atoms)
                 partition.targets[target] = target_attr
 

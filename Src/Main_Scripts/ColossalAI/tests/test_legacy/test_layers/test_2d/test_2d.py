@@ -55,7 +55,6 @@ def check_layer_and_operation(rank, world_size, port):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.backends.cudnn.deterministic = True
-    # check_operations()
     check_layer()
     gpc.destroy()
     torch.cuda.empty_cache()

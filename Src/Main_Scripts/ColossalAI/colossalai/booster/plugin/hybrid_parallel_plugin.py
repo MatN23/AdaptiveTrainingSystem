@@ -145,7 +145,6 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
             None
         """
 
-        # Check if the DP group size is 1, meaning no synchronization is needed.
         if self.dp_group.size() == 1:
             return
 
@@ -248,8 +247,8 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         use_pipeline: bool,
         param_info: OrderedDict,
         max_norm: float = 0,
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
-        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
+        tp_process_group: Optional[ProcessGroup] = None,
+        pp_process_group: Optional[ProcessGroup] = None,
     ):
         self.param_info = param_info
         if use_pipeline:
@@ -462,8 +461,8 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         hysteresis: int = 2,
         max_scale: float = 2**32,
         max_norm: float = 0,
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
-        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
+        tp_process_group: Optional[ProcessGroup] = None,
+        pp_process_group: Optional[ProcessGroup] = None,
     ):
         self.model = model
         self.param_info = param_info
@@ -637,14 +636,14 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         max_scale: int = 2**24,
         clip_grad_norm: float = 0.0,  # grad clipping
         verbose: bool = False,
-        reduce_bucket_size: int = 1024 * 1024,  # communication
+        reduce_bucket_size: int = 1024 * 1024,
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = True,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
-        pp_process_group: Optional[ProcessGroup] = None,  # if using pp
+        tp_process_group: Optional[ProcessGroup] = None,
+        pp_process_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
     ):
         self.model = model
@@ -803,7 +802,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             float: The computed gradient norm.
         """
 
-        # Check if the list of gradients is empty
         if len(gradients) == 0:
             return 0.0
 
@@ -1256,7 +1254,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         if return_outputs:
             warnings.warn("return_outputs may lead to significant extra memory consumption.")
 
-        # Create a context for gradient synchronization based on the optimizer type.
         # If it's a HybridParallelZeroOptimizer, use optimizer.no_sync(); otherwise, use model.no_sync().
         # This is to avoid redundant gradient reduction in pipeline parallelism (multiple microbatch values should be reduced once),
         # so we disable it, performing manual reduction instead.
@@ -1278,7 +1275,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         # Synchronize sequence parallelism gradients of the model.
         model.sync_sp_grads()
 
-        # Check if the optimizer is a HybridParallelZeroOptimizer and synchronize data parallelism gradients if so.
         # Otherwise, synchronize data parallelism gradients of the model.
         # This is because these are two different forms of data parallelism.
         if isinstance(optimizer, HybridParallelZeroOptimizer):

@@ -106,7 +106,6 @@ class InferBatch:
         else:
             input_ids = all_input_ids[0]
 
-        # Create tensors on device
         input_ids = torch.tensor(input_ids, dtype=torch.int64, device=device)
 
         return cls(

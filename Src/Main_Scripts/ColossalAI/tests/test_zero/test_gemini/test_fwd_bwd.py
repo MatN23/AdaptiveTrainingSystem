@@ -16,7 +16,7 @@ from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
+    {"placement_policy": "static", "shard_param_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
     {"placement_policy": "auto"},
 ]

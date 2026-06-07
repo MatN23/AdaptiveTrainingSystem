@@ -169,7 +169,6 @@ def find_chunk_compute_input_and_output_nodes(nodes: List[Node]) -> Union[List, 
     input_nodes = []
     output_nodes = []
 
-    # if a node has an input node which is not in the node list
     # we treat that input node as the input of the checkpoint function
     for node in nodes:
         for input_node in node._input_nodes.keys():
@@ -180,7 +179,6 @@ def find_chunk_compute_input_and_output_nodes(nodes: List[Node]) -> Union[List, 
             ):
                 input_nodes.append(input_node)
 
-    # if a node has a user node which is not in the node list
     # we treat that user node as the node receiving the current node output
     for node in nodes:
         for output_node in node.users.keys():

@@ -26,7 +26,7 @@ Target = Union[Callable[..., Any], str]
 Argument = Optional[
     Union[
         Tuple[Any, ...],  # actually Argument, but mypy can't represent recursive types
-        List[Any],  # actually Argument
+        List[Any],
         Dict[str, Any],  # actually Argument
         slice,  # Slice[Argument, Argument, Argument], but slice is not a templated type in typing
         "Node",
@@ -120,7 +120,6 @@ class ColoProxy(Proxy):
     def __contains__(self, key):
         if self.node.op == "placeholder":
             # this is used to handle like
-            # if x in kwargs
             # we don't handle this case for now
             return False
         return super().__contains__(key)
@@ -269,7 +268,6 @@ class ColoTracer(Tracer):
         if concrete_args is None:
             concrete_args = {}
 
-        # check concrete and meta args have valid names
         sig = inspect.signature(root.forward)
         sig_names = set(sig.parameters.keys())
         meta_arg_names = set(meta_args.keys())
@@ -346,7 +344,6 @@ class ColoTracer(Tracer):
                 else:
                     if hasattr(torch.fx._symbolic_trace, "_assert_is_none"):
                         # Newer versions of torch.fx emit an assert statement
-                        # for concrete arguments; delete those before we delete
                         # the concrete arg.
                         to_delete = []
                         for user in node.users:
@@ -439,7 +436,6 @@ class _TorchTensorOverride(object):
                     isinstance(p, ColoProxy) for p in kwargs.values()
                 )
                 if is_proxy:
-                    # if the arg is a proxy, then need to record this function called on this proxy
                     # e.g. torch.ones(size) where size is an input proxy
                     self.tracer._disable_module_getattr = True
                     try:
@@ -477,7 +473,6 @@ def meta_prop_pass(
     if concrete_args is None:
         concrete_args = {}
 
-    # check concrete and meta args have valid names
     sig = inspect.signature(root.forward)
     sig_names = set(sig.parameters.keys())
     meta_arg_names = set(meta_args.keys())
@@ -649,7 +644,6 @@ def bias_addition_pass(gm: ColoGraphModule, root_model: torch.nn.Module, meta_ar
                 )
 
         elif kind == "call_module":
-            # if not hasattr(self, "orig_forward"):
             #     raise AttributeError(f"{self} does not have an attribute called orig_forward")
             mod = gm.get_submodule(target)
             mod_type = type(mod)

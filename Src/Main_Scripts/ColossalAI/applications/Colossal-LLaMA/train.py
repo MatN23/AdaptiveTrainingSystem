@@ -62,9 +62,7 @@ def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def main() -> None:
-    # ==============================
     # Parse Arguments
-    # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--pretrained",
@@ -133,23 +131,14 @@ def main() -> None:
     with open(args.config_file, "w") as f:
         json.dump(args.__dict__, f, indent=4)
 
-    # ==============================
-    # Initialize Distributed Training
-    # ==============================
     colossalai.launch_from_torch({})
     accelerator = get_accelerator()
     coordinator = DistCoordinator()
 
-    # ==============================
-    # Initialize Tensorboard
-    # ==============================
     if coordinator.is_master():
         os.makedirs(args.tensorboard_dir, exist_ok=True)
         writer = SummaryWriter(args.tensorboard_dir)
 
-    # ==============================
-    # Initialize Booster
-    # ==============================
     if args.plugin == "gemini":
         plugin = GeminiPlugin(
             precision=args.mixed_precision,
@@ -193,9 +182,6 @@ def main() -> None:
 
     booster = Booster(plugin=plugin)
 
-    # ======================================================
-    # Initialize Tokenizer, Dataset, Collator and Dataloader
-    # ======================================================
     tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
     if args.pad_token == "eos":
         tokenizer.pad_token = tokenizer.eos_token
@@ -226,9 +212,6 @@ def main() -> None:
         f"Max device memory after data loader: {accelerator.max_memory_allocated() / 1024 ** 2:.2f} MB"
     )
 
-    # ======================================================
-    # Initialize Model, Objective, Optimizer and LR Scheduler
-    # ======================================================
     init_ctx = (
         LazyInitContext(default_device=get_current_device())
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))
@@ -368,7 +351,6 @@ def main() -> None:
                     )
                 total_loss.fill_(0.0)
                 pbar.update()
-            # Save modeling.
 
             if (args.save_interval > 0 and (step + 1) % (args.save_interval * args.accumulation_steps) == 0) or (
                 step + 1

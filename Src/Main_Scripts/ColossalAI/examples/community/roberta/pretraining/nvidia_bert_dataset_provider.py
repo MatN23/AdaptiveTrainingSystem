@@ -77,7 +77,6 @@ class NvidiaBertDatasetProvider(BertDatasetProviderInterface):
         self.global_rank = dist.get_rank()
         self.world_size = dist.get_world_size()
 
-        # Initialize dataset files
         if not evaluate:
             self.dataset_files = [
                 os.path.join(args.data_path_prefix, f)
@@ -154,12 +153,8 @@ class NvidiaBertDatasetProvider(BertDatasetProviderInterface):
         return self.dataset_files[file_index]
 
     def _get_shard_file_index(self, shard_index, global_rank):
-        # if dist.is_initialized() and self.world_size > self.num_files:
-        #     remainder = self.world_size % self.num_files
-        #     file_index = (shard_index * self.world_size) + global_rank + (
         #         remainder * shard_index)
         # else:
-        #     file_index = shard_index * self.world_size + global_rank
 
         return shard_index % self.num_files
 

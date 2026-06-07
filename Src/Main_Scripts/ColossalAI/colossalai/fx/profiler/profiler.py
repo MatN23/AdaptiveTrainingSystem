@@ -199,7 +199,6 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
                 if all(map(partial(is_phase, phase=Phase.PLACEHOLDER), node.all_input_nodes)) and func in ALIAS_ATEN:
                     node.meta["phase"] = Phase.PLACEHOLDER
 
-            # TODO(yby): specify `saved_tensors` for backward memory estimation
             node.meta["saved_tensor"] = []
             if phase == Phase.BACKWARD:
                 node.meta["saved_tensor"] = normalize_tuple(out)

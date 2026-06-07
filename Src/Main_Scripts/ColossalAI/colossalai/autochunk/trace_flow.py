@@ -137,7 +137,6 @@ class TraceFlow(object):
         if arg_dim is not None:
             arg_fix_dim.remove(arg_dim)
 
-        # if already in node_info, arg dim must be same
         if arg_node in all_node_info:
             if all_node_info[arg_node]["chunk_dim"] != arg_dim:
                 return False
@@ -150,7 +149,7 @@ class TraceFlow(object):
         return True
 
     def _get_all_node_info(self, end_dim, start_idx, end_idx):
-        cur_node_list = [self.node_mgr.get_node_by_idx(end_idx)]  # start from the last node
+        cur_node_list = [self.node_mgr.get_node_by_idx(end_idx)]
         all_node_info = {cur_node_list[0]: {"chunk_dim": end_dim, "fix_dim": []}}
 
         while len(cur_node_list) > 0:
@@ -395,11 +394,9 @@ class TraceFlow(object):
                 new_all_node_info = self._get_all_node_info(output_dim, start_idx, output_idx)
                 if new_all_node_info is None:
                     continue
-                # check node info legal
                 if self._update_chunk_info(chunk_info, new_all_node_info, output, output_dim) == True:
                     output_legal = True
                     break
-            # not legal
             if output_legal == False:
                 return None
         return chunk_info
@@ -408,14 +405,12 @@ class TraceFlow(object):
         """
         check if there is conflict between new node info and old chunk info. If not, update old chunk info
         """
-        # check if conflict
         overlap_flag = False
         for k, v in new_all_node_info.items():
             if k in chunk_info["node_chunk_dim"]:
                 overlap_flag = True
                 if chunk_info["node_chunk_dim"][k]["chunk_dim"] != v["chunk_dim"]:
                     return False
-        # if no overlap, we just consider them as prepose nodes, instead of new output
         if overlap_flag == False:
             return True
         # update chunk info
@@ -482,10 +477,8 @@ class TraceFlow(object):
         # must have users
         if len(end_node.users) == 0:
             return False
-        # check index source align
         if not self.check_index_source(start_dim, start_node, start_idx, end_dim, end_node):
             return False
-        # check index compute
         if not self.check_index_compute(start_idx, end_dim, end_node, end_idx):
             return False
         return True

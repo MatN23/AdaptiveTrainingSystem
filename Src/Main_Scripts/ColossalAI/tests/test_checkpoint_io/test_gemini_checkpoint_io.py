@@ -22,13 +22,13 @@ from tests.kit.model_zoo import model_zoo
 
 MODEL_PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
+    {"placement_policy": "static", "shard_param_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
 ]
 
 OPTIM_PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},  # zero2-offload
+    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},
+    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},
     {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.5},  # zero2-offload-half
 ]
 
@@ -140,7 +140,6 @@ def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_sha
         for group in new_optimizer.param_groups:
             assert group["lr"] == 0.1
 
-        # Check the new model/optimizer can successfully run.
         data = data_gen_fn()
         data = {
             k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()

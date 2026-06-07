@@ -23,7 +23,6 @@ class LSUNBase(Dataset):
             self.image_paths = f.read().splitlines()  # read the lines of the file and store as list
         self._length = len(self.image_paths)  # store the number of images
 
-        # create dictionary to hold image path information
         self.labels = {
             "relative_file_path_": [l for l in self.image_paths],
             "file_path_": [os.path.join(self.data_root, l) for l in self.image_paths],
@@ -42,7 +41,6 @@ class LSUNBase(Dataset):
         self.flip = transforms.RandomHorizontalFlip(p=flip_p)
 
     def __len__(self):
-        # return the length of dataset
         return self._length
 
     def __getitem__(self, i):
@@ -68,14 +66,14 @@ class LSUNBase(Dataset):
             (h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2
         ]  # crop the image to a square shape
 
-        image = Image.fromarray(img)  # create an image from numpy array
-        if self.size is not None:  # if image size is provided, resize the image
+        image = Image.fromarray(img)
+        if self.size is not None:
             image = image.resize((self.size, self.size), resample=self.interpolation)
 
         image = self.flip(image)  # flip the image horizontally with the given probability
         image = np.array(image).astype(np.uint8)
         example["image"] = (image / 127.5 - 1.0).astype(np.float32)  # normalize the image values and convert to float32
-        return example  # return the example dictionary containing the image and its file paths
+        return example
 
 
 # A dataset class for LSUN Churches training set.

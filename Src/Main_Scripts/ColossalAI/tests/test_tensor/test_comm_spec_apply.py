@@ -17,7 +17,6 @@ def check_all_gather(device_mesh, rank):
     else:
         sharded_tensor_to_comm = torch.zeros(2, 2).cuda()
 
-    # tensor to check
     tensor_to_check = torch.cat((torch.ones(2, 2), torch.zeros(2, 2)), 1).cuda()
 
     # test all gather
@@ -38,10 +37,8 @@ def check_all_gather(device_mesh, rank):
 
 
 def check_shard(device_mesh, rank):
-    # tensor to comm
     sharded_tensor_to_comm_0 = torch.zeros(2, 2).cuda()
     sharded_tensor_to_comm_1 = torch.ones(2, 2).cuda()
-    # tensor([[0., 0., 1., 1.],
     #         [0., 0., 1., 1.]])
     tensor_to_shard = torch.cat((sharded_tensor_to_comm_0, sharded_tensor_to_comm_1), 1)
 
@@ -68,24 +65,20 @@ def check_all_to_all(device_mesh, rank):
     if rank in (0, 1):
         sharded_tensor_0 = torch.zeros(2, 1)
         sharded_tensor_1 = torch.ones(2, 1)
-        # tensor([[0., 1.],
         #         [0., 1.]])
         tensor_to_comm = torch.cat((sharded_tensor_0, sharded_tensor_1), 1).cuda()
     if rank in (2, 3):
         sharded_tensor_0 = torch.ones(2, 1) * 2
         sharded_tensor_1 = torch.ones(2, 1) * 3
-        # tensor([[2., 3.],
         #         [2., 3.]])
         tensor_to_comm = torch.cat((sharded_tensor_0, sharded_tensor_1), 1).cuda()
 
     if rank in (0, 1):
-        # tensor([[0.],
         #         [0.],
         #         [2.],
         #         [2.]])
         tensor_to_check = torch.tensor([[0], [0], [2], [2]], dtype=tensor_to_comm.dtype).cuda()
     if rank in (2, 3):
-        # tensor([[1.],
         #         [1.],
         #         [3.],
         #         [3.]])
@@ -109,17 +102,14 @@ def check_all_to_all(device_mesh, rank):
 
 
 def check_all_reduce_fwd(device_mesh, rank):
-    # tensor to comm
     tensor_to_comm = torch.ones(2, 2).cuda() * rank
 
     # reduce through logical process axis 0
     # tensor to check
     if rank in (0, 2):
-        # tensor([[2., 2.],
         #         [2., 2.]])
         tensor_to_check = torch.tensor([[2, 2], [2, 2]], dtype=tensor_to_comm.dtype).cuda()
     if rank in (1, 3):
-        # tensor([[4., 4.],
         #         [4., 4.]])
         tensor_to_check = torch.tensor([[4, 4], [4, 4]], dtype=tensor_to_comm.dtype).cuda()
 
@@ -136,7 +126,6 @@ def check_all_reduce_fwd(device_mesh, rank):
 
 
 def check_all_reduce_bwd(device_mesh, rank):
-    # tensor to comm
     tensor_to_comm = torch.ones(2, 2).cuda() * rank
 
     tensor_to_check = torch.ones(2, 2).cuda() * rank
@@ -154,12 +143,9 @@ def check_all_reduce_bwd(device_mesh, rank):
 
 
 def check_all_reduce_in_flatten_device_mesh(device_mesh, rank):
-    # tensor to comm
     tensor_to_comm = torch.ones(2, 2).cuda() * rank
 
     # reduce through logical process axis 0 at flatten device mesh
-    # tensor to check
-    # tensor([[6., 6.],
     #         [6., 6.]])
     tensor_to_check = torch.tensor([[6, 6], [6, 6]], dtype=tensor_to_comm.dtype).cuda()
 

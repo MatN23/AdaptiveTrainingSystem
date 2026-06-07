@@ -7,7 +7,6 @@ from transformers.pytorch_utils import Conv1D
 
 from colossalai._analyzer.fx.passes import shape_prop_pass
 
-# from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai._analyzer.fx.tracer.tracer import ColoTracer
 from colossalai.auto_parallel.tensor_shard.utils.factory import find_repeat_blocks
 from colossalai.testing import clear_cache_before_run, parameterize, run_on_environment_flag

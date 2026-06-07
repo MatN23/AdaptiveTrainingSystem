@@ -15,10 +15,8 @@ from colossalai.testing import clear_cache_before_run, run_on_environment_flag
 def test_norm_pool_handler():
     model = nn.Sequential(nn.MaxPool2d(4, padding=1).to("meta"))
     tracer = ColoTracer(bias_addition_split=True)
-    # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %_0 : [#users=1] = call_module[target=0](args = (%input_1,), kwargs = {})
-    #     return _0
     meta_args = {"input": torch.rand(4, 4, 64, 64).to("meta")}
     graph = tracer.trace(model, meta_args=meta_args)
 
@@ -33,7 +31,6 @@ def test_norm_pool_handler():
 
     # build handler
     handler = NormPoolingHandler(node=conv_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
-    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():

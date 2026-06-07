@@ -1,13 +1,8 @@
-# coding=utf-8
 # Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -117,7 +112,6 @@ def load_tf_weights_in_bert(model, config, tf_checkpoint_path):
         raise
     tf_path = os.path.abspath(tf_checkpoint_path)
     logger.info(f"Converting TensorFlow checkpoint from {tf_path}")
-    # Load weights from TF model
     init_vars = tf.train.list_variables(tf_path)
     names = []
     arrays = []
@@ -188,7 +182,6 @@ class BertEmbeddings(nn.Module):
         # any TensorFlow checkpoint file
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        # position_ids (1, len position emb) is contiguous in memory and exported when serialized
         self.position_embedding_type = getattr(config, "position_embedding_type", "absolute")
         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
         if version.parse(torch.__version__) > version.parse("1.6.0"):
@@ -308,13 +301,10 @@ class BertSelfAttention(nn.Module):
         query_layer = self.transpose_for_scores(mixed_query_layer)
 
         if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention
             # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-            # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_layer, value_layer)
 
         # Take the dot product between "query" and "key" to get the raw attention scores.
@@ -493,7 +483,6 @@ class BertLayer(nn.Module):
         )
         attention_output = self_attention_outputs[0]
 
-        # if decoder, the last output is tuple of self-attn cache
         if self.is_decoder:
             outputs = self_attention_outputs[1:-1]
             present_key_value = self_attention_outputs[-1]
@@ -522,7 +511,6 @@ class BertLayer(nn.Module):
             attention_output = cross_attention_outputs[0]
             outputs = outputs + cross_attention_outputs[1:-1]  # add cross attentions if we output attention weights
 
-            # add cross-attn cache to positions 3,4 of present_key_value tuple
             cross_attn_present_key_value = cross_attention_outputs[-1]
             present_key_value = present_key_value + cross_attn_present_key_value
 
@@ -531,7 +519,6 @@ class BertLayer(nn.Module):
         )
         outputs = (layer_output,) + outputs
 
-        # if decoder, return the attn key/values as the last output
         if self.is_decoder:
             outputs = outputs + (present_key_value,)
 
@@ -882,7 +869,6 @@ class BertModel(BertPreTrainedModel):
 
         self.pooler = BertPooler(config) if add_pooling_layer else None
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_input_embeddings(self):
@@ -965,7 +951,6 @@ class BertModel(BertPreTrainedModel):
         batch_size, seq_length = input_shape
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
-        # past_key_values_length
         past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
 
         if attention_mask is None:
@@ -1050,7 +1035,6 @@ class BertForPreTraining(BertPreTrainedModel):
         self.bert = BertModel(config)
         self.cls = BertPreTrainingHeads(config)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_output_embeddings(self):
@@ -1160,7 +1144,6 @@ class BertLMHeadModel(BertPreTrainedModel):
         self.bert = BertModel(config, add_pooling_layer=False)
         self.cls = BertOnlyMLMHead(config)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_output_embeddings(self):
@@ -1263,7 +1246,6 @@ class BertLMHeadModel(BertPreTrainedModel):
 
     def prepare_inputs_for_generation(self, input_ids, past=None, attention_mask=None, **model_kwargs):
         input_shape = input_ids.shape
-        # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
         if attention_mask is None:
             attention_mask = input_ids.new_ones(input_shape)
 
@@ -1297,7 +1279,6 @@ class BertForMaskedLM(BertPreTrainedModel):
         self.bert = BertModel(config, add_pooling_layer=False)
         self.cls = BertOnlyMLMHead(config)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     def get_output_embeddings(self):
@@ -1400,7 +1381,6 @@ class BertForNextSentencePrediction(BertPreTrainedModel):
         self.bert = BertModel(config)
         self.cls = BertOnlyNSPHead(config)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     @add_start_docstrings_to_model_forward(BERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
@@ -1511,7 +1491,6 @@ class BertForSequenceClassification(BertPreTrainedModel):
         self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     @add_start_docstrings_to_model_forward(BERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
@@ -1613,7 +1592,6 @@ class BertForMultipleChoice(BertPreTrainedModel):
         self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(config.hidden_size, 1)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     @add_start_docstrings_to_model_forward(BERT_INPUTS_DOCSTRING.format("batch_size, num_choices, sequence_length"))
@@ -1711,7 +1689,6 @@ class BertForTokenClassification(BertPreTrainedModel):
         self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     @add_start_docstrings_to_model_forward(BERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
@@ -1793,7 +1770,6 @@ class BertForQuestionAnswering(BertPreTrainedModel):
         self.bert = BertModel(config, add_pooling_layer=False)
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
-        # Initialize weights and apply final processing
         self.post_init()
 
     @add_start_docstrings_to_model_forward(BERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))

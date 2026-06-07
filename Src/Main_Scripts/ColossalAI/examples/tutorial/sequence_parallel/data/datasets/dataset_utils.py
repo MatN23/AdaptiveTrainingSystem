@@ -1,12 +1,8 @@
-# coding=utf-8
 # Copyright 2018 The Google AI Language Team Authors, and NVIDIA.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -113,7 +109,6 @@ def get_a_and_b_segments(sample, np_rng):
 
 def truncate_segments(tokens_a, tokens_b, len_a, len_b, max_num_tokens, np_rng):
     """Truncates a pair of sequences to a maximum sequence length."""
-    # print(len_a, len_b, max_num_tokens)
     assert len_a > 0
     if len_a + len_b <= max_num_tokens:
         return False
@@ -189,7 +184,6 @@ def create_masked_lm_predictions(
     Note: Tokens here are vocab ids and not text tokens."""
 
     cand_indexes = []
-    # Note(mingdachen): We create a list for recording if the piece is
     # the starting piece of current token, where 1 means true, so that
     # on-the-fly whole word masking is possible.
     token_boundary = [0] * len(tokens)
@@ -200,7 +194,6 @@ def create_masked_lm_predictions(
             continue
         # Whole Word Masking means that if we mask all of the wordpieces
         # corresponding to an original word.
-        #
         # Note that Whole Word Masking does *not* change the training code
         # at all -- we still predict each WordPiece independently, softmaxed
         # over the entire vocabulary.
@@ -221,7 +214,6 @@ def create_masked_lm_predictions(
 
     num_to_predict = min(max_predictions_per_seq, max(1, int(round(len(tokens) * masked_lm_prob))))
 
-    # Note(mingdachen):
     # By default, we set the probabilities to favor shorter ngram sequences.
     ngrams = np.arange(1, max_ngrams + 1, dtype=np.int64)
     pvals = 1.0 / np.arange(1, max_ngrams + 1)
@@ -246,7 +238,6 @@ def create_masked_lm_predictions(
             break
         if not cand_index_set:
             continue
-        # Note(mingdachen):
         # Skip current piece if they are covered in lm masking or previous ngrams.
         for index_set in cand_index_set[0]:
             for index in index_set:
@@ -259,7 +250,6 @@ def create_masked_lm_predictions(
         )
         index_set = sum(cand_index_set[n - 1], [])
         n -= 1
-        # Note(mingdachen):
         # Repeatedly looking for a candidate that does not exceed the
         # maximum number of predictions by trying shorter ngrams.
         while len(masked_lms) + len(index_set) > num_to_predict:
@@ -307,7 +297,6 @@ def create_masked_lm_predictions(
                 break
             if not cand_index_set:
                 continue
-            # Note(mingdachen):
             # Skip current piece if they are covered in lm masking or previous ngrams.
             for index_set in cand_index_set[0]:
                 for index in index_set:
@@ -522,7 +511,6 @@ def _build_train_valid_test_datasets(
             doc_idx_ptr = indexed_dataset.get_doc_idx()
             # Slice the doc-idx
             start_index = splits[index]
-            # Add +1 so we can index into the dataset to get the upper bound.
             end_index = splits[index + 1] + 1
             # New doc_idx view.
             indexed_dataset.set_doc_idx(doc_idx_ptr[start_index:end_index])

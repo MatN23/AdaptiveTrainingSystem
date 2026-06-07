@@ -1,4 +1,3 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 """
@@ -173,12 +172,10 @@ def benchmark_loss_computation(
     compiled_results = BenchmarkResults("torch.compile Cross-Entropy")
     cuda_results = BenchmarkResults("CUDA Fused Loss")
     
-    # Create test data
     logits = torch.randn(batch_size, seq_len, vocab_size, device=device, requires_grad=True)
     labels = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
     labels[labels < vocab_size // 10] = -100
     
-    # Initialize implementations
     if KERNELS_AVAILABLE:
         fused_loss = FusedLoss()
         if not fused_loss.enabled:
@@ -188,7 +185,6 @@ def benchmark_loss_computation(
         print("\n  CUDA kernels not available, skipping CUDA benchmark")
         cuda_results = None
     
-    # Benchmark PyTorch
     print("\n[1/3] Running PyTorch benchmark...")
     for _ in range(warmup):
         _ = pytorch_cross_entropy_accuracy(logits, labels)
@@ -211,7 +207,6 @@ def benchmark_loss_computation(
         if (i + 1) % 100 == 0:
             print(f"  Progress: {i+1}/{num_iterations}")
     
-    # Benchmark torch.compile
     print("\n[2/3] Running torch.compile benchmark...")
     print("  (First run will be slower due to compilation...)")
     
@@ -330,7 +325,6 @@ def benchmark_gradient_clipping(
         print("\n  CUDA kernels not available, skipping CUDA benchmark")
         cuda_results = None
     
-    # Benchmark PyTorch
     print("\n[1/3] Running PyTorch benchmark...")
     for _ in range(warmup):
         _ = pytorch_grad_clip(model.parameters(), max_norm)
@@ -353,7 +347,6 @@ def benchmark_gradient_clipping(
         if (i + 1) % 100 == 0:
             print(f"  Progress: {i+1}/{num_iterations}")
     
-    # Benchmark torch.compile
     print("\n[2/3] Running torch.compile benchmark...")
     print("  Note: torch.compile may not optimize grad clipping significantly")
     
@@ -441,11 +434,9 @@ def print_speedup_table(pytorch_results: BenchmarkResults,
     # PyTorch baseline
     print(f"{'PyTorch':<25} {pytorch_stats['mean']:>10.3f}   {'1.00x (base)':<15} {'-':<15}")
     
-    # torch.compile
     compile_vs_pytorch = pytorch_stats['mean'] / compiled_stats['mean']
     print(f"{'torch.compile':<25} {compiled_stats['mean']:>10.3f}   {f'{compile_vs_pytorch:.2f}x faster':<15} {'1.00x (base)':<15}")
     
-    # CUDA
     if cuda_results is not None:
         cuda_stats = cuda_results.get_stats()
         cuda_vs_pytorch = pytorch_stats['mean'] / cuda_stats['mean']
@@ -505,7 +496,6 @@ def benchmark_full_training_step(
     pytorch_results = BenchmarkResults("PyTorch Full Training Step")
     cuda_results = BenchmarkResults("CUDA Kernels Full Training Step")
     
-    # Create a simple transformer-like model
     class SimpleTransformer(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -533,7 +523,6 @@ def benchmark_full_training_step(
     num_params = sum(p.numel() for p in model.parameters())
     print(f"  Model parameters: {num_params:,}")
     
-    # Initialize kernels
     if KERNELS_AVAILABLE:
         fused_loss = FusedLoss()
         fused_clip = FusedGradClip()
@@ -543,7 +532,6 @@ def benchmark_full_training_step(
         cuda_enabled = False
         print(f"  CUDA kernels: Not available")
     
-    # Create test data
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
     labels = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
     labels[labels < vocab_size // 20] = -100  # 5% padding
@@ -553,7 +541,6 @@ def benchmark_full_training_step(
     # ========== BENCHMARK PYTORCH ==========
     print(f"\n[1/2] Running PyTorch training step benchmark...")
     
-    # Warmup
     for _ in range(warmup):
         optimizer.zero_grad(set_to_none=True)
         logits = model(input_ids)
@@ -589,7 +576,6 @@ def benchmark_full_training_step(
     if cuda_enabled:
         print(f"\n[2/2] Running CUDA kernels training step benchmark...")
         
-        # Warmup
         for _ in range(warmup):
             optimizer.zero_grad(set_to_none=True)
             logits = model(input_ids)
