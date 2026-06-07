@@ -13,7 +13,7 @@ namespace cg = cooperative_groups;
 #define NUM_WARPS (BLOCK_SIZE / WARP_SIZE) // 8
 #define NORM_BUF_DOUBLES 1                 // 1 double  = 8 bytes
 #define NORM_BUF_FLOATS                                                        \
-  4 // 4 floats  = 16 bytes  → total buf = 24 bytes, allocate 32
+  4 // 4 floats  = 16 bytes   total buf = 24 bytes, allocate 32
 
 // ---------------------------------------------------------------------------
 __device__ __forceinline__ double warp_reduce_sum_double(double val) {
@@ -28,9 +28,9 @@ template <typename scalar_t>
 __global__ void fused_grad_clip_kernel(
     scalar_t **grad_ptrs, const int *grad_sizes, const int num_tensors,
     const float max_norm,
-    double *norm_sq_acc,  // 1 double  – squared norm accumulator
-    float *clip_coef_out, // 1 float   – clipping coefficient
-    float *final_norm_out // 1 float   – final norm (for logging)
+    double *norm_sq_acc,  // 1 double   squared norm accumulator
+    float *clip_coef_out, // 1 float    clipping coefficient
+    float *final_norm_out // 1 float    final norm (for logging)
 ) {
   cg::grid_group grid = cg::this_grid();
 
@@ -49,9 +49,9 @@ __global__ void fused_grad_clip_kernel(
   }
 
   // ------------------------------------------------------------------
-  // Phase 2: block reduction  (warp shuffle → shared mem → atomicAdd)
+  // Phase 2: block reduction  (warp shuffle  shared mem  atomicAdd)
   // ------------------------------------------------------------------
-  __shared__ double smem[NUM_WARPS]; // 8 doubles — correctly sized
+  __shared__ double smem[NUM_WARPS]; // 8 doubles  correctly sized
 
   int lane = threadIdx.x % WARP_SIZE;
   int wid = threadIdx.x / WARP_SIZE;
@@ -69,7 +69,7 @@ __global__ void fused_grad_clip_kernel(
   }
 
   // ------------------------------------------------------------------
-  // Phase 3: grid sync → compute clip coef (thread 0 only)
+  // Phase 3: grid sync  compute clip coef (thread 0 only)
   // ------------------------------------------------------------------
   grid.sync();
 
@@ -117,7 +117,7 @@ template <typename scalar_t> static int safe_num_blocks() {
 template <typename scalar_t>
 static cudaError_t
 do_launch(scalar_t **ptrs, int *sizes, int num_tensors, float max_norm,
-          void *norm_buffer, // must be ≥32 bytes, 8-byte aligned device ptr
+          void *norm_buffer, // must be 32 bytes, 8-byte aligned device ptr
           cudaStream_t stream) {
   if (!norm_buffer || !ptrs || !sizes || num_tensors <= 0)
     return cudaErrorInvalidValue;
@@ -158,9 +158,9 @@ do_launch(scalar_t **ptrs, int *sizes, int num_tensors, float max_norm,
 // ---------------------------------------------------------------------------
 extern "C" {
 
-// Unified launcher — called from Python
+// Unified launcher  called from Python
 // use_fp16: 0 = float32, 1 = float16
-// norm_buffer: device ptr to ≥32 bytes, malloc'd with cudaMalloc (8-byte
+// norm_buffer: device ptr to 32 bytes, malloc'd with cudaMalloc (8-byte
 // aligned)
 int fused_grad_clip_launcher(void **grad_ptrs_device, int *grad_sizes_device,
                              int num_tensors, float max_norm, void *norm_buffer,

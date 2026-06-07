@@ -21,9 +21,9 @@ In Colossal-AI, we have incorporated different implementations of mixed precisio
 
 | Colossal-AI    | support tensor parallel | support pipeline parallel | fp16 extent                                                                                          |
 | -------------- | ----------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------- |
-| AMP_TYPE.TORCH | ✅                      | ❌                        | Model parameters, activation, gradients are downcast to fp16 during forward and backward propagation |
-| AMP_TYPE.APEX  | ❌                      | ❌                        | More fine-grained, we can choose opt_level O0, O1, O2, O3                                            |
-| AMP_TYPE.NAIVE | ✅                      | ✅                        | Model parameters, forward and backward operations are all downcast to fp16                           |
+| AMP_TYPE.TORCH |                       |                         | Model parameters, activation, gradients are downcast to fp16 during forward and backward propagation |
+| AMP_TYPE.APEX  |                       |                         | More fine-grained, we can choose opt_level O0, O1, O2, O3                                            |
+| AMP_TYPE.NAIVE |                       |                         | Model parameters, forward and backward operations are all downcast to fp16                           |
 
 The first two rely on the original implementation of PyTorch (version 1.6 and above) and NVIDIA Apex.
 The last method is similar to Apex O2 level.
@@ -31,9 +31,9 @@ Among these methods, apex AMP is not compatible with tensor parallelism.
 This is because that tensors are split across devices in tensor parallelism, thus, it is required to communicate among different processes to check if inf or nan occurs in the whole model weights.
 We modified the torch amp implementation so that it is compatible with tensor parallelism now.
 
-> ❌️ fp16 and zero are not compatible
+>  fp16 and zero are not compatible
 >
-> ⚠️ Pipeline only support naive AMP currently
+>  Pipeline only support naive AMP currently
 
 We recommend you to use torch AMP as it generally gives better accuracy than naive AMP if no pipeline is used.
 

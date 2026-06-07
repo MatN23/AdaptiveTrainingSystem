@@ -118,7 +118,7 @@ if __name__ == "__main__":
     while True:
         user_input = input("User: ")
         if " end " in user_input:
-            print("Agent: Happy to chat with you ：)")
+            print("Agent: Happy to chat with you )")
             break
         agent_response = agent_chain.run(user_input)
         print(f"Agent: {agent_response}")

@@ -6,22 +6,22 @@ labels: ['enhancement', 'needs-triage']
 assignees: ''
 ---
 
-## 🚀 Feature Description
+##  Feature Description
 A clear and concise description of what you want to happen.
 
-## 💡 Motivation
+##  Motivation
 Is your feature request related to a problem? Please describe.
 A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
 
-## 🎯 Proposed Solution
+##  Proposed Solution
 Describe the solution you'd like.
 A clear and concise description of what you want to happen.
 
-## 🔄 Alternative Solutions
+##  Alternative Solutions
 Describe alternatives you've considered.
 A clear and concise description of any alternative solutions or features you've considered.
 
-## 📋 Affected Components
+##  Affected Components
 Which parts of LuminaAI would this feature affect?
 - [ ] Training (`train.py`)
 - [ ] Fine-tuning (`fine_tune.py`)
@@ -32,20 +32,20 @@ Which parts of LuminaAI would this feature affect?
 - [ ] Documentation
 - [ ] Other: _____________
 
-## 🎨 Mockups/Examples
+##  Mockups/Examples
 If applicable, add mockups, examples, or references to help explain your feature.
 
-## 🔧 Implementation Ideas
+##  Implementation Ideas
 Do you have any ideas on how this could be implemented?
 
-## 📊 Priority
+##  Priority
 How important is this feature to you?
 - [ ] Critical - I can't use LuminaAI without this
 - [ ] High - This would significantly improve my workflow  
 - [ ] Medium - This would be nice to have
 - [ ] Low - This is just a suggestion
 
-## ✅ Checklist
+##  Checklist
 - [ ] I have searched existing issues for duplicates
 - [ ] I have provided sufficient detail
 - [ ] This feature aligns with LuminaAI's goals

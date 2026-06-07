@@ -1,12 +1,12 @@
-# 🐳 Pipeline Inference
+#  Pipeline Inference
 
 ## Table of Contents
-- [💡 Introduction](#introduction)
-- [🔗 Design](#design)
-- [🔨 Usage](#usage)
+- [ Introduction](#introduction)
+- [ Design](#design)
+- [ Usage](#usage)
     - [Example](#example)
     - [Quick start](#quick-start)
-- [📊 Performance](#performance)
+- [ Performance](#performance)
 
 ## Introduction
 

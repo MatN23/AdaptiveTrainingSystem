@@ -231,7 +231,7 @@ if __name__ == "__main__":
                 input_path, args.output_path, pretrain_data, args.worker, args.dupe_factor, args.seq_len, i
             )
             end_ = time.time()
-            print("memory：%.4f GB" % (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024))
+            print("memory%.4f GB" % (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024))
             print(f"has cost {(end_ - start) / 60}")
             print("-" * 100)
             print("")
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     #                                 args.seq_len,
     #                                 h)
     #         end_ = time.time()
-    #         print(u'memory：%.4f GB' % (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024) )
+    #         print(u'memory%.4f GB' % (psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024 / 1024) )
     #         print(f'has cost {(end_ - start) / 60}')
     #         print('-' * 100)
     #         print('')

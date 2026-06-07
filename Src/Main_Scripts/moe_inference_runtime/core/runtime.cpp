@@ -111,13 +111,13 @@ void InferenceEngine::load_model(const std::string &path) {
   file.read(reinterpret_cast<char *>(&config_.rope_theta), sizeof(float));
 
 #ifdef USE_CUDA
-  std::cout << "✓ Loaded config (CUDA mode): " << config_.num_layers
+  std::cout << " Loaded config (CUDA mode): " << config_.num_layers
             << " layers, " << config_.hidden_size << " hidden" << std::endl;
 #elif defined(USE_MPS)
-  std::cout << "✓ Loaded config (MPS mode): " << config_.num_layers
+  std::cout << " Loaded config (MPS mode): " << config_.num_layers
             << " layers, " << config_.hidden_size << " hidden" << std::endl;
 #else
-  std::cout << "✓ Loaded config (CPU mode): " << config_.num_layers
+  std::cout << " Loaded config (CPU mode): " << config_.num_layers
             << " layers, " << config_.hidden_size << " hidden" << std::endl;
 #endif
 
@@ -215,7 +215,7 @@ void InferenceEngine::load_model(const std::string &path) {
   weights_.rope_cos = read_tensor({config_.max_seq_len, head_dim});
   weights_.rope_sin = read_tensor({config_.max_seq_len, head_dim});
 
-  std::cout << "✓ Model loaded: " << path << std::endl;
+  std::cout << " Model loaded: " << path << std::endl;
 }
 
 void InferenceEngine::init_buffers() {
@@ -641,18 +641,18 @@ int main(int argc, char **argv) {
 
   try {
 #ifdef USE_CUDA
-    std::cout << "🚀 CUDA Inference Mode" << std::endl;
+    std::cout << " CUDA Inference Mode" << std::endl;
 #elif defined(USE_MPS)
-    std::cout << "🚀 Apple MPS Inference Mode" << std::endl;
+    std::cout << " Apple MPS Inference Mode" << std::endl;
 #else
-    std::cout << "🚀 CPU Inference Mode" << std::endl;
+    std::cout << " CPU Inference Mode" << std::endl;
 #endif
 
     InferenceEngine engine(model_path);
 
     if (interactive) {
       // Interactive chat mode
-      std::cout << "\n💬 Interactive Chat Mode" << std::endl;
+      std::cout << "\n Interactive Chat Mode" << std::endl;
       std::cout << "Type token file path (or 'quit' to exit)\n" << std::endl;
 
       std::string line;
@@ -703,7 +703,7 @@ int main(int argc, char **argv) {
         std::cout << "Text prompt (no tokenizer): using dummy tokens"
                   << std::endl;
         std::cout
-            << "⚠️  For proper tokenization, use: python chat_integrated.py"
+            << "  For proper tokenization, use: python chat_integrated.py"
             << std::endl;
         input_ids = {1, 2, 3};
       }
@@ -712,7 +712,7 @@ int main(int argc, char **argv) {
 
       auto output = engine.generate(input_ids, 100, 1.0f);
 
-      std::cout << "\n✓ Generated " << output.size() << " tokens" << std::endl;
+      std::cout << "\n Generated " << output.size() << " tokens" << std::endl;
       std::cout << "\nToken IDs: ";
       for (size_t i = 0; i < output.size(); ++i) {
         std::cout << output[i];

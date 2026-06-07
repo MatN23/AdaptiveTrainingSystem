@@ -70,7 +70,7 @@ This plugin implements the combination of various parallel training strategies a
 
 4. Zero: This plugin can adopt Zero 1/2 as data parallel strategy through setting the `zero_stage` argument as 1 or 2 when initializing plugin. Zero 1 is compatible with pipeline parallel strategy, while Zero 2 is not. More details about its argument configuration can be found in [Low Level Zero Plugin](#low-level-zero-plugin).
 
-> ⚠ When using this plugin, only the subset of Huggingface transformers supported by Shardformer are compatible with tensor parallel, pipeline parallel and optimization tools. Mainstream transformers such as Llama 1, Llama 2, OPT, Bloom, Bert and GPT2 etc. are all supported by Shardformer.
+>  When using this plugin, only the subset of Huggingface transformers supported by Shardformer are compatible with tensor parallel, pipeline parallel and optimization tools. Mainstream transformers such as Llama 1, Llama 2, OPT, Bloom, Bert and GPT2 etc. are all supported by Shardformer.
 
 {{ autodoc:colossalai.booster.plugin.HybridParallelPlugin }}
 
@@ -82,11 +82,11 @@ More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/genera
 
 ### Torch FSDP Plugin
 
-> ⚠ This plugin is not available when torch version is lower than 1.12.0.
+>  This plugin is not available when torch version is lower than 1.12.0.
 
-> ⚠ This plugin does not support save/load sharded model checkpoint now.
+>  This plugin does not support save/load sharded model checkpoint now.
 
-> ⚠ This plugin does not support optimizer that use multi params group.
+>  This plugin does not support optimizer that use multi params group.
 
 More details can be found in [Pytorch Docs](https://pytorch.org/docs/main/fsdp.html).
 

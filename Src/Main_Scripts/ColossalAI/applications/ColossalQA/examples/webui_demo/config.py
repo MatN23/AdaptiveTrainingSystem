@@ -17,7 +17,7 @@ ALL_CONFIG = {
     "retrieval": {"retri_top_k": 3, "retri_kb_file_path": "./", "verbose": True},  # path to store database files
     "chain": {
         "mem_summary_prompt": SUMMARY_PROMPT_ZH,  # summary prompt template
-        "mem_human_prefix": "用户",
+        "mem_human_prefix": "",
         "mem_ai_prefix": "Assistant",
         "mem_max_tokens": 2000,
         "mem_llm_kwargs": {"max_new_tokens": 50, "temperature": 1, "do_sample": True},

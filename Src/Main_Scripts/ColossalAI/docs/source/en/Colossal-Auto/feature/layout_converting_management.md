@@ -8,6 +8,6 @@ Therefore, we propose a novel algorithm, using heuristic search, to solve the co
 
 | Source/target sharding spec pairs |All gather | Shard | All to All | One step transform | Best sharding spec |Transform path|
 | :-:         | :-:              | :-:                  | :-:                       | :-:                     | :-:                     |:-:                     |
-| $S_{01}RR， RS_{01}R$  | $S_0RR$       | -           | $S_0RS_1, S_0S_1R$             | $S_0RR, S_0RS_1, S_0S_1R$             | $S_0RR$ | $S_0RR$
+| $S_{01}RR RS_{01}R$  | $S_0RR$       | -           | $S_0RS_1, S_0S_1R$             | $S_0RR, S_0RS_1, S_0S_1R$             | $S_0RR$ | $S_0RR$
 | $S_0RR, RS_{01}RR$  | $RRR$       | $S_0S_1R, S_0RS_1$           | $RS_0R, RRS_0$             | $RRR$, $S_0S_1R$, $S_0RS_1$, $RS_0R$, $RRS_0$             | $RS_0R$ | $S_0RR$ -> $RS_0R$
 | $RS_0R, RS_{01}RR$  | $RRR$       | $RS_{01}R, S_1S_0R, RS_0S_1$           | $S_0RR, RRS_0$             | $RRR$, $RS_{01}R$, $S_1S_0R$, $RS_0S_1$, $S_0RR$, $RRS_0$             | $RS_{01}R$ | $S_0RR$ -> $RS_0R$ -> $RS_{01}R$

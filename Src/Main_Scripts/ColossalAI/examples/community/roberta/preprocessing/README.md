@@ -21,7 +21,7 @@ This folder is used to preprocess chinese corpus with Whole Word Masked. You can
 <span id='Split Sentence'/>
 
 ### 2.1. Split Sentence & Split data into multiple shard:
-Firstly, each file has multiple documents, and each document contains multiple sentences. Split sentence through punctuation, such as `。！`. **Secondly, split data into multiple shard based on server hardware (cpu, cpu memory, hard disk) and corpus size.** Each shard contains a part of corpus, and the model needs to train all the shards as one epoch.
+Firstly, each file has multiple documents, and each document contains multiple sentences. Split sentence through punctuation, such as ``. **Secondly, split data into multiple shard based on server hardware (cpu, cpu memory, hard disk) and corpus size.** Each shard contains a part of corpus, and the model needs to train all the shards as one epoch.
 In this example, split 200G Corpus into 100 shard, and each shard is about 2G. The size of the shard is memory-dependent, taking into account the number of servers, the memory used by the tokenizer, and the memory used by the multi-process training to read the shard (n data parallel requires n\*shard_size memory). **To sum up, data preprocessing and model pretraining requires fighting with hardware, not just GPU.**
 
 ```python
@@ -38,13 +38,13 @@ python sentence_split.py --input_path /original_corpus --output_path /shard --sh
 [
     {
         "id": 0,
-        "title": "打篮球",
-        "content": "我今天去打篮球。不回来吃饭。"
+        "title": "",
+        "content": ""
     }
     {
         "id": 1,
-        "title": "旅游",
-        "content": "我后天去旅游。下周请假。"
+        "title": "",
+        "content": ""
     }
 ]
 ```
@@ -52,11 +52,11 @@ python sentence_split.py --input_path /original_corpus --output_path /shard --sh
 <summary><b>Output txt:</b></summary>
 
 ```
-我今天去打篮球。
-不回来吃饭。
+
+
 ]]
-我后天去旅游。
-下周请假。
+
+
 ```
 
 <span id='Tokenizer & Whole Word Masked'/>
@@ -84,11 +84,11 @@ make
 <summary><b>Input txt:</b></summary>
 
 ```
-我今天去打篮球。
-不回来吃饭。
+
+
 ]]
-我后天去旅游。
-下周请假。
+
+
 ```
 
 <summary><b>Output h5+numpy:</b></summary>

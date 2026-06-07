@@ -1,24 +1,24 @@
-# 梯度累积
+# 
 
-作者: [Mingyan Jiang](https://github.com/jiangmingyan), [Baizhou Zhang](https://github.com/Fridge003)
+: [Mingyan Jiang](https://github.com/jiangmingyan), [Baizhou Zhang](https://github.com/Fridge003)
 
-**前置教程**
-- [训练中使用Booster](../basics/booster_api.md)
+****
+- [Booster](../basics/booster_api.md)
 
-## 引言
+## 
 
-梯度累积是一种常见的增大训练 batch size 的方式。 在训练大模型时，内存经常会成为瓶颈，并且 batch size 通常会很小（如2），这导致收敛性无法保证。梯度累积将多次迭代的梯度累加，并仅在达到预设迭代次数时更新参数。
+ batch size   batch size 2
 
-## 使用
+## 
 
-在 Colossal-AI 中使用梯度累积非常简单，booster提供no_sync返回一个上下文管理器，在该上下文管理器下取消同步并且累积梯度。
+ Colossal-AI boosterno_sync
 
-## 实例
+## 
 
-我们将介绍如何使用梯度累积。在这个例子中，梯度累积次数被设置为4。
+4
 
-### 步骤 1. 在 train.py 导入相关库
-创建train.py并导入必要依赖。 `torch` 的版本应不低于1.8.1。
+###  1.  train.py 
+train.py `torch` 1.8.1
 
 ```python
 import os
@@ -36,9 +36,9 @@ from colossalai.logging import get_dist_logger
 from colossalai.cluster.dist_coordinator import priority_execution
 ```
 
-### 步骤 2. 初始化分布式环境
+###  2. 
 
-我们需要初始化分布式环境。为了快速演示，我们使用`launch_from_torch`。你可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md)使用其他初始化方法。
+`launch_from_torch` [Launch Colossal-AI](../basics/launch_colossalai.md)
 
 ```python
 # initialize distributed setting
@@ -50,9 +50,9 @@ colossalai.launch_from_torch(config=dict())
 
 ```
 
-### 步骤 3. 创建训练组件
+###  3. 
 
-构建你的模型、优化器、损失函数、学习率调整器和数据加载器。注意数据集的路径从环境变量`DATA`获得。你可以通过 `export DATA=/path/to/data` 或 `Path(os.environ['DATA'])`，在你的机器上设置路径。数据将会被自动下载到该路径。
+`DATA` `export DATA=/path/to/data`  `Path(os.environ['DATA'])`
 
 ```python
 # define the training hyperparameters
@@ -80,8 +80,8 @@ criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
 ```
 
-### 步骤 4. 注入特性
-创建一个`TorchDDPPlugin`对象，并作为参实例化`Booster`， 调用`booster.boost`注入特性。
+###  4. 
+`TorchDDPPlugin``Booster` `booster.boost`
 
 ```python
 plugin = TorchDDPPlugin()
@@ -94,8 +94,8 @@ model, optimizer, criterion, train_dataloader, _ = booster.boost(model=model,
 ```
 
 
-### 步骤 5. 使用booster训练
-使用booster构建一个普通的训练循环，验证梯度累积。 `param_by_iter` 记录分布训练的信息。
+###  5. booster
+booster `param_by_iter` 
 ```python
 optimizer.zero_grad()
 for idx, (img, label) in enumerate(train_dataloader):
@@ -130,13 +130,13 @@ for idx, (img, label) in enumerate(train_dataloader):
 
 ```
 
-### 步骤 6. 启动训练脚本
-为了验证梯度累积，我们可以只检查参数值的变化。当设置梯度累加时，仅在最后一步更新参数。您可以使用以下命令运行脚本：
+###  6. 
+
 ```shell
 colossalai run --nproc_per_node 1 train.py
 ```
 
-你将会看到类似下方的文本输出。这展现了梯度虽然在前3个迭代中被计算，但直到最后一次迭代，参数才被更新。
+3
 
 ```text
 iteration 0, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0047,  0.0116, -0.0283,  0.0071, -0.0359, -0.0267, -0.0006], device='cuda:0', grad_fn=<SliceBackward0>)
@@ -145,11 +145,11 @@ iteration 2, first 10 elements of param: tensor([-0.0208,  0.0189,  0.0234,  0.0
 iteration 3, first 10 elements of param: tensor([-0.0141,  0.0464,  0.0507,  0.0321,  0.0356, -0.0150,  0.0172, -0.0118, 0.0222,  0.0473], device='cuda:0', grad_fn=<SliceBackward0>)
 ```
 
-## 在Gemini插件中使用梯度累积
+## Gemini
 
-目前支持`no_sync()`方法的插件包括 `TorchDDPPlugin` 和 `LowLevelZeroPlugin`（需要设置参数`stage`为1）. `GeminiPlugin` 不支持 `no_sync()` 方法, 但是它可以通过和`pytorch`类似的方式来使用同步的梯度累积。
+`no_sync()` `TorchDDPPlugin`  `LowLevelZeroPlugin``stage`1. `GeminiPlugin`  `no_sync()` , `pytorch`
 
-为了开启梯度累积功能，在初始化`GeminiPlugin`的时候需要将参数`enable_gradient_accumulation`设置为`True`。以下是 `GeminiPlugin` 进行梯度累积的伪代码片段:
+`GeminiPlugin``enable_gradient_accumulation``True` `GeminiPlugin` :
 <!--- doc-test-ignore-start -->
 ```python
 ...

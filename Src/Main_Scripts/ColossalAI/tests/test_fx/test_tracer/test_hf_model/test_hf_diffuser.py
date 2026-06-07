@@ -51,7 +51,7 @@ def test_diffusers():
         data = data_gen_fn()
         trace_and_compare(model_fn, data, output_transform_fn)
         torch.cuda.synchronize()
-        print(f"{name:40s} √")
+        print(f"{name:40s} ")
 
 
 @clear_cache_before_run()
@@ -65,7 +65,7 @@ def test_torch_diffusers():
         model = model_fn()
         model(**data)
         torch.cuda.synchronize()
-        print(f"{name:40s} √")
+        print(f"{name:40s} ")
 
 
 if __name__ == "__main__":

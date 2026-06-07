@@ -1,72 +1,72 @@
-# 自动混合精度训练
+# 
 
-作者: [Mingyan Jiang](https://github.com/jiangmingyan)
+: [Mingyan Jiang](https://github.com/jiangmingyan)
 
-**前置教程**
+****
 
-- [booster 使用](../basics/booster_api.md)
+- [booster ](../basics/booster_api.md)
 
-**相关论文**
+****
 
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
 
-## 引言
+## 
 
-AMP 代表自动混合精度训练。
-在 Colossal-AI 中, 我们结合了混合精度训练的不同实现:
+AMP 
+ Colossal-AI , :
 
 1. torch.cuda.amp
 2. apex.amp
 3. naive amp
 
-| Colossal-AI    | 支持张量并行 | 支持流水并行 | fp16 范围                                                 |
+| Colossal-AI    |  |  | fp16                                                  |
 | -------------- | ------------ | ------------ | --------------------------------------------------------- |
-| AMP_TYPE.TORCH | ✅           | ❌           | 在前向和反向传播期间，模型参数、激活和梯度向下转换至 fp16 |
-| AMP_TYPE.APEX  | ❌           | ❌           | 更细粒度，我们可以选择 opt_level O0, O1, O2, O3           |
-| AMP_TYPE.NAIVE | ✅           | ✅           | 模型参数、前向和反向操作，全都向下转换至 fp16             |
+| AMP_TYPE.TORCH |            |            |  fp16 |
+| AMP_TYPE.APEX  |            |            |  opt_level O0, O1, O2, O3           |
+| AMP_TYPE.NAIVE |            |            |  fp16             |
 
-前两个依赖于 PyTorch (1.6 及以上) 和 NVIDIA Apex 的原始实现。最后一种方法类似 Apex O2。在这些方法中，Apex-AMP 与张量并行不兼容。这是因为张量是以张量并行的方式在设备之间拆分的，因此，需要在不同的进程之间进行通信，以检查整个模型权重中是否出现 inf 或 nan。我们修改了 torch amp 实现，使其现在与张量并行兼容。
+ PyTorch (1.6 )  NVIDIA Apex  Apex O2Apex-AMP  inf  nan torch amp 
 
-> ❌️ fp16 与 ZeRO 不兼容
+>  fp16  ZeRO 
 >
-> ⚠️ 流水并行目前仅支持 naive amp
+>   naive amp
 
-我们建议使用 torch AMP，因为在不使用流水并行时，它通常比 NVIDIA AMP 提供更好的准确性。
+ torch AMP NVIDIA AMP 
 
-## 目录
+## 
 
-在本教程中，我们将介绍:
+:
 
-1. [AMP 介绍](#amp-介绍)
-2. [Colossal-AI 中的 AMP](#colossal-ai-中的-amp)
-3. [练习实例](#实例)
+1. [AMP ](#amp-)
+2. [Colossal-AI  AMP](#colossal-ai--amp)
+3. [](#)
 
-## AMP 介绍
+## AMP 
 
-自动混合精度训练是混合 FP16 和 FP32 训练。
+ FP16  FP32 
 
-半精度浮点格式（FP16）具有较低的算法复杂度和较高的计算效率。此外，FP16 仅需要 FP32 所需的一半存储空间，并节省了内存和网络带宽，从而为大 batch size 和大模型提供了更多内存。
+FP16FP16  FP32  batch size 
 
-然而，还有其他操作，如缩减，需要 FP32 的动态范围，以避免数值溢出/下溢。因此，我们引入自动混合精度，尝试将每个操作与其相应的数据类型相匹配，这可以减少内存占用并提高训练效率。
+ FP32 /
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/01/28/URzLJ3MPeDQbtck.png"/>
-<figcaption>AMP 示意图 (图片来自 <a href="https://arxiv.org/abs/2108.05818">PatrickStar 论文</a>)</figcaption>
+<figcaption>AMP  ( <a href="https://arxiv.org/abs/2108.05818">PatrickStar </a>)</figcaption>
 </figure>
 
-## Colossal-AI 中的 AMP
+## Colossal-AI  AMP
 
-我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster 支持 amp 特性注入，如果您要使用混合精度训练，则在创建 booster 实例时指定`mixed_precision`参数;后续将会拓展`bf16`,`pf8`的混合精度训练.
+ AMP  AMP booster  amp  booster `mixed_precision`;`bf16`,`pf8`.
 
-#### booster 启动方式
+#### booster 
 
-您可以在创建 booster 实例时，指定`mixed_precision="fp16"`即使用 torch amp。
+ booster `mixed_precision="fp16"` torch amp
 
 <!--- doc-test-ignore-start -->
 
 ```python
 """
-    初始化映射关系如下：
+    
     'fp16': torch amp
     'fp16_apex': apex amp,
     'bf16': bf16,
@@ -79,7 +79,7 @@ booster = Booster(mixed_precision='fp16',...)
 
 <!--- doc-test-ignore-end -->
 
-或者您可以自定义一个`FP16TorchMixedPrecision`对象，如
+`FP16TorchMixedPrecision`
 
 <!--- doc-test-ignore-start -->
 
@@ -95,36 +95,36 @@ booster = Booster(mixed_precision=mixed_precision,...)
 
 <!--- doc-test-ignore-end -->
 
-其他类型的 amp 使用方式也是一样的。
+ amp 
 
-### Torch AMP 配置
+### Torch AMP 
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16TorchMixedPrecision }}
 
-### Apex AMP 配置
+### Apex AMP 
 
-对于这种模式，我们依靠 Apex 实现混合精度训练。我们支持这个插件，因为它允许对混合精度的粒度进行更精细的控制。
-例如, O2 水平 (优化器水平 2) 将保持 batch normalization 为 FP32。
+ Apex 
+, O2  ( 2)  batch normalization  FP32
 
-如果你想了解更多细节，请参考 [Apex Documentation](https://nvidia.github.io/apex/)。
+ [Apex Documentation](https://nvidia.github.io/apex/)
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16ApexMixedPrecision }}
 
-### Naive AMP 配置
+### Naive AMP 
 
-在 Naive AMP 模式中, 我们实现了混合精度训练，同时保持了与复杂张量和流水并行的兼容性。该 AMP 模式将所有操作转为 FP16 。下列代码块展示了该模式的 booster 启动方式。
+ Naive AMP ,  AMP  FP16  booster 
 
 {{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
 
-当使用`colossalai.booster`时, 首先需要实例化一个模型、一个优化器和一个标准。将输出模型转换为内存消耗较小的 AMP 模型。如果您的输入模型已经太大，无法放置在 GPU 中，请使用`dtype=torch.float16`实例化你的模型。或者请尝试更小的模型，或尝试更多的并行化训练技术！
+`colossalai.booster`,  AMP  GPU `dtype=torch.float16`
 
-## 实例
+## 
 
-下面我们将展现如何在 Colossal-AI 使用 AMP。在该例程中，我们使用 Torch AMP.
+ Colossal-AI  AMP Torch AMP.
 
-### 步骤 1. 在 train.py 导入相关库
+###  1.  train.py 
 
-创建`train.py`并导入必要依赖. 请记得通过命令`pip install timm scipy`安装`scipy`和`timm`。
+`train.py`. `pip install timm scipy``scipy``timm`
 
 ```python
 import os
@@ -142,13 +142,13 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 ```
 
-### 步骤 2. 初始化分布式环境
+###  2. 
 
-我们需要初始化分布式环境。为了快速演示，我们使用`launch_from_torch`。你可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md)
-使用其他初始化方法。
+`launch_from_torch` [Launch Colossal-AI](../basics/launch_colossalai.md)
+
 
 ```python
-# 初始化分布式设置
+# 
 parser = colossalai.get_default_parser()
 args = parser.parse_args()
 
@@ -157,10 +157,10 @@ colossalai.launch_from_torch(config=dict())
 
 ```
 
-### 步骤 3. 创建训练组件
+###  3. 
 
-构建你的模型、优化器、损失函数、学习率调整器和数据加载器。注意数据集的路径从环境变量`DATA`获得。你可以通过 `export DATA=/path/to/data` 或 `Path(os.environ['DATA'])`
-在你的机器上设置路径。数据将会被自动下载到该路径。
+`DATA` `export DATA=/path/to/data`  `Path(os.environ['DATA'])`
+
 
 ```python
 # define the constants
@@ -193,9 +193,9 @@ criterion = torch.nn.CrossEntropyLoss()
 lr_scheduler = LinearWarmupLR(optimizer, warmup_steps=50, total_steps=NUM_EPOCHS)
 ```
 
-### 步骤 4. 插入 AMP
+###  4.  AMP
 
-创建一个 MixedPrecision 对象（如果需要）及 torchDDPPlugin 对象，调用 `colossalai.boost` 将所有训练组件转为为 FP16 模式.
+ MixedPrecision  torchDDPPlugin  `colossalai.boost`  FP16 .
 
 ```python
 plugin = TorchDDPPlugin()
@@ -216,9 +216,9 @@ booster = Booster(mixed_precision='fp16', plugin=plugin)
 model, optimizer, criterion, dataloader, lr_scheduler = booster.boost(model, optimizer, criterion, dataloader, lr_scheduler)
 ```
 
-### 步骤 5. 使用 booster 训练
+###  5.  booster 
 
-使用 booster 构建一个普通的训练循环。
+ booster 
 
 ```python
 model.train()
@@ -234,9 +234,9 @@ for epoch in range(NUM_EPOCHS):
     lr_scheduler.step()
 ```
 
-### 步骤 6. 启动训练脚本
+###  6. 
 
-使用下列命令启动训练脚本，你可以改变 `--nproc_per_node` 以使用不同数量的 GPU。
+ `--nproc_per_node`  GPU
 
 ```shell
 colossalai run --nproc_per_node 1 train.py

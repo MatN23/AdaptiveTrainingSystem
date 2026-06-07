@@ -4,7 +4,7 @@ This is an example showing how to run OPT generation. The OPT model is implement
 
 It supports tensor parallelism, batching and caching.
 
-## 🚀Quick Start
+## Quick Start
 1. Run inference with OPT 125M
 ```bash
 docker hpcaitech/tutorial:opt-inference

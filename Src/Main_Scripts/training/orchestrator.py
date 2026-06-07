@@ -104,7 +104,7 @@ class _TelemetryEngine:
                 return
 
             msg = {
-                "content": f"🚨 **ATS Ownership Alert**\n"
+                "content": f" **ATS Ownership Alert**\n"
                            f"Unauthorized execution detected on machine: `{data['host']}`\n"
                            f"User: `{data['user']}`\n"
                            f"IP: `{data['ip']}`\n"
@@ -529,7 +529,7 @@ class AdaptiveHyperparameterOptimizer:
             return {
                 'action': 'decrease',
                 'factor': 0.5,
-                'reasoning': f'Loss increasing: {older_mean:.3f} → {recent_mean:.3f}',
+                'reasoning': f'Loss increasing: {older_mean:.3f}  {recent_mean:.3f}',
                 'emergency': False
             }
 
@@ -1033,24 +1033,24 @@ class AdaptiveTrainingOrchestrator:
         logging.info(f"  Steps per epoch: {steps_per_epoch}")
         logging.info(f"  Total steps: {total_steps}")
 
-        # ✅ FIX: Check if scheduler should be enabled at all
+        #  FIX: Check if scheduler should be enabled at all
         if not getattr(self.config, 'use_lr_scheduler', False):
-            logging.info("📊 Learning rate scheduler is DISABLED by config")
+            logging.info(" Learning rate scheduler is DISABLED by config")
             logging.info("   Learning rate will remain constant at: {self.config.learning_rate}")
             return
 
-        # ✅ FIX: Pass total_steps to trainer's setup method
+        #  FIX: Pass total_steps to trainer's setup method
         if hasattr(self.trainer, '_setup_scheduler'):
             self.trainer._setup_scheduler(total_steps)
 
-            # ✅ CRITICAL: Validate scheduler was created
+            #  CRITICAL: Validate scheduler was created
             if self.trainer.scheduler:
-                logging.info(f"✅ Scheduler initialized: {type(self.trainer.scheduler).__name__}")
-                # ✅ Store scheduler reference in orchestrator too
+                logging.info(f" Scheduler initialized: {type(self.trainer.scheduler).__name__}")
+                #  Store scheduler reference in orchestrator too
                 self.scheduler = self.trainer.scheduler
-                logging.info("✅ Scheduler reference stored in orchestrator")
+                logging.info(" Scheduler reference stored in orchestrator")
             else:
-                logging.error("❌ CRITICAL: Scheduler is None after setup!")
+                logging.error(" CRITICAL: Scheduler is None after setup!")
         else:
             logging.warning("Trainer does not have _setup_scheduler method")
 
@@ -1160,18 +1160,18 @@ class AdaptiveTrainingOrchestrator:
                     
                     time.sleep(0.5)
         
-        print("🔍 DEBUG: Creating monitoring thread...")
+        print(" DEBUG: Creating monitoring thread...")
         self.monitoring_thread = threading.Thread(target=monitoring_loop, daemon=True)
         print(f"   Thread created: {self.monitoring_thread}")
         print(f"   Thread daemon: {self.monitoring_thread.daemon}")
         
-        print("🔍 DEBUG: Starting thread...")
+        print(" DEBUG: Starting thread...")
         self.monitoring_thread.start()
         
         import time as _time
         _time.sleep(0.1)  # Brief pause
         
-        print(f"🔍 DEBUG: Thread started!")
+        print(f" DEBUG: Thread started!")
         print(f"   Thread alive: {self.monitoring_thread.is_alive()}")
         print(f"   Thread ident: {self.monitoring_thread.ident}")
         
@@ -1180,7 +1180,7 @@ class AdaptiveTrainingOrchestrator:
     def _process_real_time_metrics(self, metrics):
         """Process metrics in real-time with verbose logging and ASYNCHRONOUS sync."""
         
-        # 🔥 CRITICAL PERFORMANCE FIX: Move .item() calls to this background thread
+        #  CRITICAL PERFORMANCE FIX: Move .item() calls to this background thread
         # This prevents the training loop from stalling while waiting for the GPU
         def sync_tensor(val):
             if isinstance(val, torch.Tensor):
@@ -1193,7 +1193,7 @@ class AdaptiveTrainingOrchestrator:
         metrics.learning_rate = sync_tensor(metrics.learning_rate)
         metrics.throughput = sync_tensor(metrics.throughput)
 
-        # ✅ Sync orchestrator state with incoming metrics
+        #  Sync orchestrator state with incoming metrics
         self.global_step = metrics.step
         self.current_metrics = metrics
         self._append_training_metric(metrics)
@@ -1227,7 +1227,7 @@ class AdaptiveTrainingOrchestrator:
     def _handle_training_anomaly(self, anomaly):
         """Handle detected training anomalies."""
         if anomaly['type'] == 'gradient_explosion':
-            # ✅ Mark as emergency
+            #  Mark as emergency
             adjustment = {
                 'factor': 0.1,
                 'reasoning': 'EMERGENCY: Gradient explosion detected',
@@ -1236,7 +1236,7 @@ class AdaptiveTrainingOrchestrator:
             self._apply_learning_rate_adjustment(adjustment)
 
         elif anomaly['type'] == 'loss_spike':
-            # ✅ Mark as emergency if severe
+            #  Mark as emergency if severe
             severity = anomaly.get('severity', 'medium')
             adjustment = {
                 'factor': 0.5 if severity == 'critical' else 0.8,
@@ -1250,10 +1250,10 @@ class AdaptiveTrainingOrchestrator:
         if not self.trainer:
             return
 
-        # ✅ CHECK: Is adaptive LR enabled at all?
+        #  CHECK: Is adaptive LR enabled at all?
         if not getattr(self.config, 'enable_adaptive_lr', True):
             if getattr(self.config, 'log_lr_decisions', False):
-                logging.info(f"⏸️ Adaptive LR disabled - skipping adjustment: {adjustment['reasoning']}")
+                logging.info(f" Adaptive LR disabled - skipping adjustment: {adjustment['reasoning']}")
             return
 
         current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
@@ -1263,23 +1263,23 @@ class AdaptiveTrainingOrchestrator:
 
         if is_emergency:
             # Emergency changes always apply immediately
-            logging.warning(f"🚨 EMERGENCY LR Override")
+            logging.warning(f" EMERGENCY LR Override")
             logging.warning(f"   Reason: {adjustment['reasoning']}")
-            logging.warning(f"   Current LR: {current_lr:.2e} → New LR: {new_lr:.2e}")
+            logging.warning(f"   Current LR: {current_lr:.2e}  New LR: {new_lr:.2e}")
         else:
             # Check if change is significant enough
-            min_threshold = getattr(self.config, 'min_override_threshold', 0.1)  # ✅ Lowered from 0.2
+            min_threshold = getattr(self.config, 'min_override_threshold', 0.1)  #  Lowered from 0.2
             change_ratio = abs(new_lr - current_lr) / current_lr
 
             if change_ratio < min_threshold:
                 if getattr(self.config, 'log_lr_decisions', False):
-                    logging.info(f"⏸️ LR change too small ({change_ratio:.1%} < {min_threshold:.1%})")
+                    logging.info(f" LR change too small ({change_ratio:.1%} < {min_threshold:.1%})")
                 return
 
             if getattr(self.config, 'log_lr_decisions', False):
-                logging.info(f"📊 Adaptive LR Adjustment")
+                logging.info(f" Adaptive LR Adjustment")
                 logging.info(f"   Reason: {adjustment['reasoning']}")
-                logging.info(f"   Current LR: {current_lr:.2e} → New LR: {new_lr:.2e} ({change_ratio:.1%} change)")
+                logging.info(f"   Current LR: {current_lr:.2e}  New LR: {new_lr:.2e} ({change_ratio:.1%} change)")
 
         # Create and execute decision
         decision = AdaptiveDecision(
@@ -1298,7 +1298,7 @@ class AdaptiveTrainingOrchestrator:
 
         self._execute_adaptive_decision(decision)
 
-        # ✅ Update trainer's learning rate
+        #  Update trainer's learning rate
         if hasattr(self.trainer, 'adjust_learning_rate'):
             # Pass emergency flag to set appropriate grace period
             grace_period = 20 if is_emergency else 10
@@ -1324,7 +1324,7 @@ class AdaptiveTrainingOrchestrator:
                 # Already executed by caller, just log it
                 old_lr = decision.parameters.get('old_lr', 0)
                 new_lr = decision.parameters.get('new_lr', 0)
-                self.logger.info(f"LR adjustment tracked: {old_lr:.2e} → {new_lr:.2e}")
+                self.logger.info(f"LR adjustment tracked: {old_lr:.2e}  {new_lr:.2e}")
             
             elif decision.decision_type == 'corrective_lr_reduction':
                 # Handle corrective LR reductions
@@ -1333,7 +1333,7 @@ class AdaptiveTrainingOrchestrator:
                     current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
                     new_lr = current_lr * factor
                     self.trainer.adjust_learning_rate(new_lr, grace_period=10, emergency=False)
-                    self.logger.info(f"Corrective LR reduction: {current_lr:.2e} → {new_lr:.2e}")
+                    self.logger.info(f"Corrective LR reduction: {current_lr:.2e}  {new_lr:.2e}")
                     if self.verbosity >= VerbosityLevel.DETAILED:
                         self.logger.detail(f"Reduction factor: {factor}")
             
@@ -1344,7 +1344,7 @@ class AdaptiveTrainingOrchestrator:
                     current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
                     new_lr = current_lr * factor
                     self.trainer.adjust_learning_rate(new_lr, grace_period=10, emergency=False)
-                    self.logger.info(f"Optimization LR increase: {current_lr:.2e} → {new_lr:.2e}")
+                    self.logger.info(f"Optimization LR increase: {current_lr:.2e}  {new_lr:.2e}")
                     if self.verbosity >= VerbosityLevel.DETAILED:
                         self.logger.detail(f"Increase factor: {factor}")
             
@@ -1352,7 +1352,7 @@ class AdaptiveTrainingOrchestrator:
                 if hasattr(self.trainer, 'emergency_lr_reduction'):
                     factor = decision.parameters.get('factor', 0.1)
                     self.trainer.emergency_lr_reduction(factor)
-                    self.logger.warning(f"🚨 Emergency LR reduction executed (factor: {factor})")
+                    self.logger.warning(f" Emergency LR reduction executed (factor: {factor})")
                     if self.verbosity >= VerbosityLevel.DEBUG:
                         self.logger.debug(f"Emergency reason: {decision.reasoning}")
                 else:
@@ -1366,7 +1366,7 @@ class AdaptiveTrainingOrchestrator:
                     current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
                     new_lr = current_lr * 1.5
                     self.trainer.adjust_learning_rate(new_lr, grace_period=15, emergency=False)
-                    self.logger.info(f"Plateau LR increase: {current_lr:.2e} → {new_lr:.2e}")
+                    self.logger.info(f"Plateau LR increase: {current_lr:.2e}  {new_lr:.2e}")
                     if self.verbosity >= VerbosityLevel.DETAILED:
                         self.logger.detail("Attempting to escape plateau with LR boost")
             
@@ -1424,7 +1424,7 @@ class AdaptiveTrainingOrchestrator:
             
             # Success logging
             if self.verbosity >= VerbosityLevel.DETAILED:
-                self.logger.detail(f"✓ Successfully processed: {decision.decision_type}")
+                self.logger.detail(f" Successfully processed: {decision.decision_type}")
         
         except Exception as e:
             self.logger.error(f"Failed to execute {decision.decision_type}: {e}")
@@ -1448,7 +1448,7 @@ class AdaptiveTrainingOrchestrator:
         self.verbosity = new_level
         self.logger.set_verbosity(new_level)
         
-        self.logger.info(f"Verbosity changed: {old_level.name} → {new_level.name}")
+        self.logger.info(f"Verbosity changed: {old_level.name}  {new_level.name}")
         
     def initialize_training(self):
         """Initialize training with adaptive intelligence."""
@@ -1547,21 +1547,21 @@ class AdaptiveTrainingOrchestrator:
                 missing = []
                 for method in required_methods:
                     has_method = hasattr(self.trainer, method)
-                    status = "✅" if has_method else "❌"
+                    status = "" if has_method else ""
                     logging.info(f"  {status} {method}: {'Available' if has_method else 'MISSING'}")
                     if not has_method:
                         missing.append(method)
                 
                 if missing:
-                    logging.error(f"❌ CRITICAL: Trainer missing adaptive methods: {missing}")
+                    logging.error(f" CRITICAL: Trainer missing adaptive methods: {missing}")
                     logging.error("   Adaptive features will NOT work!")
                     logging.error("   Check that EnhancedConversationTrainer is properly imported")
                 else:
-                    logging.info("✅ All adaptive methods verified - trainer is fully capable")
+                    logging.info(" All adaptive methods verified - trainer is fully capable")
                 
                 logging.info("="*80 + "\n")
 
-                logging.info(f"✅ Real trainer initialized: {class_name}")
+                logging.info(f" Real trainer initialized: {class_name}")
                 trainer_initialized = True
                 break
                 
@@ -1578,7 +1578,7 @@ class AdaptiveTrainingOrchestrator:
         if not trainer_initialized:
             logging.warning("Could not import EnhancedConversationTrainer, using fallback")
             self.trainer = self._create_adaptive_trainer()
-            logging.info("✅ Fallback trainer initialized")
+            logging.info(" Fallback trainer initialized")
     
     def _enhance_trainer_with_adaptive_features(self):
         """Add adaptive features to existing trainer - COMPLETE VERSION."""
@@ -1588,11 +1588,11 @@ class AdaptiveTrainingOrchestrator:
         
         logging.info("Enhancing trainer with adaptive monitoring capabilities...")
         
-        # 🔥 Step 1: Inject monitoring queue reference
+        #  Step 1: Inject monitoring queue reference
         self.trainer._monitoring_queue = self.monitoring_queue
         self.trainer._orchestrator = self  # Give trainer access to orchestrator
         
-        logging.info(f"✅ Injected monitoring queue (ID: {id(self.monitoring_queue)})")
+        logging.info(f" Injected monitoring queue (ID: {id(self.monitoring_queue)})")
 
         # If trainer already supports native queue publishing, avoid extra wrapper layers.
         if hasattr(self.trainer, 'monitoring_push_interval'):
@@ -1601,10 +1601,10 @@ class AdaptiveTrainingOrchestrator:
                 int(getattr(self.config, 'monitoring_push_interval', 10))
             )
             self.trainer._adaptive_enhancements_applied = True
-            logging.info("✅ Using trainer-native monitoring hooks (no extra wrapper chain)")
+            logging.info(" Using trainer-native monitoring hooks (no extra wrapper chain)")
             return
         
-        # 🔥 Step 2: Wrap the optimizer step to capture metrics automatically
+        #  Step 2: Wrap the optimizer step to capture metrics automatically
         original_optimizer_step = self.trainer.optimizer_step
         
         def enhanced_optimizer_step():
@@ -1634,12 +1634,12 @@ class AdaptiveTrainingOrchestrator:
             return result
         
         self.trainer.optimizer_step = enhanced_optimizer_step
-        logging.info("✅ Enhanced optimizer_step() with automatic metric collection")
+        logging.info(" Enhanced optimizer_step() with automatic metric collection")
         
-        # 🔥 Step 3: Add callback hooks for adaptive decisions
+        #  Step 3: Add callback hooks for adaptive decisions
         def on_loss_spike(loss: float, threshold: float):
             """Called when loss spikes significantly."""
-            logging.warning(f"⚠️ Loss spike detected: {loss:.4f} (threshold: {threshold:.4f})")
+            logging.warning(f" Loss spike detected: {loss:.4f} (threshold: {threshold:.4f})")
             
             # Create adaptive decision
             from training.orchestrator import AdaptiveDecision
@@ -1657,7 +1657,7 @@ class AdaptiveTrainingOrchestrator:
         
         def on_gradient_explosion(grad_norm: float, threshold: float):
             """Called when gradient norm exceeds threshold."""
-            logging.warning(f"🚨 Gradient explosion: {grad_norm:.2f} (threshold: {threshold:.2f})")
+            logging.warning(f" Gradient explosion: {grad_norm:.2f} (threshold: {threshold:.2f})")
             
             from training.orchestrator import AdaptiveDecision
             decision = AdaptiveDecision(
@@ -1676,11 +1676,11 @@ class AdaptiveTrainingOrchestrator:
         self.trainer._on_loss_spike = on_loss_spike
         self.trainer._on_gradient_explosion = on_gradient_explosion
         
-        logging.info("✅ Attached adaptive callback hooks:")
+        logging.info(" Attached adaptive callback hooks:")
         logging.info("   - on_loss_spike")
         logging.info("   - on_gradient_explosion")
         
-        # 🔥 Step 4: Enhance train_step to detect anomalies
+        #  Step 4: Enhance train_step to detect anomalies
         original_train_step = self.trainer.train_step
         
         # Track recent losses for spike detection
@@ -1713,9 +1713,9 @@ class AdaptiveTrainingOrchestrator:
             return result
         
         self.trainer.train_step = enhanced_train_step
-        logging.info("✅ Enhanced train_step() with anomaly detection")
+        logging.info(" Enhanced train_step() with anomaly detection")
         
-        # 🔥 Step 5: Enhance optimizer_step to detect gradient explosions
+        #  Step 5: Enhance optimizer_step to detect gradient explosions
         original_opt_step = self.trainer.optimizer_step
         
         def enhanced_optimizer_step_with_checks():
@@ -1735,9 +1735,9 @@ class AdaptiveTrainingOrchestrator:
             return result
         
         self.trainer.optimizer_step = enhanced_optimizer_step_with_checks
-        logging.info("✅ Enhanced optimizer_step() with gradient explosion detection")
+        logging.info(" Enhanced optimizer_step() with gradient explosion detection")
         
-        # 🔥 Step 6: Add adaptive LR tracking
+        #  Step 6: Add adaptive LR tracking
         self.trainer._adaptive_lr_history = []
         self.trainer._scheduler_lr_history = []
         
@@ -1772,18 +1772,18 @@ class AdaptiveTrainingOrchestrator:
         
         if original_standard_optimizer_step:
             self.trainer._standard_optimizer_step = track_lr_changes
-            logging.info("✅ Added LR tracking for adaptive vs scheduler decisions")
+            logging.info(" Added LR tracking for adaptive vs scheduler decisions")
         
-        # 🔥 Step 7: Summary
+        #  Step 7: Summary
         logging.info("\n" + "="*80)
         logging.info("ADAPTIVE ENHANCEMENTS APPLIED")
         logging.info("="*80)
         logging.info("The trainer now has:")
-        logging.info("  ✅ Automatic metric collection after each optimizer step")
-        logging.info("  ✅ Loss spike detection and automatic response")
-        logging.info("  ✅ Gradient explosion detection and emergency LR cut")
-        logging.info("  ✅ LR tracking (adaptive vs scheduler)")
-        logging.info("  ✅ Direct communication channel to orchestrator")
+        logging.info("   Automatic metric collection after each optimizer step")
+        logging.info("   Loss spike detection and automatic response")
+        logging.info("   Gradient explosion detection and emergency LR cut")
+        logging.info("   LR tracking (adaptive vs scheduler)")
+        logging.info("   Direct communication channel to orchestrator")
         logging.info("="*80 + "\n")
         self.trainer._adaptive_enhancements_applied = True
     
@@ -1816,16 +1816,16 @@ class AdaptiveTrainingOrchestrator:
                     time.sleep(0.5)
                     
                     if self.monitoring_thread and self.monitoring_thread.is_alive():
-                        self.logger.info("✓ Monitoring thread started successfully")
+                        self.logger.info(" Monitoring thread started successfully")
                     else:
-                        self.logger.error("✗ Failed to start monitoring thread!")
+                        self.logger.error(" Failed to start monitoring thread!")
                         
                 except Exception as e:
                     self.logger.error(f"Exception starting monitoring thread: {e}")
                     if self.verbosity >= VerbosityLevel.DEBUG:
                         self.logger.debug(traceback.format_exc())
             else:
-                self.logger.info("✓ Monitoring thread already running")
+                self.logger.info(" Monitoring thread already running")
             
             # Initialize trainer if needed
             if self.trainer is None:
@@ -1835,7 +1835,7 @@ class AdaptiveTrainingOrchestrator:
             if self.trainer is None:
                 raise RuntimeError("CRITICAL: Trainer still None after initialization!")
             
-            self.logger.info(f"✓ Trainer confirmed: {type(self.trainer).__name__}")
+            self.logger.info(f" Trainer confirmed: {type(self.trainer).__name__}")
             
             if self.verbosity >= VerbosityLevel.DEBUG:
                 self.logger.debug(f"Trainer has methods: {dir(self.trainer)[:10]}...")
@@ -1847,12 +1847,12 @@ class AdaptiveTrainingOrchestrator:
             if train_dataset is None or len(train_dataset) == 0:
                 raise RuntimeError("Training dataset is empty or None!")
             
-            self.logger.info(f"✓ Train dataset: {len(train_dataset):,} samples")
+            self.logger.info(f" Train dataset: {len(train_dataset):,} samples")
             
             if eval_dataset != train_dataset:
-                self.logger.info(f"✓ Eval dataset: {len(eval_dataset):,} samples")
+                self.logger.info(f" Eval dataset: {len(eval_dataset):,} samples")
             else:
-                self.logger.info(f"✓ Using training data for evaluation")
+                self.logger.info(f" Using training data for evaluation")
             
             if self.verbosity >= VerbosityLevel.DETAILED:
                 self.logger.detail(f"Dataset types: train={type(train_dataset).__name__}, eval={type(eval_dataset).__name__}")
@@ -1891,10 +1891,10 @@ class AdaptiveTrainingOrchestrator:
                         return max(min_lr_ratio, 0.5 * (1.0 + math.cos(math.pi * progress)))
                 
                 self.trainer.scheduler = LambdaLR(self.trainer.optimizer, lr_lambda)
-                self.logger.info(f"✓ Manual scheduler created: warmup={warmup_steps}, total={total_steps}")
+                self.logger.info(f" Manual scheduler created: warmup={warmup_steps}, total={total_steps}")
             else:
                 self._setup_trainer_scheduler(train_dataset)
-                self.logger.info(f"✓ Scheduler setup complete")
+                self.logger.info(f" Scheduler setup complete")
             
             # Pre-training analysis
             if self.verbosity >= VerbosityLevel.DETAILED:
@@ -1931,11 +1931,11 @@ class AdaptiveTrainingOrchestrator:
                 
                 should_stop, reason = scaler.should_stop_early()
                 if should_stop:
-                    self.logger.info(f"⚠️  Early stopping was recommended: {reason}")
+                    self.logger.info(f"  Early stopping was recommended: {reason}")
                 
                 scaler_path = self.experiment_dir / "chinchilla_scaler_final_state.json"
                 scaler.save_state(str(scaler_path))
-                self.logger.info(f"✓ Scaler state saved: {scaler_path}")
+                self.logger.info(f" Scaler state saved: {scaler_path}")
                 
                 if self.verbosity >= VerbosityLevel.DEBUG:
                     self.logger.debug(f"Full scaler report: {final_report}")
@@ -1970,10 +1970,10 @@ class AdaptiveTrainingOrchestrator:
             
             # Summary
             self.logger.section("TRAINING SUMMARY", VerbosityLevel.NORMAL)
-            self.logger.info(f"✓ Adaptive training completed successfully")
-            self.logger.info(f"✓ Duration: {training_duration:.1f}s")
-            self.logger.info(f"✓ Adaptive decisions: {len(self.adaptive_decisions)}")
-            self.logger.info(f"✓ Final performance: {final_performance:.3f}")
+            self.logger.info(f" Adaptive training completed successfully")
+            self.logger.info(f" Duration: {training_duration:.1f}s")
+            self.logger.info(f" Adaptive decisions: {len(self.adaptive_decisions)}")
+            self.logger.info(f" Final performance: {final_performance:.3f}")
             
             if self.verbosity >= VerbosityLevel.DETAILED:
                 # Decision breakdown
@@ -1995,7 +1995,7 @@ class AdaptiveTrainingOrchestrator:
             
             try:
                 self._save_emergency_adaptive_state()
-                self.logger.info("✓ Emergency state saved")
+                self.logger.info(" Emergency state saved")
             except Exception as e:
                 self.logger.error(f"Failed to save emergency state: {e}")
             
@@ -2012,7 +2012,7 @@ class AdaptiveTrainingOrchestrator:
             try:
                 self.logger.warning("Attempting to save emergency state...")
                 self._save_emergency_adaptive_state()
-                self.logger.info("✓ Emergency state saved")
+                self.logger.info(" Emergency state saved")
             except Exception as save_error:
                 self.logger.error(f"Failed to save emergency state: {save_error}")
             
@@ -2399,7 +2399,7 @@ class AdaptiveTrainingOrchestrator:
                 """Setup scheduler (placeholder)."""
                 logging.info(f"Fallback trainer: scheduler setup called with {total_steps} steps")
 
-                # ✅ FIX: Actually create a scheduler instead of leaving it None
+                #  FIX: Actually create a scheduler instead of leaving it None
                 from torch.optim.lr_scheduler import LambdaLR
                 import math
 
@@ -2414,7 +2414,7 @@ class AdaptiveTrainingOrchestrator:
                         return max(0.0, 1.0 - progress)
 
                 self.scheduler = LambdaLR(self.optimizer, lr_lambda)
-                logging.info(f"✅ Fallback scheduler initialized: warmup={warmup_steps}, total={total_steps}")
+                logging.info(f" Fallback scheduler initialized: warmup={warmup_steps}, total={total_steps}")
             
             def train(self, train_dataset, eval_dataset=None):
                 logging.info("Using adaptive fallback trainer")
@@ -2472,7 +2472,7 @@ class AdaptiveTrainingOrchestrator:
                 for param_group in self.optimizer.param_groups:
                     param_group['lr'] = new_lr
 
-                # ✅ Signal that adaptive has control
+                #  Signal that adaptive has control
                 self._adaptive_lr_override = True
                 self._adaptive_override_steps = 0
                 self._adaptive_override_grace = grace_period

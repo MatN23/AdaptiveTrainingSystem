@@ -72,8 +72,8 @@ class CheckpointSolverChen(CheckpointSolverBase):
 
     def grid_search(self) -> Set:
         """
-        Search ckpt strategy with b = 0, then run the allocation algorithm again with b = √xy.
-        Grid search over [√2/2 b, √2 b] for ``ckpt_opt`` over ``num_grids`` as in appendix A.
+        Search ckpt strategy with b = 0, then run the allocation algorithm again with b = xy.
+        Grid search over [2/2 b, 2 b] for ``ckpt_opt`` over ``num_grids`` as in appendix A.
         """
         _, b_approx = self.run_chen_greedy(0)
         b_min, b_max = math.floor(b_approx / math.sqrt(2)), math.ceil(b_approx * math.sqrt(2))

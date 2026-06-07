@@ -107,7 +107,7 @@ class ConversationBufferWithSummary(ConversationSummaryMemory):
             if lang == "en":
                 message = f"A summarization of historical conversation:\n{self.existing_summary}\nMost recent conversation:\n{conversation_buffer}"
             elif lang == "zh":
-                message = f"历史对话概要:\n{self.existing_summary}\n最近的对话:\n{conversation_buffer}"
+                message = f":\n{self.existing_summary}\n:\n{conversation_buffer}"
             else:
                 raise ValueError("Unsupported language")
             return message

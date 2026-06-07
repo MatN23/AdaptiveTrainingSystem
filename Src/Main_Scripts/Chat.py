@@ -133,7 +133,7 @@ def load_checkpoint_smart(checkpoint_path: str, device: torch.device) -> Tuple[D
     """Load checkpoint with support for single files and ZeRO shards"""
     checkpoint_path = Path(checkpoint_path)
     
-    print(f"📂 Loading checkpoint: {checkpoint_path.name}")
+    print(f" Loading checkpoint: {checkpoint_path.name}")
     
     # Case 1: Directory with ZeRO shards
     if checkpoint_path.is_dir():
@@ -212,14 +212,14 @@ def load_zero_shards(checkpoint_dir: Path, device: torch.device) -> Tuple[Dict, 
         for key, tensor in shard_state.items():
             merged_state_dict[key] = tensor
     
-    print(f"   ✓ Merged {len(merged_state_dict)} parameters")
+    print(f"    Merged {len(merged_state_dict)} parameters")
     return merged_state_dict, config_dict
 
 
 def infer_config_from_state_dict(state_dict: Dict) -> DeepSeekConfig:
     """Infer model configuration from state dict"""
     
-    print("🔍 Inferring configuration from checkpoint...")
+    print(" Inferring configuration from checkpoint...")
     
     config_params = {}
     
@@ -301,7 +301,7 @@ def infer_config_from_state_dict(state_dict: Dict) -> DeepSeekConfig:
 def find_latest_checkpoint() -> Optional[Path]:
     """Find the most recent checkpoint automatically"""
     
-    print("🔍 Searching for checkpoints...")
+    print(" Searching for checkpoints...")
     
     search_dirs = [
         Path("checkpoints"),
@@ -335,7 +335,7 @@ def find_latest_checkpoint() -> Optional[Path]:
     # Return most recent
     candidates.sort(reverse=True, key=lambda x: x[0])
     found = candidates[0][1]
-    print(f"   ✓ Found: {found}")
+    print(f"    Found: {found}")
     return found
 
 
@@ -542,17 +542,17 @@ class ChatInterface:
         
         if HardcodedConfig.FORCE_DEVICE:
             device = torch.device(HardcodedConfig.FORCE_DEVICE)
-            print(f"🖥️  Using forced device: {HardcodedConfig.FORCE_DEVICE}")
+            print(f"  Using forced device: {HardcodedConfig.FORCE_DEVICE}")
         elif torch.cuda.is_available():
             device = torch.device('cuda')
-            print(f"🚀 Using CUDA: {torch.cuda.get_device_name(0)}")
+            print(f" Using CUDA: {torch.cuda.get_device_name(0)}")
             print(f"   GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
         elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             device = torch.device('mps')
-            print("🍎 Using Apple Silicon MPS")
+            print(" Using Apple Silicon MPS")
         else:
             device = torch.device('cpu')
-            print("⚠️  Using CPU (will be slow)")
+            print("  Using CPU (will be slow)")
         
         return device
     
@@ -574,7 +574,7 @@ class ChatInterface:
         
         # Get configuration
         if config_dict:
-            print("✓ Using configuration from checkpoint")
+            print(" Using configuration from checkpoint")
             if isinstance(config_dict, dict):
                 self.model_config = DeepSeekConfig(**config_dict)
             else:
@@ -583,21 +583,21 @@ class ChatInterface:
             self.model_config = infer_config_from_state_dict(state_dict)
         
         # Create model
-        print("\n🏗️  Initializing model...")
+        print("\n  Initializing model...")
         self.model = DeepSeekTransformer(self.model_config).to(self.device)
         
         # Load weights
-        print("📥 Loading model weights...")
+        print(" Loading model weights...")
         missing_keys, unexpected_keys = self.model.load_state_dict(state_dict, strict=False)
         
         if missing_keys:
-            print(f"   ⚠️  {len(missing_keys)} missing keys")
+            print(f"     {len(missing_keys)} missing keys")
         if unexpected_keys:
-            print(f"   ⚠️  {len(unexpected_keys)} unexpected keys")
+            print(f"     {len(unexpected_keys)} unexpected keys")
         
         # Calculate parameters
         total_params = sum(p.numel() for p in self.model.parameters())
-        print(f"\n✓ Model loaded successfully!")
+        print(f"\n Model loaded successfully!")
         print(f"   Parameters: {total_params:,}")
         print(f"   Hidden size: {self.model_config.hidden_size}")
         print(f"   Layers: {self.model_config.num_layers}")
@@ -607,7 +607,7 @@ class ChatInterface:
     
     def _initialize_tokenizer(self):
         """Initialize tokenizer"""
-        print("\n📝 Initializing tokenizer...")
+        print("\n Initializing tokenizer...")
         
         self.tokenizer = ConversationTokenizer(
             model_name="gpt-4",
@@ -616,14 +616,14 @@ class ChatInterface:
             thread_safe=False,
             validation_level="moderate"
         )
-        print(f"   ✓ Vocab size: {self.tokenizer.vocab_size:,}")
+        print(f"    Vocab size: {self.tokenizer.vocab_size:,}")
     
     def _initialize_generator(self):
         """Initialize generation engine"""
-        print("⚙️  Initializing generation engine...")
+        print("  Initializing generation engine...")
         
         self.generator = GenerationEngine(self.model, self.tokenizer, self.device)
-        print("   ✓ Ready to generate")
+        print("    Ready to generate")
     
     def _format_prompt(self, user_message: str) -> str:
         """Format conversation into prompt"""
@@ -655,7 +655,7 @@ class ChatInterface:
         try:
             prompt_tokens = self.tokenizer.tokenizer.encode(prompt)
         except Exception as e:
-            print(f"\n✗ Tokenization error: {e}")
+            print(f"\n Tokenization error: {e}")
             return "Sorry, I couldn't process your message.", {}
         
         # Get mode parameters
@@ -683,7 +683,7 @@ class ChatInterface:
             )
             response = response.strip()
         except Exception as e:
-            print(f"\n✗ Decoding error: {e}")
+            print(f"\n Decoding error: {e}")
             response = "[Decoding error]"
         
         # Update history
@@ -708,7 +708,7 @@ class ChatInterface:
         print(f"Mode: {self.current_mode}")
         print(f"Checkpoint: {self.checkpoint_path.name}")
         print("="*70)
-        print("\n💡 Commands: /help /quit /clear /stats /mode /save /system")
+        print("\n Commands: /help /quit /clear /stats /mode /save /system")
         print("="*70 + "\n")
     
     def _handle_command(self, command: str) -> bool:
@@ -726,7 +726,7 @@ class ChatInterface:
         
         elif cmd == '/clear':
             self.conversation_history.clear()
-            print("✓ Conversation history cleared\n")
+            print(" Conversation history cleared\n")
         
         elif cmd == '/stats':
             self._show_stats()
@@ -747,7 +747,7 @@ class ChatInterface:
             self._show_integrity_report()
         
         else:
-            print(f"✗ Unknown command: {cmd}")
+            print(f" Unknown command: {cmd}")
             print("Type /help for available commands\n")
         
         return True
@@ -791,28 +791,28 @@ class ChatInterface:
         if mode in HardcodedConfig.MODES:
             self.current_mode = mode
             params = HardcodedConfig.MODES[mode]
-            print(f"\n✓ Mode set to: {mode}")
+            print(f"\n Mode set to: {mode}")
             print(f"   Temperature: {params['temperature']}")
             print(f"   Top-p: {params['top_p']}")
             print(f"   Top-k: {params['top_k']}")
             print(f"   Repetition penalty: {params['repetition_penalty']}\n")
         else:
-            print(f"\n✗ Invalid mode: {mode}")
+            print(f"\n Invalid mode: {mode}")
             print(f"Available modes: {', '.join(HardcodedConfig.MODES.keys())}\n")
     
     def _set_system_prompt(self, prompt: str):
         """Set system prompt"""
         if prompt.strip():
             self.system_prompt = prompt.strip()
-            print(f"\n✓ System prompt set: {prompt[:60]}...\n")
+            print(f"\n System prompt set: {prompt[:60]}...\n")
         else:
             self.system_prompt = None
-            print("\n✓ System prompt cleared\n")
+            print("\n System prompt cleared\n")
     
     def _save_conversation(self, name: str):
         """Save conversation to file"""
         if not self.conversation_history:
-            print("\n✗ No conversation to save\n")
+            print("\n No conversation to save\n")
             return
         
         # Create save directory
@@ -844,9 +844,9 @@ class ChatInterface:
         try:
             with open(filepath, 'w') as f:
                 json.dump(data, f, indent=2)
-            print(f"\n✓ Conversation saved: {filepath}\n")
+            print(f"\n Conversation saved: {filepath}\n")
         except Exception as e:
-            print(f"\n✗ Failed to save: {e}\n")
+            print(f"\n Failed to save: {e}\n")
     
     def _show_config(self):
         """Show current configuration"""
@@ -892,7 +892,7 @@ class ChatInterface:
             print("CHAT SESSION ENDED")
             print("="*70)
             self._show_stats()
-            print("👋 Goodbye!\n")
+            print(" Goodbye!\n")
             sys.exit(0)
         
         signal.signal(signal.SIGINT, signal_handler)
@@ -933,11 +933,11 @@ class ChatInterface:
                         info_parts = []
                         
                         if HardcodedConfig.SHOW_TIMING:
-                            info_parts.append(f"⏱ {metrics['generation_time']:.2f}s")
+                            info_parts.append(f" {metrics['generation_time']:.2f}s")
                         
                         if HardcodedConfig.SHOW_TOKEN_COUNT:
-                            info_parts.append(f"🔢 {metrics['tokens_generated']} tokens")
-                            info_parts.append(f"⚡ {metrics['tokens_per_second']:.1f} tok/s")
+                            info_parts.append(f" {metrics['tokens_generated']} tokens")
+                            info_parts.append(f" {metrics['tokens_per_second']:.1f} tok/s")
                         
                         if info_parts:
                             print(f"\n   [{' | '.join(info_parts)}]")
@@ -947,12 +947,12 @@ class ChatInterface:
                         print()
                 
                 except Exception as e:
-                    print(f"\n✗ Generation error: {e}")
+                    print(f"\n Generation error: {e}")
                     import traceback
                     traceback.print_exc()
         
         finally:
-            print("\n👋 Goodbye!\n")
+            print("\n Goodbye!\n")
 
 
 # ============================================================================
@@ -966,8 +966,8 @@ def main():
     print(" "*10 + "DEEPSEEK TRANSFORMER CHAT INTERFACE")
     print(" "*20 + "Fully Hardcoded Edition")
     print("="*70)
-    print("\n📋 Configuration can be modified in HardcodedConfig class")
-    print("🚀 Just run this script - no arguments needed!\n")
+    print("\n Configuration can be modified in HardcodedConfig class")
+    print(" Just run this script - no arguments needed!\n")
     
     try:
         # Initialize and run chat
@@ -976,19 +976,19 @@ def main():
         return 0
         
     except KeyboardInterrupt:
-        print("\n\n💬 Chat interrupted by user\n")
+        print("\n\n Chat interrupted by user\n")
         return 0
     
     except FileNotFoundError as e:
-        print(f"\n✗ Error: {e}")
-        print("\n💡 Tips:")
+        print(f"\n Error: {e}")
+        print("\n Tips:")
         print("   1. Train a model first")
         print("   2. Set CHECKPOINT_PATH in HardcodedConfig class")
         print("   3. Make sure checkpoint files exist\n")
         return 1
     
     except Exception as e:
-        print(f"\n✗ Fatal error: {e}\n")
+        print(f"\n Fatal error: {e}\n")
         import traceback
         traceback.print_exc()
         return 1

@@ -22,7 +22,7 @@ _SO_FILE   = os.path.join(_THIS_DIR, "fused_grad_clip.so")
 # ---------------------------------------------------------------------------
 def _compile_so() -> bool:
     if not os.path.exists(_CU_FILE):
-        logger.error("❌  Source not found: %s", _CU_FILE)
+        logger.error("  Source not found: %s", _CU_FILE)
         return False
 
     # Re-compile if .cu is newer than .so
@@ -40,16 +40,16 @@ def _compile_so() -> bool:
         f"--generate-code=arch={arch},code={sm}",
         "-o", _SO_FILE, _CU_FILE,
     ]
-    logger.info("🔨  Compiling %s → %s  [%s]", _CU_FILE, _SO_FILE, sm)
+    logger.info("  Compiling %s  %s  [%s]", _CU_FILE, _SO_FILE, sm)
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         if res.returncode != 0:
-            logger.error("❌  nvcc failed:\n%s\n%s", res.stdout, res.stderr)
+            logger.error("  nvcc failed:\n%s\n%s", res.stdout, res.stderr)
             return False
-        logger.info("✅  Compiled successfully")
+        logger.info("  Compiled successfully")
         return True
     except Exception as exc:
-        logger.error("❌  Compilation exception: %s", exc)
+        logger.error("  Compilation exception: %s", exc)
         return False
 
 
@@ -69,7 +69,7 @@ def _load_lib() -> bool:
     try:
         _lib = ctypes.CDLL(_SO_FILE)
     except OSError as exc:
-        logger.error("❌  Failed to dlopen %s: %s", _SO_FILE, exc)
+        logger.error("  Failed to dlopen %s: %s", _SO_FILE, exc)
         return False
 
     # fused_grad_clip_launcher(void** ptrs, int* sizes, int n,
@@ -92,7 +92,7 @@ def _load_lib() -> bool:
         ctypes.POINTER(ctypes.c_float),
     ]
 
-    logger.info("✅  fused_grad_clip CUDA kernel loaded")
+    logger.info("  fused_grad_clip CUDA kernel loaded")
     return True
 
 
@@ -201,7 +201,7 @@ def clip_grad_norm_cuda(
     )
 
     if ret != 0:
-        logger.warning("fused_grad_clip_launcher returned error %d — "
+        logger.warning("fused_grad_clip_launcher returned error %d  "
                        "falling back to PyTorch", ret)
         total_norm = torch.norm(
             torch.stack([torch.norm(g.float(), 2.0) for g in grads]), 2.0

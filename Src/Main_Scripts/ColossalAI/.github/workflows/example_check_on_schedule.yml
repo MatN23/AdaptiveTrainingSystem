@@ -14,7 +14,7 @@ jobs:
     outputs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
     steps:
-    - name: 📚 Checkout
+    - name:  Checkout
       uses: actions/checkout@v3
 
     - name: setup matrix
@@ -38,7 +38,7 @@ jobs:
       options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
     timeout-minutes: 10
     steps:
-      - name: 📚 Checkout
+      - name:  Checkout
         uses: actions/checkout@v3
 
       - name: Install Colossal-AI

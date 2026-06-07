@@ -1,6 +1,6 @@
 # Train ViT on CIFAR-10 from scratch
 
-## 🚀 Quick Start
+##  Quick Start
 
 This example provides a training script, which provides an example of training ViT on CIFAR10 dataset from scratch.
 

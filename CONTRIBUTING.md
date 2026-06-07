@@ -221,15 +221,15 @@ Follow these design principles from the codebase:
 
 ```
 tests/
-├── unit/                 # Unit tests for individual components
-│   ├── test_trainer.py
-│   ├── test_model.py
-│   └── test_config.py
-├── integration/          # Integration tests for workflows
-│   ├── test_training_loop.py
-│   └── test_checkpointing.py
-└── fixtures/             # Shared test data and fixtures
-    └── sample_configs.py
+ unit/                 # Unit tests for individual components
+    test_trainer.py
+    test_model.py
+    test_config.py
+ integration/          # Integration tests for workflows
+    test_training_loop.py
+    test_checkpointing.py
+ fixtures/             # Shared test data and fixtures
+     sample_configs.py
 ```
 
 ### Writing Tests
@@ -353,8 +353,8 @@ perf(attention): Optimize Flash Attention memory usage
 Reduce peak memory consumption by 25% through better kernel fusion.
 
 Benchmark results:
-- A100 40GB: 1200 tok/s → 1500 tok/s
-- Memory: 32GB → 24GB
+- A100 40GB: 1200 tok/s  1500 tok/s
+- Memory: 32GB  24GB
 ```
 
 ### 3. Before Submitting
@@ -501,6 +501,6 @@ If you have questions about contributing, please:
 2. Search existing issues and discussions
 3. Open a new issue with the `question` label
 
-**Thank you for contributing to LuminaAI!** 🚀
+**Thank you for contributing to LuminaAI!** 
 
 We're building the future of autonomous training systems together.

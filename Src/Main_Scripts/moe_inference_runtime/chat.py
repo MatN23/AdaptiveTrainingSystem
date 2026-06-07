@@ -22,9 +22,9 @@ sys.path.insert(0, script_dir)
 
 try:
     from tokenizer import ConversationTokenizer, TokenizationMode
-    print(f"✓ Loaded tokenizer from: {core_dir}")
+    print(f" Loaded tokenizer from: {core_dir}")
 except ImportError as e:
-    print(f"❌ Failed to import tokenizer: {e}")
+    print(f" Failed to import tokenizer: {e}")
     print(f"\nSearched in:")
     print(f"  - {core_dir}")
     print(f"  - {parent_dir}")
@@ -38,7 +38,7 @@ class ChatInterface:
         self.binary_path = binary_path
         self.model_path = model_path
         
-        print(f"🔧 Initializing tokenizer...")
+        print(f" Initializing tokenizer...")
         self.tokenizer = ConversationTokenizer(
             model_name=tokenizer_model,
             max_context_length=8192,
@@ -46,7 +46,7 @@ class ChatInterface:
             thread_safe=True
         )
         
-        print(f"✓ Tokenizer ready")
+        print(f" Tokenizer ready")
         print(f"  Vocab size: {self.tokenizer.get_vocab_size():,}")
         print(f"  Pad token: {self.tokenizer.pad_token_id}")
     
@@ -74,8 +74,8 @@ class ChatInterface:
             cmd = [self.binary_path, self.model_path, token_file]
             
             if debug:
-                print(f"\n🚀 Running: {' '.join(cmd)}")
-                print(f"📝 Token file: {token_file}")
+                print(f"\n Running: {' '.join(cmd)}")
+                print(f" Token file: {token_file}")
             
             result = subprocess.run(
                 cmd,
@@ -97,7 +97,7 @@ class ChatInterface:
                     print(f"--- end stderr ---\n")
                 
                 if result.returncode != 0:
-                    print(f"⚠️  C++ binary returned code {result.returncode}")
+                    print(f"  C++ binary returned code {result.returncode}")
             
             # Parse output token IDs - handle multi-line output
             token_ids = []
@@ -119,17 +119,17 @@ class ChatInterface:
                         pass
             
             if debug:
-                print(f"📊 Parsed {len(token_ids)} token IDs")
+                print(f" Parsed {len(token_ids)} token IDs")
                 if token_ids:
                     print(f"   First 10: {token_ids[:10]}")
             
             return token_ids
             
         except subprocess.TimeoutExpired:
-            print("\n⚠️  Generation timed out")
+            print("\n  Generation timed out")
             return []
         except Exception as e:
-            print(f"\n⚠️  Error: {e}")
+            print(f"\n  Error: {e}")
             if debug:
                 import traceback
                 traceback.print_exc()
@@ -145,9 +145,9 @@ class ChatInterface:
         """Interactive chat loop"""
         print("\n" + "="*60)
         if debug:
-            print("💬 Interactive Chat Mode (Debug)")
+            print(" Interactive Chat Mode (Debug)")
         else:
-            print("💬 Interactive Chat Mode")
+            print(" Interactive Chat Mode")
         print("="*60)
         print("\nCommands:")
         print("  'quit' or 'exit' - Exit chat")
@@ -171,29 +171,29 @@ class ChatInterface:
                 
                 # Handle commands
                 if user_input.lower() in ['quit', 'exit', 'q']:
-                    print("\n👋 Goodbye!")
+                    print("\n Goodbye!")
                     break
                 
                 if user_input.lower() == 'stats':
                     stats = self.tokenizer.get_stats()
-                    print("\n📊 Tokenizer Statistics:")
+                    print("\n Tokenizer Statistics:")
                     for key, value in stats.items():
                         print(f"  {key}: {value:,}" if isinstance(value, int) else f"  {key}: {value}")
                     continue
                 
                 if user_input.lower() == 'clear':
                     history = []
-                    print("✓ Conversation cleared")
+                    print(" Conversation cleared")
                     continue
                 
                 if user_input.lower() == 'debug on':
                     debug = True
-                    print("✓ Debug mode enabled")
+                    print(" Debug mode enabled")
                     continue
                 
                 if user_input.lower() == 'debug off':
                     debug = False
-                    print("✓ Debug mode disabled")
+                    print(" Debug mode disabled")
                     continue
                 
                 # Add user message to history
@@ -208,10 +208,10 @@ class ChatInterface:
                 )
                 
                 if debug:
-                    print(f"\n🔢 Encoded: {stats.total_tokens} tokens ({stats.content_tokens} content + {stats.special_tokens} special)")
+                    print(f"\n Encoded: {stats.total_tokens} tokens ({stats.content_tokens} content + {stats.special_tokens} special)")
                 
                 if not prompt_tokens:
-                    print("⚠️  Failed to encode conversation")
+                    print("  Failed to encode conversation")
                     history.pop()  # Remove failed message
                     continue
                 
@@ -232,19 +232,19 @@ class ChatInterface:
                         print(response_text)
                     else:
                         print(f"\n{response_text}")
-                        print(f"\n📊 Generated {len(response_tokens)} tokens")
+                        print(f"\n Generated {len(response_tokens)} tokens")
                     
                     # Add to history
                     history.append({'role': 'assistant', 'content': response_text})
                 else:
-                    print("\n⚠️  No response generated")
+                    print("\n  No response generated")
                     history.pop()  # Remove the user message since there was no response
                 
             except KeyboardInterrupt:
-                print("\n\n👋 Goodbye!")
+                print("\n\n Goodbye!")
                 break
             except Exception as e:
-                print(f"\n❌ Error: {e}")
+                print(f"\n Error: {e}")
                 if debug:
                     import traceback
                     traceback.print_exc()
@@ -261,19 +261,19 @@ class ChatInterface:
                 
                 # Handle commands
                 if user_input.lower() in ['quit', 'exit', 'q']:
-                    print("\n👋 Goodbye!")
+                    print("\n Goodbye!")
                     break
                 
                 if user_input.lower() == 'stats':
                     stats = self.tokenizer.get_stats()
-                    print("\n📊 Tokenizer Statistics:")
+                    print("\n Tokenizer Statistics:")
                     for key, value in stats.items():
                         print(f"  {key}: {value:,}" if isinstance(value, int) else f"  {key}: {value}")
                     continue
                 
                 if user_input.lower() == 'clear':
                     history = []
-                    print("✓ Conversation cleared")
+                    print(" Conversation cleared")
                     continue
                 
                 # Add user message to history
@@ -287,10 +287,10 @@ class ChatInterface:
                     return_stats=True
                 )
                 
-                print(f"\n🔢 Encoded: {stats.total_tokens} tokens ({stats.content_tokens} content + {stats.special_tokens} special)")
+                print(f"\n Encoded: {stats.total_tokens} tokens ({stats.content_tokens} content + {stats.special_tokens} special)")
                 
                 if not prompt_tokens:
-                    print("⚠️  Failed to encode conversation")
+                    print("  Failed to encode conversation")
                     history.pop()  # Remove failed message
                     continue
                 
@@ -308,25 +308,25 @@ class ChatInterface:
                     )
                     
                     print(response_text)
-                    print(f"\n📊 Generated {len(response_tokens)} tokens")
+                    print(f"\n Generated {len(response_tokens)} tokens")
                     
                     # Add to history
                     history.append({'role': 'assistant', 'content': response_text})
                 else:
-                    print("\n⚠️  No response generated")
+                    print("\n  No response generated")
                     history.pop()  # Remove the user message since there was no response
                 
             except KeyboardInterrupt:
-                print("\n\n👋 Goodbye!")
+                print("\n\n Goodbye!")
                 break
             except Exception as e:
-                print(f"\n❌ Error: {e}")
+                print(f"\n Error: {e}")
                 import traceback
                 traceback.print_exc()
     
     def chat_single(self, prompt):
         """Single prompt mode"""
-        print(f"\n💬 Prompt: {prompt}\n")
+        print(f"\n Prompt: {prompt}\n")
         
         # Create conversation
         conversation = self.format_conversation([
@@ -340,27 +340,27 @@ class ChatInterface:
             return_stats=True
         )
         
-        print(f"🔢 Encoded: {stats.total_tokens} tokens")
+        print(f" Encoded: {stats.total_tokens} tokens")
         print(f"   Content: {stats.content_tokens} | Special: {stats.special_tokens}")
         print(f"   Encoding time: {stats.encoding_time_ms:.2f}ms")
         
         if stats.warnings:
-            print(f"⚠️  Warnings:")
+            print(f"  Warnings:")
             for warning in stats.warnings:
                 print(f"   - {warning}")
         
         if not prompt_tokens:
-            print("❌ Failed to encode prompt")
+            print(" Failed to encode prompt")
             return
         
-        print(f"\n📝 Token IDs (first 20): {prompt_tokens[:20]}")
+        print(f"\n Token IDs (first 20): {prompt_tokens[:20]}")
         
         # Generate
-        print("\n🤖 Generating response...\n")
+        print("\n Generating response...\n")
         response_tokens = self.generate_with_cpp(prompt_tokens)
         
         if response_tokens:
-            print(f"\n✓ Generated {len(response_tokens)} tokens")
+            print(f"\n Generated {len(response_tokens)} tokens")
             print(f"   Token IDs (first 20): {response_tokens[:20]}")
             
             # Decode
@@ -376,7 +376,7 @@ class ChatInterface:
             print(response_text)
             print(f"{'='*60}\n")
         else:
-            print("❌ No response generated")
+            print(" No response generated")
 
 
 def main():
@@ -413,12 +413,12 @@ def main():
     
     # Validate files
     if not os.path.exists(binary):
-        print(f"❌ Binary not found: {binary}")
+        print(f" Binary not found: {binary}")
         print("   Run ./compile.sh first")
         return
     
     if not os.path.exists(model):
-        print(f"❌ Model not found: {model}")
+        print(f" Model not found: {model}")
         print("   Create model with export script or create_test_model.py")
         return
     
@@ -434,7 +434,7 @@ def main():
             chat.chat_interactive(debug=debug)
             
     except Exception as e:
-        print(f"❌ Failed to initialize: {e}")
+        print(f" Failed to initialize: {e}")
         import traceback
         traceback.print_exc()
 

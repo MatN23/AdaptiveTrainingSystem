@@ -57,7 +57,7 @@ class TestTrainerInitialization:
         assert trainer.model is not None
         assert trainer.optimizer is not None
         assert trainer.device is not None
-        print("✅ Trainer creation test passed")
+        print(" Trainer creation test passed")
     
     def test_precision_manager(self, small_model, mock_tokenizer, mock_config, mock_logger):
         """Test precision manager is initialized."""
@@ -69,12 +69,12 @@ class TestTrainerInitialization:
         
         assert trainer.precision_manager is not None
         assert trainer.precision_manager.train_precision == 'fp32'
-        print("✅ Precision manager test passed")
+        print(" Precision manager test passed")
     
     def test_device_selection(self, trainer):
         """Test correct device is selected."""
         assert trainer.device.type in ['cuda', 'mps', 'cpu']
-        print(f"✅ Device selection test passed: {trainer.device.type}")
+        print(f" Device selection test passed: {trainer.device.type}")
     
     def test_optimizer_initialization(self, trainer):
         """Test optimizer is properly initialized."""
@@ -84,7 +84,7 @@ class TestTrainerInitialization:
         # Check learning rate
         lr = trainer.optimizer.param_groups[0]['lr']
         assert lr == trainer.config.learning_rate
-        print(f"✅ Optimizer initialization test passed: LR={lr}")
+        print(f" Optimizer initialization test passed: LR={lr}")
     
     def test_scheduler_setup(self, trainer, mock_config):
         """Test scheduler can be set up."""
@@ -94,9 +94,9 @@ class TestTrainerInitialization:
         
         if trainer.scheduler is not None:
             assert hasattr(trainer.scheduler, 'step')
-            print("✅ Scheduler setup test passed")
+            print(" Scheduler setup test passed")
         else:
-            print("⚠️  Scheduler disabled by config")
+            print("  Scheduler disabled by config")
 
 
 # ============================================================================
@@ -131,7 +131,7 @@ class TestLossComputation:
         assert loss_dict['loss'].item() > 0
         assert loss_dict['perplexity'].item() > 0
         
-        print(f"✅ Basic loss computation test passed")
+        print(f" Basic loss computation test passed")
         print(f"   Loss: {loss_dict['loss'].item():.4f}")
         print(f"   Perplexity: {loss_dict['perplexity'].item():.2f}")
         print(f"   Accuracy: {loss_dict['accuracy'].item():.2%}")
@@ -161,7 +161,7 @@ class TestLossComputation:
         
         assert raw_diff < 1e-5, f"Raw loss changed by weights! Diff: {raw_diff}"
         
-        print("✅ Loss weighting test passed")
+        print(" Loss weighting test passed")
         print(f"   Raw loss (no weights): {loss_dict_no_weights['raw_loss'].item():.4f}")
         print(f"   Raw loss (with weights): {loss_dict_with_weights['raw_loss'].item():.4f}")
         print(f"   Difference: {raw_diff:.2e} (should be ~0)")
@@ -184,7 +184,7 @@ class TestLossComputation:
         assert not torch.isnan(loss_dict['loss'])
         assert loss_dict['loss'].item() > 0
         
-        print("✅ Padding mask test passed")
+        print(" Padding mask test passed")
         print(f"   Valid tokens: {loss_dict['valid_tokens'].item()}")
         print(f"   Loss: {loss_dict['loss'].item():.4f}")
     
@@ -209,7 +209,7 @@ class TestLossComputation:
         assert logits.grad is not None, "Gradients should flow to logits!"
         assert not torch.isnan(logits.grad).any(), "Gradients should be valid!"
         
-        print("✅ Gradient flow test passed")
+        print(" Gradient flow test passed")
     
     def test_loss_numerical_stability(self, trainer, mock_config):
         """Test loss computation with extreme values."""
@@ -228,7 +228,7 @@ class TestLossComputation:
         assert not torch.isinf(loss_dict['loss'])
         assert loss_dict['perplexity'].item() < float('inf')
         
-        print("✅ Numerical stability test passed")
+        print(" Numerical stability test passed")
         print(f"   Extreme logits loss: {loss_dict['loss'].item():.4f}")
         print(f"   Perplexity: {loss_dict['perplexity'].item():.2f}")
     
@@ -252,7 +252,7 @@ class TestLossComputation:
         ppl_diff = abs(expected_ppl - actual_ppl)
         assert ppl_diff < 0.1 or ppl_diff / expected_ppl < 0.01
         
-        print("✅ Perplexity calculation test passed")
+        print(" Perplexity calculation test passed")
         print(f"   Raw loss: {raw_loss:.4f}")
         print(f"   Expected PPL: {expected_ppl:.2f}")
         print(f"   Actual PPL: {actual_ppl:.2f}")
@@ -273,7 +273,7 @@ class TestLossComputation:
         assert loss_dict['loss'].item() == 0.0
         assert loss_dict['perplexity'].item() == float('inf')
         
-        print("✅ All-padding test passed")
+        print(" All-padding test passed")
 
 
 # ============================================================================
@@ -299,7 +299,7 @@ class TestTrainingStep:
         assert step_metrics['loss'] >= 0
         assert 0 <= step_metrics['accuracy'] <= 1
         
-        print("✅ Basic training step test passed")
+        print(" Basic training step test passed")
         print(f"   Loss: {step_metrics['loss']:.4f}")
         print(f"   Accuracy: {step_metrics['accuracy']:.2%}")
     
@@ -330,7 +330,7 @@ class TestTrainingStep:
         assert 'grad_norm' in opt_metrics
         assert 'lr' in opt_metrics
         
-        print("✅ Optimizer step test passed")
+        print(" Optimizer step test passed")
         print(f"   Grad norm: {opt_metrics['grad_norm']:.4f}")
         print(f"   Learning rate: {opt_metrics['lr']:.2e}")
 
@@ -355,7 +355,7 @@ class TestAdaptiveFeatures:
         # Check override flag is set
         assert trainer._adaptive_lr_override == True
         
-        print("✅ Learning rate adjustment test passed")
+        print(" Learning rate adjustment test passed")
         print(f"   Old LR: {old_lr:.2e}")
         print(f"   New LR: {actual_lr:.2e}")
     
@@ -370,7 +370,7 @@ class TestAdaptiveFeatures:
         
         assert abs(new_lr - expected_lr) < 1e-8
         
-        print("✅ Emergency LR reduction test passed")
+        print(" Emergency LR reduction test passed")
         print(f"   Old LR: {old_lr:.2e}")
         print(f"   New LR: {new_lr:.2e}")
     
@@ -383,7 +383,7 @@ class TestAdaptiveFeatures:
         
         assert trainer.config.batch_size == new_batch_size
         
-        print("✅ Batch size adjustment test passed")
+        print(" Batch size adjustment test passed")
         print(f"   Old batch size: {old_batch_size}")
         print(f"   New batch size: {trainer.config.batch_size}")
     
@@ -396,7 +396,7 @@ class TestAdaptiveFeatures:
         assert hasattr(metrics, 'loss')
         assert hasattr(metrics, 'learning_rate')
         
-        print("✅ Get current metrics test passed")
+        print(" Get current metrics test passed")
 
 
 # ============================================================================
@@ -427,7 +427,7 @@ class TestTrainingIntegration:
         # Update global step
         trainer.global_step += 1
         
-        print("✅ Full training workflow test passed")
+        print(" Full training workflow test passed")
         print(f"   Step: {trainer.global_step}")
         print(f"   Loss: {step_metrics['loss']:.4f}")
         print(f"   Grad Norm: {opt_metrics['grad_norm']:.4f}")

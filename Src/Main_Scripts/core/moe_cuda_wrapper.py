@@ -97,7 +97,7 @@ try:
     if not os.path.exists(cuda_src):
         raise FileNotFoundError(f"CUDA source not found: {cuda_src}")
     
-    print(f"🔨 Compiling CUDA MoE ops from: {cuda_src}")
+    print(f" Compiling CUDA MoE ops from: {cuda_src}")
     print(f"   This takes ~60s on first run...")
 
     target_sms = _resolve_target_sms()
@@ -118,7 +118,7 @@ try:
     if torch.cuda.is_available():
         print(f"   Target(s): {target_desc}")
     else:
-        print(f"   ⚠️  CUDA not available, compiling for {target_desc}...")
+        print(f"     CUDA not available, compiling for {target_desc}...")
 
     # Ensure build directory exists
     arch_signature = _sms_signature(target_sms)
@@ -137,10 +137,10 @@ try:
     )
 
     CUDA_OPS_AVAILABLE = True
-    print(f"✅ CUDA MoE ops loaded successfully")
+    print(f" CUDA MoE ops loaded successfully")
 
 except Exception as e:
-    print(f"⚠️  CUDA compilation failed: {e}")
+    print(f"  CUDA compilation failed: {e}")
     print(f"   Falling back to PyTorch implementation")
     CUDA_OPS_AVAILABLE = False
 
@@ -219,7 +219,7 @@ def from_compute_dtype(tensor: torch.Tensor, target_dtype: torch.dtype) -> torch
     except Exception as e:
         # Some dtypes like quantized types need special handling
         # For now, return as float32 if conversion fails
-        print(f"⚠️  Cannot convert to {target_dtype}, keeping float32: {e}")
+        print(f"  Cannot convert to {target_dtype}, keeping float32: {e}")
         return tensor
 
 
@@ -231,7 +231,7 @@ class MoECUDAOps:
     """
     MoE operations with automatic CUDA/PyTorch fallback.
     
-    ✅ Supports ALL PyTorch dtypes:
+     Supports ALL PyTorch dtypes:
     - Training: fp32, fp16, bf16, mixed_fp16, tf32, fp64
     - Inference: int8, int4, fp16, bf16
     - Experimental: fp8, int2
@@ -294,7 +294,7 @@ class MoECUDAOps:
             except Exception as e:
                 # Only print warning on first failure
                 if not hasattr(MoECUDAOps, '_cuda_warning_printed'):
-                    print(f"⚠️  CUDA topk_gating failed: {e}")
+                    print(f"  CUDA topk_gating failed: {e}")
                     print(f"   Input dtype: {original_dtype}, falling back to PyTorch")
                     MoECUDAOps._cuda_warning_printed = True
         
@@ -362,7 +362,7 @@ class MoECUDAOps:
                 
             except Exception as e:
                 if not hasattr(MoECUDAOps, '_dispatch_warning_printed'):
-                    print(f"⚠️  CUDA dispatch_tokens failed: {e}")
+                    print(f"  CUDA dispatch_tokens failed: {e}")
                     print(f"   Input dtype: {original_dtype}, falling back to PyTorch")
                     MoECUDAOps._dispatch_warning_printed = True
         
@@ -481,7 +481,7 @@ class MoECUDAOps:
                 
             except Exception as e:
                 if not hasattr(MoECUDAOps, '_combine_warning_printed'):
-                    print(f"⚠️  CUDA combine_expert_outputs failed: {e}")
+                    print(f"  CUDA combine_expert_outputs failed: {e}")
                     print(f"   Input dtype: {original_dtype}, falling back to PyTorch")
                     MoECUDAOps._combine_warning_printed = True
         
@@ -525,11 +525,11 @@ def benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2, runs=
     """Benchmark CUDA vs PyTorch across multiple dtypes."""
     
     if not torch.cuda.is_available():
-        print("⚠️  CUDA not available")
+        print("  CUDA not available")
         return
     
     print(f"\n{'='*70}")
-    print(f"🚀 BENCHMARK: {num_tokens} tokens, {num_experts} experts, k={k}")
+    print(f" BENCHMARK: {num_tokens} tokens, {num_experts} experts, k={k}")
     print(f"{'='*70}\n")
     
     # Test different dtypes
@@ -561,7 +561,7 @@ def benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2, runs=
             cuda_time = (time.perf_counter() - start) * 1000
             
             cuda_per_call = cuda_time / runs
-            print(f"✓ CUDA:    {cuda_per_call:.4f}ms per call")
+            print(f" CUDA:    {cuda_per_call:.4f}ms per call")
         
         # PyTorch benchmark
         start = time.perf_counter()
@@ -571,11 +571,11 @@ def benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2, runs=
         pytorch_time = (time.perf_counter() - start) * 1000
         
         pytorch_per_call = pytorch_time / runs
-        print(f"✓ PyTorch: {pytorch_per_call:.4f}ms per call")
+        print(f" PyTorch: {pytorch_per_call:.4f}ms per call")
         
         if CUDA_OPS_AVAILABLE and cuda_time > 0:
             speedup = pytorch_time / cuda_time
-            print(f"🚀 Speedup: {speedup:.2f}x")
+            print(f" Speedup: {speedup:.2f}x")
     
     print(f"\n{'='*70}\n")
 
@@ -587,20 +587,20 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("MoE CUDA Operations - Universal Precision Support")
     print("="*70)
-    print(f"Status: {'Available ✅' if CUDA_OPS_AVAILABLE else 'PyTorch only ⚠️'}")
+    print(f"Status: {'Available ' if CUDA_OPS_AVAILABLE else 'PyTorch only '}")
     
     if CUDA_OPS_AVAILABLE:
         funcs = [f for f in dir(moe_cuda_ops) if not f.startswith('_')]
         print(f"Functions: {', '.join(funcs)}")
     
-    print("\n✅ Supported dtypes:")
+    print("\n Supported dtypes:")
     print("  Training:     fp32, fp16, bf16, mixed_fp16, tf32, fp64")
     print("  Inference:    int8, int4, fp16, bf16")
     print("  Experimental: fp8 (H100+), int2")
     print("="*70)
     
     if torch.cuda.is_available():
-        print("\n📊 RUNNING BENCHMARKS")
+        print("\n RUNNING BENCHMARKS")
         benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2, runs=100)
     else:
-        print("\n⚠️  CUDA not available - skipping benchmarks")
+        print("\n  CUDA not available - skipping benchmarks")

@@ -49,7 +49,7 @@ class DeepSpeedIntegration:
                 async_offload=True,
             )
             self.offload_manager = create_offload_manager(offload_config, self.expert_registry)
-            print(f"✓ Offload manager initialized: {offload_config.device}")
+            print(f" Offload manager initialized: {offload_config.device}")
         
         # 2. Create ZeRO-compatible optimizer
         zero_stage = getattr(self.config, 'zero_stage', 2)
@@ -66,7 +66,7 @@ class DeepSpeedIntegration:
             offload_manager=self.offload_manager,
             weight_decay=getattr(self.config, 'weight_decay', 0.01),
         )
-        print(f"✓ ZeRO-{zero_stage} optimizer initialized")
+        print(f" ZeRO-{zero_stage} optimizer initialized")
         
         # 3. Create ZeRO stage manager
         zero_config = ZeROConfig(
@@ -83,7 +83,7 @@ class DeepSpeedIntegration:
             config=zero_config,
             expert_registry=self.expert_registry,
         )
-        print(f"✓ ZeRO stage manager initialized")
+        print(f" ZeRO stage manager initialized")
         
         # 4. Create scheduler
         total_steps = self._calculate_total_steps()
@@ -97,7 +97,7 @@ class DeepSpeedIntegration:
             expert_registry=self.expert_registry,
             min_lr=getattr(self.config, 'min_lr', 0.0),
         )
-        print(f"✓ Scheduler initialized: {warmup_steps} warmup steps, {total_steps} total steps")
+        print(f" Scheduler initialized: {warmup_steps} warmup steps, {total_steps} total steps")
         
         # 5. Setup checkpoint manager
         checkpoint_dir = Path(f"experiments/{self.config.experiment_name}/checkpoints")
@@ -108,7 +108,7 @@ class DeepSpeedIntegration:
             save_optimizer=True,
             save_scheduler=True,
         )
-        print(f"✓ Checkpoint manager initialized: {checkpoint_dir}")
+        print(f" Checkpoint manager initialized: {checkpoint_dir}")
     
     def _calculate_total_steps(self):
         """Calculate total training steps"""
@@ -215,5 +215,5 @@ def integrate_with_trainer(trainer, config, model, expert_registry=None):
             integration.scheduler_step()
         trainer.scheduler.step = wrapped_scheduler_step
     
-    print("✓ DeepSpeed integration completed")
+    print(" DeepSpeed integration completed")
     return integration

@@ -3,10 +3,10 @@ LLM wrapper for Pangu
 
 Usage:
 
-# URL: “盘古大模型套件管理”->点击“服务管理”->“模型列表”->点击想要使用的模型的“复制路径”
-# USERNAME: 华为云控制台：“我的凭证”->“API凭证”下的“IAM用户名”，也就是你登录IAM账户的名字
-# PASSWORD: IAM用户的密码
-# DOMAIN_NAME: 华为云控制台：“我的凭证”->“API凭证”下的“用户名”，也就是公司管理IAM账户的总账户名
+# URL: ->->->
+# USERNAME: ->APIIAMIAM
+# PASSWORD: IAM
+# DOMAIN_NAME: ->APIIAM
 
 os.environ["URL"] = ""
 os.environ["URLNAME"] = ""
@@ -16,7 +16,7 @@ os.environ["DOMAIN_NAME"] = ""
 pg = Pangu(id=1)
 pg.set_auth_config()
 
-res = pg('你是谁')  # 您好,我是华为盘古大模型。我能够通过和您对话互动为您提供帮助。请问您有什么想问我的吗?
+res = pg('')  # ,?
 """
 
 import http.client

@@ -510,7 +510,7 @@ class ConversationTokenizer:
                                 part = self.tokenizer.decode([token])
                                 decoded_parts.append(part)
                             except:
-                                decoded_parts.append("�")  # Replacement character
+                                decoded_parts.append("")  # Replacement character
                         decoded = "".join(decoded_parts)
                     else:
                         return "<decode_error>"

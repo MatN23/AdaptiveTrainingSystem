@@ -10,10 +10,10 @@ class FP16ApexMixedPrecision(MixedPrecision):
     Precision for mixed precision training in FP16 using apex AMP.
 
     Args:
-        opt_level(str, optional, default="O1" ): Pure or mixed precision optimization level. Accepted values are “O0”, “O1”, “O2”, and “O3”, explained in detail above Apex AMP Documentation.
-        cast_model_type (torch.dtype, optional, default=None): Casts your model’s parameters and buffers to the desired type.
+        opt_level(str, optional, default="O1" ): Pure or mixed precision optimization level. Accepted values are O0, O1, O2, and O3, explained in detail above Apex AMP Documentation.
+        cast_model_type (torch.dtype, optional, default=None): Casts your models parameters and buffers to the desired type.
         patch_torch_functions (bool, optional, default=None): Patch all Torch functions and Tensor methods to perform Tensor Core-friendly ops like GEMMs and convolutions in FP16, and any ops that benefit from FP32 precision in FP32.
-        keep_batchnorm_fp32 (bool or str, optional, default=None): To enhance precision and enable cudnn batchnorm (which improves performance), it’s often beneficial to keep batchnorm weights in FP32 even if the rest of the model is FP16.
+        keep_batchnorm_fp32 (bool or str, optional, default=None): To enhance precision and enable cudnn batchnorm (which improves performance), its often beneficial to keep batchnorm weights in FP32 even if the rest of the model is FP16.
         master_weights (bool, optional, default=None): Maintain FP32 master weights to accompany any FP16 model weights. FP32 master weights are stepped by the optimizer to enhance precision and capture small gradients.
         loss_scale (float or str, optional, default=None): If loss_scale is a float value, use this value as the static (fixed) loss scale. If loss_scale is the string "dynamic", adaptively adjust the loss scale over time. Dynamic loss scale adjustments are performed by Amp automatically.
         cast_model_outputs (torch.dpython:type, optional, default=None): Option to ensure that the outputs of your model(s) are always cast to a particular type regardless of opt_level.

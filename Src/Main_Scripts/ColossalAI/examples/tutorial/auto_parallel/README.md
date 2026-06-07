@@ -4,18 +4,18 @@
 
 - [Auto-Parallelism](#auto-parallelism)
   - [Table of contents](#table-of-contents)
-  - [📚 Overview](#-overview)
-  - [🚀 Quick Start](#-quick-start)
+  - [ Overview](#-overview)
+  - [ Quick Start](#-quick-start)
     - [Setup](#setup)
     - [Auto-Parallel Tutorial](#auto-parallel-tutorial)
     - [Auto-Checkpoint Tutorial](#auto-checkpoint-tutorial)
 
 
-## 📚 Overview
+##  Overview
 
 This tutorial folder contains a simple demo to run auto-parallelism with ResNet. Meanwhile, this directory also contains demo scripts to run automatic activation checkpointing, but both features are still experimental for now and no guarantee that they will work for your version of Colossal-AI.
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Setup
 

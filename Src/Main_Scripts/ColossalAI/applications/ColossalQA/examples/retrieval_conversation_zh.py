@@ -48,7 +48,7 @@ if __name__ == "__main__":
     memory = ConversationBufferWithSummary(
         llm=llm,
         prompt=SUMMARY_PROMPT_ZH,
-        human_prefix="用户",
+        human_prefix="",
         ai_prefix="Assistant",
         max_tokens=2000,
         llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True},
@@ -101,12 +101,12 @@ if __name__ == "__main__":
     while True:
         user_input = input("User: ")
         if "END" == user_input:
-            print("Agent: Happy to chat with you ：)")
+            print("Agent: Happy to chat with you )")
             break
         agent_response = llm_chain.run(
             query=user_input,
-            stop=["</答案>"],
-            doc_prefix="支持文档",
+            stop=["</>"],
+            doc_prefix="",
             rejection_trigger_keywords=ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS,
             rejection_answer=ZH_RETRIEVAL_QA_REJECTION_ANSWER,
         )

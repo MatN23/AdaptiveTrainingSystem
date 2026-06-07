@@ -48,147 +48,147 @@ Model/Feature Compatibility Matrix:
   </tr>
   <tr>
     <td nowrap="nowrap">Llama V1/V2</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">OPT</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
     <tr>
     <td nowrap="nowrap">BLOOM</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">ChatGLM 2</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">BERT</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">GPT 2</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">T5</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">ViT</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">Whisper</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">SAM</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">Blip2</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td nowrap="nowrap">Falcon</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
+    <td nowrap="nowrap" align="center"></td>
   </tr>
   <tr>
     <td colspan="39"></td>

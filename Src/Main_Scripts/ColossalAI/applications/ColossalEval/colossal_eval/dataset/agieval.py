@@ -78,7 +78,7 @@ def get_prompt(line: Dict, dataset_name: str, logger: DistributedLogger) -> Dict
             option_string = "ABCDEFG"
             count = len(line["options"])
 
-            input = "问题：" + line["question"] + " " + "从以下选项中选择：" + " ".join(line["options"]) + "\n" + "答案："
+            input = "" + line["question"] + " " + "" + " ".join(line["options"]) + "\n" + ""
 
             all_classes = list(option_string[0:count])
 
@@ -86,7 +86,7 @@ def get_prompt(line: Dict, dataset_name: str, logger: DistributedLogger) -> Dict
             input = "Question: " + line["question"] + "\n" + "Answer: "
 
         elif dataset_name in chinese_cloze_datasets:
-            input = "问题：" + line["question"] + "\n" + "答案："
+            input = "" + line["question"] + "\n" + ""
 
         return {
             "instruction": input if not passage else passage + "\n\n" + input,
@@ -101,7 +101,7 @@ def get_prompt(line: Dict, dataset_name: str, logger: DistributedLogger) -> Dict
 def combine_prompt(prompt_path, dataset_name, load_explanation=True, chat_mode=False):
     demostrations = []
     demostration_en = "Here are the answers for the problems in the exam."
-    demostration_zh = "以下是考试中各个问题的答案。"
+    demostration_zh = ""
 
     if dataset_name in english_qa_datasets or dataset_name in english_cloze_datasets:
         demostrations.append(demostration_en)
@@ -150,12 +150,12 @@ def combine_prompt(prompt_path, dataset_name, load_explanation=True, chat_mode=F
             )
         elif dataset_name in chinese_qa_datasets:
             question_input = (
-                "问题：" + passage + " " + question + "\n" + "从以下选项中选择：" + " ".join(options) + "\n" + "答案：{}".format(label)
+                "" + passage + " " + question + "\n" + "" + " ".join(options) + "\n" + "{}".format(label)
             )
         elif dataset_name in english_cloze_datasets:
             question_input = "Question: ".format(idx + 1) + question + "\n" + "Answer: {}".format(answer)
         elif dataset_name in chinese_cloze_datasets:
-            question_input = "问题：" + question + "\n" + "答案：{}".format(answer)
+            question_input = "" + question + "\n" + "{}".format(answer)
         else:
             raise ValueError(f"During loading few-sot examples, found unknown dataset: {dataset_name}")
 

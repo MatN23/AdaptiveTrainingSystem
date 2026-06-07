@@ -5,7 +5,7 @@
 - [Overview](#-overview)
 - [Quick Start](#-quick-start)
 
-## 📚 Overview
+##  Overview
 
 This example lets you to quickly try out the hybrid parallelism provided by Colossal-AI.
 You can change the parameters below to try out different settings in the `config.py`.
@@ -21,7 +21,7 @@ parallel = dict(
 )
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 
 1. Install PyTorch
 

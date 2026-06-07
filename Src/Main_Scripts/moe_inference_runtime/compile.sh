@@ -9,21 +9,21 @@ if [[ -z "$1" || "$1" == "--auto" || "$1" == "auto" ]]; then
     # Check for CUDA first
     if command -v nvcc &> /dev/null; then
         TARGET="cuda"
-        echo "🔍 Auto-detected: NVIDIA CUDA"
+        echo " Auto-detected: NVIDIA CUDA"
     # Check for macOS (MPS)
     elif [[ "$(uname -s)" == "Darwin" ]]; then
         TARGET="mps"
-        echo "🔍 Auto-detected: Apple Metal (MPS)"
+        echo " Auto-detected: Apple Metal (MPS)"
     # Fallback to CPU
     else
         TARGET="cpu"
-        echo "🔍 Auto-detected: CPU (no GPU acceleration found)"
+        echo " Auto-detected: CPU (no GPU acceleration found)"
     fi
 else
     TARGET="$1"
 fi
 
-echo "🔨 Building MoE Inference Runtime for: $TARGET"
+echo " Building MoE Inference Runtime for: $TARGET"
 
 # Detect platform
 OS=$(uname -s)
@@ -35,7 +35,7 @@ LDFLAGS=""
 
 case $TARGET in
     --cpu|cpu)
-        echo "✓ Target: CPU (SIMD + threading)"
+        echo " Target: CPU (SIMD + threading)"
         SOURCES="core/runtime.cpp backends/cpu_kernels.cpp"
         OUTPUT="moe_inference_cpu"
         
@@ -48,9 +48,9 @@ case $TARGET in
         ;;
         
     --mps|mps)
-        echo "✓ Target: Apple Metal (MPS)"
+        echo " Target: Apple Metal (MPS)"
         if [[ "$OS" != "Darwin" ]]; then
-            echo "❌ MPS only available on macOS"
+            echo " MPS only available on macOS"
             exit 1
         fi
         
@@ -62,9 +62,9 @@ case $TARGET in
         ;;
         
     --cuda|cuda)
-        echo "✓ Target: NVIDIA CUDA"
+        echo " Target: NVIDIA CUDA"
         if ! command -v nvcc &> /dev/null; then
-            echo "❌ nvcc not found - falling back to CPU"
+            echo " nvcc not found - falling back to CPU"
             TARGET="cpu"
             exec $0 --cpu
         fi
@@ -72,7 +72,7 @@ case $TARGET in
         # Detect CUDA paths
         CUDA_PATH=${CUDA_PATH:-/usr/local/cuda}
         if [[ ! -d "$CUDA_PATH" ]]; then
-            echo "❌ CUDA not found at $CUDA_PATH"
+            echo " CUDA not found at $CUDA_PATH"
             echo "   Set CUDA_PATH environment variable"
             exit 1
         fi
@@ -98,13 +98,13 @@ case $TARGET in
         rm -f runtime.o cuda_kernels.o
         OUTPUT="moe_inference_cuda"
         
-        echo "✅ Build complete: $OUTPUT"
+        echo " Build complete: $OUTPUT"
         echo "   Run with: ./run_inference.sh $OUTPUT model.bin \"prompt\""
         exit 0
         ;;
         
     *)
-        echo "❌ Unknown target: $TARGET"
+        echo " Unknown target: $TARGET"
         echo "Usage: ./compile.sh [--cpu|--mps|--cuda]"
         exit 1
         ;;
@@ -114,6 +114,6 @@ esac
 echo "Compiling..."
 $CXX $CXXFLAGS $SOURCES -o $OUTPUT $LDFLAGS
 
-echo "✅ Build complete: $OUTPUT"
+echo " Build complete: $OUTPUT"
 echo ""
 echo "Run with: ./run_inference.sh $OUTPUT model.bin input.txt"

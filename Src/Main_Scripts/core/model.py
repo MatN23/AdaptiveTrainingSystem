@@ -8,7 +8,7 @@ DeepSeek-Style Transformer with Advanced Optimizations
 This module implements a highly optimized transformer architecture with:
 - Mixed dense (with MoD) and Mixture-of-Experts (MoE) layers
 - Mixture of Depths (MoD) for efficient dense models
-- HYBRID MODE: MoE + MoD working together! 🚀
+- HYBRID MODE: MoE + MoD working together! 
 - Grouped Query Attention (GQA) with optional Flash Attention
 - Rotary Position Embeddings (RoPE)
 - SwiGLU activation functions
@@ -65,10 +65,10 @@ try:
         TRANSFORMER_OPS_AVAILABLE
     )
     HAS_TRANSFORMER_CUDA = True
-    logging.info("✅ CUDA Transformer ops available - 2-5x speedup enabled!")
+    logging.info(" CUDA Transformer ops available - 2-5x speedup enabled!")
 except ImportError:
     HAS_TRANSFORMER_CUDA = False
-    logging.info("⚠️  CUDA Transformer ops not available - using PyTorch fallback")
+    logging.info("  CUDA Transformer ops not available - using PyTorch fallback")
 
 
 
@@ -85,10 +85,10 @@ try:
     )
     USE_UNIFIED_BACKEND = True
     HAS_TRANSFORMER_CUDA = (BACKEND == 'cuda')
-    logging.info(f"✅ Unified backend: {BACKEND.upper()}")
+    logging.info(f" Unified backend: {BACKEND.upper()}")
 except ImportError:
     USE_UNIFIED_BACKEND = False
-    logging.warning("⚠️  Unified backend not available, using direct imports")
+    logging.warning("  Unified backend not available, using direct imports")
     
     # Fallback to direct CUDA imports
     try:
@@ -102,21 +102,21 @@ except ImportError:
         HAS_CUDA_OPS = TRANSFORMER_OPS_AVAILABLE
         HAS_METAL_OPS = False
         BACKEND = 'cuda'
-        logging.info("✅ CUDA Transformer ops available - 2-5x speedup enabled!")
+        logging.info(" CUDA Transformer ops available - 2-5x speedup enabled!")
     except ImportError:
         HAS_TRANSFORMER_CUDA = False
         HAS_CUDA_OPS = False
         HAS_METAL_OPS = False
         BACKEND = 'pytorch'
-        logging.info("⚠️  Using PyTorch fallback")
+        logging.info("  Using PyTorch fallback")
 
 try:
     from moe_cuda_wrapper import MoECUDAOps, HAS_CUDA_OPS as MOE_CUDA_AVAILABLE
-    logging.info("✅ MoE CUDA operations available")
+    logging.info(" MoE CUDA operations available")
 except ImportError:
     MoECUDAOps = None
     MOE_CUDA_AVAILABLE = False
-    logging.warning("⚠️  MoE CUDA operations not available - using PyTorch fallback")
+    logging.warning("  MoE CUDA operations not available - using PyTorch fallback")
 
 # ============================================================================
 # UTILITY FUNCTIONS AND DECORATORS
@@ -281,13 +281,13 @@ class RMSNorm(nn.Module):
             self._impl = get_rms_norm(dim, eps, use_fused=use_fused)
             self.weight = self._impl.weight  # Share weight parameter
             self._cuda_impl = None  # Mark as using unified backend
-            logging.debug(f"✅ RMSNorm: {BACKEND} backend (dim={dim})")
+            logging.debug(f" RMSNorm: {BACKEND} backend (dim={dim})")
         else:
             # Fallback to direct CUDA check
             if use_fused and HAS_TRANSFORMER_CUDA:
                 self._cuda_impl = FusedRMSNorm(dim, eps)
                 self.weight = self._cuda_impl.weight
-                logging.debug(f"✅ RMSNorm: CUDA acceleration enabled (dim={dim})")
+                logging.debug(f" RMSNorm: CUDA acceleration enabled (dim={dim})")
             else:
                 if elementwise_affine:
                     self.weight = nn.Parameter(torch.ones(dim))
@@ -295,7 +295,7 @@ class RMSNorm(nn.Module):
                     self.register_parameter('weight', None)
                 self._cuda_impl = None
                 self._impl = None
-                logging.debug(f"⚠️  RMSNorm: Using PyTorch fallback (dim={dim})")
+                logging.debug(f"  RMSNorm: Using PyTorch fallback (dim={dim})")
         
         # Cache epsilon tensor for efficiency
         self.register_buffer('_eps_tensor', torch.tensor(eps, dtype=torch.float32), persistent=False)
@@ -388,7 +388,7 @@ class RotaryEmbedding(nn.Module):
         super().__init__()
         self.dim = dim
         self.max_seq_len = max_seq_len
-        self.backend_max_seq_len = max_seq_len  # ✅ Track backend limit separately
+        self.backend_max_seq_len = max_seq_len  #  Track backend limit separately
         self.theta = theta
         self.scaling_factor = scaling_factor
         self.use_fused = use_fused
@@ -397,14 +397,14 @@ class RotaryEmbedding(nn.Module):
         if USE_UNIFIED_BACKEND:
             self._impl = get_rope(dim, max_seq_len, theta, use_fused=use_fused)
             self._cuda_impl = None  # Mark as using unified backend
-            logging.debug(f"✅ RoPE: {BACKEND} backend (dim={dim})")
+            logging.debug(f" RoPE: {BACKEND} backend (dim={dim})")
         else:
             # Fallback to direct CUDA check
             if use_fused and HAS_TRANSFORMER_CUDA:
                 try:
                     self._cuda_impl = FusedRoPE(dim, max_seq_len, theta)
                     self._impl = None
-                    logging.debug(f"✅ RoPE: CUDA acceleration enabled (dim={dim})")
+                    logging.debug(f" RoPE: CUDA acceleration enabled (dim={dim})")
                 except Exception as e:
                     logging.warning(f"Failed to create CUDA RoPE: {e}, using PyTorch")
                     self._cuda_impl = None
@@ -412,7 +412,7 @@ class RotaryEmbedding(nn.Module):
             else:
                 self._cuda_impl = None
                 self._impl = None
-                logging.debug(f"⚠️  RoPE: Using PyTorch fallback (dim={dim})")
+                logging.debug(f"  RoPE: Using PyTorch fallback (dim={dim})")
         
         # ALWAYS build PyTorch cache as fallback
         self._build_pytorch_cache(max_seq_len)
@@ -464,11 +464,11 @@ class RotaryEmbedding(nn.Module):
         start_pos = max(0, int(start_pos))
         total_seq_len = start_pos + seq_len
 
-        # ✅ NEW: Handle cache extension FIRST
+        #  NEW: Handle cache extension FIRST
         if total_seq_len > self.max_seq_len:
             self._extend_cache(total_seq_len)
             
-        # ✅ TRY CUDA/METAL FIRST
+        #  TRY CUDA/METAL FIRST
         # ONLY if seq_len is within backend's INITIAL capacity
         # Cache-offset decoding requires arbitrary slices, so use PyTorch cache path.
         if start_pos == 0 and seq_len <= self.backend_max_seq_len:
@@ -798,7 +798,7 @@ class DenseGroupedQueryAttention(nn.Module):
         Flash Attention 2 implementation with fallback.
         
         Flash Attention uses tiling and recomputation to achieve
-        O(N) memory complexity while maintaining O(N²) computation.
+        O(N) memory complexity while maintaining O(N) computation.
         
         Performance: 2-4x faster than standard attention for long sequences
         """
@@ -1109,7 +1109,7 @@ class MoEFFNLayer(nn.Module):
         )
         self._routing_stats_step = 0
         
-        # ✅ FIX: Check if MoECUDAOps is actually available
+        #  FIX: Check if MoECUDAOps is actually available
         self.use_cuda_ops = (
             getattr(config, 'use_fused_moe', True) and 
             MoECUDAOps is not None and 
@@ -1142,9 +1142,9 @@ class MoEFFNLayer(nn.Module):
         
         self._init_weights()
         
-        # ✅ Better logging
+        #  Better logging
         op_type = "CUDA-accelerated" if self.use_cuda_ops else "PyTorch"
-        logging.info(f"🔍 MoEFFNLayer initialized: {config.num_experts} experts, "
+        logging.info(f" MoEFFNLayer initialized: {config.num_experts} experts, "
                     f"top-{config.moe_top_k} routing ({op_type})")
     
     def _init_weights(self):
@@ -1163,7 +1163,7 @@ class MoEFFNLayer(nn.Module):
         # Temperature scaling for routing
         scaled_logits = gate_logits / self.routing_temperature
 
-        # ✅ USE CUDA FOR FAST TOP-K (with index validation)
+        #  USE CUDA FOR FAST TOP-K (with index validation)
         if self.use_cuda_ops and MoECUDAOps is not None and x.is_cuda:
             try:
                 # Use CUDA for fast index selection
@@ -1236,7 +1236,7 @@ class MoEFFNLayer(nn.Module):
     ) -> torch.Tensor:
         """
         Vectorized expert computation with dtype safety.
-        ✅ Ensures all tensors have matching dtypes for fp16/bf16/fp32 training.
+         Ensures all tensors have matching dtypes for fp16/bf16/fp32 training.
         """
         output = torch.zeros_like(x)
         num_tokens = x.size(0)
@@ -1300,7 +1300,7 @@ class MoEFFNLayer(nn.Module):
     ) -> torch.Tensor:
         """
         Compute load balancing auxiliary loss.
-        ✅ Fixed: Properly handle indices regardless of shape
+         Fixed: Properly handle indices regardless of shape
         """
         indices_1d = top_k_indices.contiguous().view(-1).long()
         indices_1d = torch.clamp(indices_1d, min=0, max=self.num_experts - 1)
@@ -1384,7 +1384,7 @@ class DenseSwiGLUWithMoD(nn.Module):
                 stats_update_interval=getattr(config, 'mod_routing_stats_update_interval', 64),
             )
         
-        # ✅ ALWAYS create PyTorch layers
+        #  ALWAYS create PyTorch layers
         self.gate_up_proj = nn.Linear(
             config.hidden_size, 
             config.intermediate_size * 2, 
@@ -1471,7 +1471,7 @@ class DenseSwiGLU(nn.Module):
         super().__init__()
         self.config = config
         
-        # ✅ ALWAYS create PyTorch layers - these are our PRIMARY parameters
+        #  ALWAYS create PyTorch layers - these are our PRIMARY parameters
         self.gate_up_proj = nn.Linear(
             config.hidden_size, 
             config.intermediate_size * 2, 
@@ -1486,7 +1486,7 @@ class DenseSwiGLU(nn.Module):
         self._param_count = sum(p.numel() for p in self.parameters())
         self._init_weights()
         
-        # ✅ Store accelerated backends as NON-MODULE attributes
+        #  Store accelerated backends as NON-MODULE attributes
         # Key: We create them AFTER super().__init__() and we DON'T
         # assign them like "self._cuda = Module()" which would register params
         self._setup_accelerated_backends()
@@ -1511,7 +1511,7 @@ class DenseSwiGLU(nn.Module):
                 # Store in a way that won't register parameters
                 object.__setattr__(self, '_impl_backend', impl)
                 self.has_unified = True
-                logging.debug(f"✅ DenseSwiGLU: Unified backend available (inference only)")
+                logging.debug(f" DenseSwiGLU: Unified backend available (inference only)")
             except Exception as e:
                 logging.debug(f"Unified backend unavailable: {e}")
         
@@ -1527,7 +1527,7 @@ class DenseSwiGLU(nn.Module):
                     # Store in a way that won't register parameters
                     object.__setattr__(self, '_cuda_backend', cuda_impl)
                     self.has_cuda = True
-                    logging.debug(f"✅ DenseSwiGLU: CUDA backend available (inference only)")
+                    logging.debug(f" DenseSwiGLU: CUDA backend available (inference only)")
             except Exception as e:
                 logging.debug(f"CUDA backend unavailable: {e}")
     
@@ -1730,15 +1730,15 @@ class TransformerBlock(nn.Module):
         # FFN with residual
         ffn_result = self.ffn(self.post_attn_norm(x))
         
-        # 🔧 CRITICAL FIX: Handle tuple returns properly
+        #  CRITICAL FIX: Handle tuple returns properly
         if isinstance(ffn_result, tuple):
             ffn_out, aux_loss = ffn_result
-            x = x + ffn_out  # ✅ Use ffn_out (tensor), NOT ffn_result (tuple)
+            x = x + ffn_out  #  Use ffn_out (tensor), NOT ffn_result (tuple)
             if use_cache:
                 return x, aux_loss, present_key_value
             return x, aux_loss
         else:
-            x = x + ffn_result  # ✅ This is fine for non-tuple returns
+            x = x + ffn_result  #  This is fine for non-tuple returns
             if use_cache:
                 return x, None, present_key_value
             return x, None
@@ -1763,7 +1763,7 @@ class DeepSeekTransformer(nn.Module):
     Key Features:
     - Flexible MoE patterns (all, interleaved, sandwich)
     - Mixture of Depths (MoD) for efficient dense models
-    - HYBRID MODE: MoE + MoD working together! 🚀
+    - HYBRID MODE: MoE + MoD working together! 
     - Grouped Query Attention for efficient KV caching
     - Flash Attention 2 integration
     - Comprehensive profiling and monitoring
@@ -1937,7 +1937,7 @@ class DeepSeekTransformer(nn.Module):
             # Pure Dense
             logging.info(f"Architecture: Dense Attention + Dense FFN (no MoE/MoD)")
         
-        logging.info(f"CUDA Transformer Ops: {'Enabled ✅' if HAS_TRANSFORMER_CUDA else 'Disabled ⚠️'}")
+        logging.info(f"CUDA Transformer Ops: {'Enabled ' if HAS_TRANSFORMER_CUDA else 'Disabled '}")
         if HAS_TRANSFORMER_CUDA:
             logging.info(f"  - RMSNorm: 2-3x faster")
             logging.info(f"  - RoPE: 3-5x faster") 
@@ -1951,17 +1951,17 @@ class DeepSeekTransformer(nn.Module):
 
         logging.info(f"Accelerated Operations:")
         if BACKEND == 'cuda' and HAS_CUDA_OPS:
-            logging.info(f"  CUDA Transformer ops: Enabled ✅")
+            logging.info(f"  CUDA Transformer ops: Enabled ")
             logging.info(f"    - RMSNorm: 2-3x faster")
             logging.info(f"    - RoPE: 3-5x faster") 
             logging.info(f"    - SwiGLU: 1.5-2x faster")
         elif BACKEND == 'metal' and HAS_METAL_OPS:
-            logging.info(f"  Metal Transformer ops: Enabled ✅")
+            logging.info(f"  Metal Transformer ops: Enabled ")
             logging.info(f"    - RMSNorm: 2-3x faster")
             logging.info(f"    - RoPE: 3-5x faster")
             logging.info(f"    - SwiGLU: 2-3x faster")
         else:
-            logging.info(f"  Accelerated ops: Disabled ⚠️ (PyTorch fallback)")
+            logging.info(f"  Accelerated ops: Disabled  (PyTorch fallback)")
         
         logging.info(f"Flash Attention: {'Enabled' if HAS_FLASH_ATTN else 'Disabled'}")
         logging.info(f"Gradient Checkpointing: {self.config.gradient_checkpointing}")
@@ -2437,7 +2437,7 @@ class DeepSeekTransformer(nn.Module):
         
         # Architecture-specific info - HYBRID SUPPORT
         if self.use_moe and self.use_mod:
-            print(f"\n🚀 HYBRID Architecture (MoE + MoD):")
+            print(f"\n HYBRID Architecture (MoE + MoD):")
             print(f"  MoE Layers: {memory_info['moe_layers']}")
             print(f"  MoD Layers: {memory_info['mod_layers']}")
             print(f"  Pure Dense Layers: {memory_info['dense_layers']}")
@@ -2615,7 +2615,7 @@ class DeepSeekConfig:
                 original_seq_length = self.seq_length
                 self.seq_length = self.MPS_MAX_SEQ_LENGTH
                 logging.warning(
-                    f"⚠️ MPS detected: Reducing seq_length from {original_seq_length} to "
+                    f" MPS detected: Reducing seq_length from {original_seq_length} to "
                     f"{self.seq_length} to prevent OOM. Override with explicit seq_length if needed."
                 )
         
@@ -2661,7 +2661,7 @@ class DeepSeekConfig:
     
     @classmethod
     def hybrid_moe_mod(cls, **kwargs):
-        """Hybrid MoE + MoD configuration - MAXIMUM EFFICIENCY! 🚀"""
+        """Hybrid MoE + MoD configuration - MAXIMUM EFFICIENCY! """
         defaults = {
             'hidden_size': 1024,
             'num_layers': 24,
@@ -2717,7 +2717,7 @@ if __name__ == "__main__":
     input_ids = torch.randint(0, config.vocab_size, (2, 128)).to(device)
     outputs = model(input_ids)
     
-    print(f"\n✔ Model with {BACKEND.upper()} acceleration ready!")
+    print(f"\n Model with {BACKEND.upper()} acceleration ready!")
     print(f"   Backend: {BACKEND}")
     print(f"   Device: {device}")
     
@@ -2725,14 +2725,14 @@ if __name__ == "__main__":
     if HAS_CUDA_OPS and device == 'cuda':
         try:
             from Main_Scripts.core.wrappers.moe_cuda_wrapper import benchmark_moe_ops
-            print("\n📊 Running CUDA MoE benchmark...")
+            print("\n Running CUDA MoE benchmark...")
             benchmark_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2)
         except:
             pass
     elif HAS_METAL_OPS and device == 'mps':
         try:
             from Main_Scripts.core.wrappers.metal_opt_wrapper import benchmark_metal_ops
-            print("\n📊 Running Metal benchmark...")
+            print("\n Running Metal benchmark...")
             benchmark_metal_ops()
         except:
             pass

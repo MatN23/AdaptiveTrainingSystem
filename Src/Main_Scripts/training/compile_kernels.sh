@@ -36,21 +36,21 @@ format_arch_list() {
 if [ -n "${CUDA_TARGET_SM}" ]; then
     GPU_ARCHS=$(normalize_arch_list "${CUDA_TARGET_SM}")
     if [ -z "${GPU_ARCHS}" ]; then
-        echo "⚠️  Invalid CUDA_TARGET_SM='${CUDA_TARGET_SM}', defaulting to sm_75"
+        echo "  Invalid CUDA_TARGET_SM='${CUDA_TARGET_SM}', defaulting to sm_75"
         GPU_ARCHS="75"
     else
-        echo "✅ Using forced CUDA_TARGET_SM: $(format_arch_list "${GPU_ARCHS}")"
+        echo " Using forced CUDA_TARGET_SM: $(format_arch_list "${GPU_ARCHS}")"
     fi
 elif command -v nvidia-smi &> /dev/null; then
     GPU_ARCHS=$(normalize_arch_list "$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr '\n' ' ')")
     if [ -z "${GPU_ARCHS}" ]; then
-        echo "⚠️  Could not parse GPU compute capability, defaulting to sm_75"
+        echo "  Could not parse GPU compute capability, defaulting to sm_75"
         GPU_ARCHS="75"
     else
-        echo "✅ Detected GPU compute capabilities: $(format_arch_list "${GPU_ARCHS}")"
+        echo " Detected GPU compute capabilities: $(format_arch_list "${GPU_ARCHS}")"
     fi
 else
-    echo "⚠️  nvidia-smi not found, defaulting to sm_75"
+    echo "  nvidia-smi not found, defaulting to sm_75"
     GPU_ARCHS="75"
 fi
 
@@ -70,34 +70,34 @@ echo "Compilation flags: ${NVCC_FLAGS}"
 echo ""
 
 # Compile fused loss kernel
-echo "1️⃣  Compiling fused_loss.cu..."
+echo "1  Compiling fused_loss.cu..."
 nvcc ${NVCC_FLAGS} -shared fused_loss.cu -o fused_loss.so 2>&1 | grep -E "ptxas|error|warning" || true
 
 if [ -f fused_loss.so ]; then
-    echo "   ✅ fused_loss.so compiled successfully"
+    echo "    fused_loss.so compiled successfully"
     ls -lh fused_loss.so
 else
-    echo "   ❌ fused_loss.cu compilation failed"
+    echo "    fused_loss.cu compilation failed"
     exit 1
 fi
 
 echo ""
 
 # Compile fused gradient clipping kernel
-echo "2️⃣  Compiling fused_grad_clip.cu..."
+echo "2  Compiling fused_grad_clip.cu..."
 nvcc ${NVCC_FLAGS} -shared fused_grad_clip.cu -o fused_grad_clip.so 2>&1 | grep -E "ptxas|error|warning" || true
 
 if [ -f fused_grad_clip.so ]; then
-    echo "   ✅ fused_grad_clip.so compiled successfully"
+    echo "    fused_grad_clip.so compiled successfully"
     ls -lh fused_grad_clip.so
 else
-    echo "   ❌ fused_grad_clip.cu compilation failed"
+    echo "    fused_grad_clip.cu compilation failed"
     exit 1
 fi
 
 echo ""
 echo "=================================================="
-echo "✅ All kernels compiled successfully!"
+echo " All kernels compiled successfully!"
 echo "=================================================="
 echo ""
 echo "Generated files:"

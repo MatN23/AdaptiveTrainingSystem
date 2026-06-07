@@ -51,7 +51,7 @@ def detect_lang_naive(s):
     """
     Naive function for language detection, should be replaced by an independent layer
     """
-    remove_nota = "[’·°–!\"#$%&'()*+,-./:;<=>?@，。?★、…【】（）《》？“”‘’！[\\]^_`{|}~]+"
+    remove_nota = "[!\"#$%&'()*+,-./:;<=>?@?[\\]^_`{|}~]+"
     s = re.sub(remove_nota, "", s)
     s = re.sub("[0-9]", "", s).strip()
     res = re.sub("[a-zA-Z]", "", s).strip()

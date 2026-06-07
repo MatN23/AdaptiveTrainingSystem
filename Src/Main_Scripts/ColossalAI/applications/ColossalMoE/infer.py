@@ -96,7 +96,7 @@ def main():
     if coordinator.rank == 0:
         text = ["Hello my name is"]
     else:
-        text = ["What's the largest country in the world?", "How many people live in China?", "帮我续写这首诗：离离原上草"]
+        text = ["What's the largest country in the world?", "How many people live in China?", ""]
     tokenizer.pad_token = tokenizer.unk_token
     inputs = tokenizer(text, return_tensors="pt", padding=True).to(torch.cuda.current_device())
 

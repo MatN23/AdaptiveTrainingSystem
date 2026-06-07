@@ -14,14 +14,14 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Print header
-echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║           LuminaAI Native System Properties Detection                 ║${NC}"
-echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${CYAN}${NC}"
+echo -e "${CYAN}           LuminaAI Native System Properties Detection                 ${NC}"
+echo -e "${CYAN}${NC}"
 echo ""
 
 # Function to print section headers
 print_section() {
-    echo -e "\n${MAGENTA}═══ $1 ═══${NC}"
+    echo -e "\n${MAGENTA} $1 ${NC}"
 }
 
 # Function to print key-value pairs
@@ -31,17 +31,17 @@ print_kv() {
 
 # Function to print warnings
 print_warn() {
-    echo -e "  ${YELLOW}⚠ WARNING${NC}: $1"
+    echo -e "  ${YELLOW} WARNING${NC}: $1"
 }
 
 # Function to print errors
 print_error() {
-    echo -e "  ${RED}✗ ERROR${NC}: $1"
+    echo -e "  ${RED} ERROR${NC}: $1"
 }
 
 # Function to print success
 print_success() {
-    echo -e "  ${GREEN}✓${NC} $1"
+    echo -e "  ${GREEN}${NC} $1"
 }
 
 # ============================================================================
@@ -223,17 +223,17 @@ if [[ "$OS_TYPE" == "Darwin" ]] && [[ "$OS_ARCH" == "arm64" ]]; then
     
     # MPS limitations
     echo -e "\n  ${YELLOW}MPS Limitations:${NC}"
-    echo "    • DeepSpeed: Not supported"
-    echo "    • Flash Attention: Not supported (CUDA only)"
-    echo "    • BF16: Limited support (use FP16 instead)"
-    echo "    • Model Compilation: Can be unstable"
+    echo "     DeepSpeed: Not supported"
+    echo "     Flash Attention: Not supported (CUDA only)"
+    echo "     BF16: Limited support (use FP16 instead)"
+    echo "     Model Compilation: Can be unstable"
     
     # MPS recommendations
     echo -e "\n  ${GREEN}MPS Recommendations:${NC}"
-    echo "    • Start with small batch sizes (2-4)"
-    echo "    • Use FP16 precision"
-    echo "    • Disable DeepSpeed and Flash Attention"
-    echo "    • Monitor unified memory usage"
+    echo "     Start with small batch sizes (2-4)"
+    echo "     Use FP16 precision"
+    echo "     Disable DeepSpeed and Flash Attention"
+    echo "     Monitor unified memory usage"
 fi
 
 # ============================================================================
@@ -410,30 +410,30 @@ echo -e "\n  ${GREEN}System Status:${NC}"
 CAPABILITY_COUNT=0
 
 if command -v nvidia-smi &> /dev/null; then
-    echo "    ✓ NVIDIA GPU detected"
+    echo "     NVIDIA GPU detected"
     ((CAPABILITY_COUNT++))
 fi
 
 if [[ "$OS_TYPE" == "Darwin" ]] && [[ "$OS_ARCH" == "arm64" ]]; then
-    echo "    ✓ Apple Silicon (MPS) detected"
+    echo "     Apple Silicon (MPS) detected"
     ((CAPABILITY_COUNT++))
 fi
 
 if python3 -c "import torch" 2>/dev/null; then
-    echo "    ✓ PyTorch installed"
+    echo "     PyTorch installed"
     ((CAPABILITY_COUNT++))
 fi
 
 if [ "$CAPABILITY_COUNT" -eq 0 ]; then
-    echo -e "\n  ${RED}⚠ No GPU acceleration available${NC}"
+    echo -e "\n  ${RED} No GPU acceleration available${NC}"
     echo "    Training will be slow on CPU only."
     echo "    Consider cloud GPU providers: AWS, GCP, Lambda Labs, RunPod"
 else
-    echo -e "\n  ${GREEN}✓ System ready for LuminaAI training!${NC}"
+    echo -e "\n  ${GREEN} System ready for LuminaAI training!${NC}"
 fi
 
 echo ""
-echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}${NC}"
 echo ""
 
 # Save to file

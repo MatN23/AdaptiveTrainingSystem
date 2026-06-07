@@ -52,11 +52,11 @@ class EasySupervisedDataset(Dataset):
         super(EasySupervisedDataset, self).__init__()
         with open(data_file, "r", encoding="UTF-8") as f:
             all_lines = f.readlines()
-        # split to source and target ,source the characters before "回答：" including "回答：", target the characters after "回答："
+        # split to source and target ,source the characters before "" including "", target the characters after ""
         sources, targets = [], []
         for line in all_lines:
-            if "回答：" in line:
-                sep_index = line.index("回答：")
+            if "" in line:
+                sep_index = line.index("")
                 sources.append(line[: sep_index + 3])
                 targets.append(line[sep_index + 3 :] + tokenizer.eos_token)
             else:
@@ -86,7 +86,7 @@ class EasyPromptsDataset(Dataset):
         super(EasyPromptsDataset, self).__init__()
         with open(data_file, "r", encoding="UTF-8") as f:
             all_lines = f.readlines()
-            all_lines = [line if "回答：" not in line else line[: line.index("回答：") + 3] for line in all_lines]
+            all_lines = [line if "" not in line else line[: line.index("") + 3] for line in all_lines]
         self.prompts = [
             tokenizer(line, return_tensors="pt", max_length=max_length, padding="max_length", truncation=True)[
                 "input_ids"
@@ -125,7 +125,7 @@ class EasyRewardDataset(Dataset):
             all_lines = f.readlines()
         for line in tqdm(all_lines):
             data = json.loads(line)
-            prompt = "提问：" + data["prompt"] + " 回答："
+            prompt = "" + data["prompt"] + " "
 
             chosen = prompt + data["chosen"] + self.end_token
             chosen_token = tokenizer(

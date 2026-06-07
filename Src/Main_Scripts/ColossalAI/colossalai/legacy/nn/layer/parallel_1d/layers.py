@@ -759,7 +759,7 @@ class Embedding1D(ParallelLayer):
         embedding_dim (int): dimension of embedding.
         padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
             therefore, the embedding vector at padding_idx is not updated during training,
-            i.e. it remains as a fixed “pad”, defaults to None.
+            i.e. it remains as a fixed pad, defaults to None.
         dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
         weight_initializer (:class:`typing.Callable`, optional):
             he initializer of weight, defaults to normal initializer.
@@ -868,7 +868,7 @@ class VocabParallelEmbedding1D(ParallelLayer):
         embedding_dim (int): dimension of embedding.
         padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
             therefore, the embedding vector at padding_idx is not updated during training,
-            i.e. it remains as a fixed “pad”, defaults to None.
+            i.e. it remains as a fixed pad, defaults to None.
         dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
         weight_initializer (:class:`typing.Callable`, optional):
             he initializer of weight, defaults to normal initializer.

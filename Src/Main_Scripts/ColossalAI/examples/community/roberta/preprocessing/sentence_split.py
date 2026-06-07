@@ -14,18 +14,18 @@ def split_sentence(document: str, flag: str = "all", limit: int = 510) -> List[s
     sent_list = []
     try:
         if flag == "zh":
-            document = re.sub("(?P<quotation_mark>([。？！…](?![”’\"'])))", r"\g<quotation_mark>\n", document)
-            document = re.sub("(?P<quotation_mark>([。？！]|…{1,2})[”’\"'])", r"\g<quotation_mark>\n", document)
+            document = re.sub("(?P<quotation_mark>([](?![\"'])))", r"\g<quotation_mark>\n", document)
+            document = re.sub("(?P<quotation_mark>([]|{1,2})[\"'])", r"\g<quotation_mark>\n", document)
         elif flag == "en":
-            document = re.sub("(?P<quotation_mark>([.?!](?![”’\"'])))", r"\g<quotation_mark>\n", document)
+            document = re.sub("(?P<quotation_mark>([.?!](?![\"'])))", r"\g<quotation_mark>\n", document)
             document = re.sub(
                 "(?P<quotation_mark>([?!.][\"']))", r"\g<quotation_mark>\n", document
             )  # Special quotation marks
         else:
-            document = re.sub("(?P<quotation_mark>([。？！….?!](?![”’\"'])))", r"\g<quotation_mark>\n", document)
+            document = re.sub("(?P<quotation_mark>([.?!](?![\"'])))", r"\g<quotation_mark>\n", document)
 
             document = re.sub(
-                "(?P<quotation_mark>(([。？！.!?]|…{1,2})[”’\"']))", r"\g<quotation_mark>\n", document
+                "(?P<quotation_mark>(([.!?]|{1,2})[\"']))", r"\g<quotation_mark>\n", document
             )  # Special quotation marks
 
         sent_list_ori = document.splitlines()

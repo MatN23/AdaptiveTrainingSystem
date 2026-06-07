@@ -80,15 +80,15 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
     ============================================================================
     Placeholder ---->   p           o     <---- We need to keep track of grad out
                         |\________  |
-                        ↓         ↘|
+                                 |
                         f --------> b
-                        |\ \_____   ↑
-                        | \      ↘ /
+                        |\ \_____   
+                        | \       /
                         f  f ----> b      <---- Not every forward result needs to be saved for backward
-                        |   \____  ↑
-                         ↘      ↘|
+                        |   \____  
+                               |
                            f ----> b      <---- Backward can be freed as soon as it is required no more.
-                             ↘ ↗
+                              
                                l
     =============================================================================
     Args:

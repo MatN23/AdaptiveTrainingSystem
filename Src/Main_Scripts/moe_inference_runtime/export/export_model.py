@@ -25,9 +25,9 @@ sys.path.insert(0, os.getcwd())
 try:
     from core.model import DeepSeekTransformer, DeepSeekConfig
     from core.tokenizer import ConversationTokenizer
-    print("✓ Successfully imported model classes")
+    print(" Successfully imported model classes")
 except ImportError as e:
-    print(f"⚠️  Could not import model.py: {e}")
+    print(f"  Could not import model.py: {e}")
     DeepSeekTransformer = None
     DeepSeekConfig = None
 
@@ -35,7 +35,7 @@ except ImportError as e:
 try:
     from config.config_manager import Config
 except ImportError:
-    print("⚠️  Could not import config module - creating dummy")
+    print("  Could not import config module - creating dummy")
     import types
     
     # Create dummy config module structure
@@ -77,7 +77,7 @@ def precompute_rope_cache(max_seq_len, head_dim, theta=10000.0):
 def export_model(model, config, output_path):
     """Export model to binary format."""
     
-    print(f"🔄 Exporting model to {output_path}...")
+    print(f" Exporting model to {output_path}...")
     
     with open(output_path, 'wb') as f:
         # Header
@@ -126,11 +126,11 @@ def export_model(model, config, output_path):
         # RoPE theta
         f.write(struct.pack('f', getattr(config, 'rope_theta', 10000.0)))
         
-        print("✓ Config written")
+        print(" Config written")
         
         # Embeddings
         export_tensor(f, model.embed_tokens.weight)
-        print(f"✓ Embeddings: {model.embed_tokens.weight.shape}")
+        print(f" Embeddings: {model.embed_tokens.weight.shape}")
         
         # Layers
         for i, layer in enumerate(model.layers):
@@ -190,7 +190,7 @@ def export_model(model, config, output_path):
         
         # LM head
         export_tensor(f, model.lm_head.weight)
-        print(f"✓ LM head: {model.lm_head.weight.shape}")
+        print(f" LM head: {model.lm_head.weight.shape}")
         
         # RoPE cache
         head_dim = config.hidden_size // config.num_heads
@@ -201,10 +201,10 @@ def export_model(model, config, output_path):
         )
         export_tensor(f, cos_cache)
         export_tensor(f, sin_cache)
-        print(f"✓ RoPE cache: {cos_cache.shape}")
+        print(f" RoPE cache: {cos_cache.shape}")
     
     file_size = os.path.getsize(output_path)
-    print(f"\n✅ Export complete: {output_path} ({file_size / 1024 / 1024:.1f} MB)")
+    print(f"\n Export complete: {output_path} ({file_size / 1024 / 1024:.1f} MB)")
 
 
 def main():
@@ -216,11 +216,11 @@ def main():
     args = parser.parse_args()
     
     if not os.path.exists(args.model):
-        print(f"❌ Model not found: {args.model}")
+        print(f" Model not found: {args.model}")
         return 1
     
     # Load checkpoint
-    print(f"📦 Loading checkpoint: {args.model}")
+    print(f" Loading checkpoint: {args.model}")
     checkpoint = torch.load(args.model, map_location='cpu', weights_only=False)
     
     # Extract model and config
@@ -258,11 +258,11 @@ def main():
             config = SimpleConfig(**config_dict)
     elif config is not None:
         # Use config from checkpoint if no external config provided
-        print("✓ Using config from checkpoint")
+        print(" Using config from checkpoint")
     
     # Create model
     if config is None:
-        print("❌ Config not found in checkpoint. Please provide --config")
+        print(" Config not found in checkpoint. Please provide --config")
         return 1
     
     if DeepSeekTransformer:
@@ -270,14 +270,14 @@ def main():
         # Use strict=False to handle architecture differences between checkpoint and current model
         missing, unexpected = model.load_state_dict(model_state, strict=False)
         if missing:
-            print(f"⚠️  Missing keys (will use fresh weights): {len(missing)} keys")
+            print(f"  Missing keys (will use fresh weights): {len(missing)} keys")
             if len(missing) <= 10:
                 for k in missing:
                     print(f"     - {k}")
         if unexpected:
-            print(f"⚠️  Unexpected keys (from old checkpoint): {len(unexpected)} keys")
+            print(f"  Unexpected keys (from old checkpoint): {len(unexpected)} keys")
     else:
-        print("❌ Could not import DeepSeekTransformer")
+        print(" Could not import DeepSeekTransformer")
         return 1
     
     model.eval()

@@ -6,69 +6,69 @@ from langchain.prompts.prompt import PromptTemplate
 
 # Below are Chinese retrieval qa prompts
 
-_CUSTOM_SUMMARIZER_TEMPLATE_ZH = """请递进式地总结所提供的当前对话，将当前对话的摘要内容添加到先前已有的摘要上，返回一个融合了当前对话的新的摘要。
+_CUSTOM_SUMMARIZER_TEMPLATE_ZH = """
 
-例1:
-已有的摘要:
-人类问Assistant对人工智能的看法。人工智能认为人工智能是一种善的力量。
+1:
+:
+Assistant
 
-新的对话内容:
-人类: 为什么你认为人工智能是一种好的力量?
-Assistant: 因为人工智能将帮助人类充分发挥潜力。
+:
+: ?
+Assistant: 
 
-新的摘要:
-人类问Assistant对人工智能的看法。人工智能认为人工智能是一种积极的力量，因为它将帮助人类充分发挥潜力。
-示例结束
+:
+Assistant
 
-已有的摘要:
+
+:
 {summary}
 
-新的对话内容:
+:
 {new_lines}
 
-新的摘要:"""
+:"""
 
 
-_ZH_RETRIEVAL_QA_PROMPT = """<指令>根据下列支持文档和对话历史，简洁和专业地来回答问题。如果无法从支持文档中得到答案，请说 “根据已知信息无法回答该问题”。回答中请不要涉及支持文档中没有提及的信息，答案请使用中文。 </指令>
+_ZH_RETRIEVAL_QA_PROMPT = """<>  </>
 
 {context}
 
-<对话历史>
+<>
 {chat_history}
-</对话历史>
+</>
 
-<问题>{question}</问题>
-答案："""
+<>{question}</>
+"""
 
-ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS = ["无法回答该问题"]
-ZH_RETRIEVAL_QA_REJECTION_ANSWER = "抱歉，根据提供的信息无法回答该问题。"
+ZH_RETRIEVAL_QA_TRIGGER_KEYWORDS = [""]
+ZH_RETRIEVAL_QA_REJECTION_ANSWER = ""
 
 
-_ZH_RETRIEVAL_CLASSIFICATION_USE_CASE = """使用提供的参考案例判断客户遇到的故障所属的故障原因分类。
+_ZH_RETRIEVAL_CLASSIFICATION_USE_CASE = """
 
-背景信息:
+:
 {context}
 
-客服记录:
+:
 {question}
-故障原因分类："""
+"""
 
-_ZH_DISAMBIGUATION_PROMPT = """你是一个乐于助人、恭敬而诚实的助手。你总是按照指示去做。
-请用聊天记录中提到的具体名称或实体名称替换给定句子中的任何模糊或有歧义的指代，如果没有提供聊天记录或句子中不包含模糊或有歧义的指代，则只输出原始句子。您的输出应该是消除歧义的句子本身(与“消除歧义的句子:”在同一行中)，并且不包含任何其他内容。
+_ZH_DISAMBIGUATION_PROMPT = """
+(:)
 
-下面是一个例子:
-聊天记录:
-用户: 我有一个朋友，张三。你认识他吗?
-Assistant: 我认识一个叫张三的人
+:
+:
+: ?
+Assistant: 
 
-句子: 他最喜欢的食物是什么?
-消除歧义的句子: 张三最喜欢的食物是什么?
+: ?
+: ?
 
-聊天记录:
+:
 {chat_history}
 
-句子: {input}
-消除歧义的句子:"""
+: {input}
+:"""
 
 
 # Below are English retrieval qa prompts

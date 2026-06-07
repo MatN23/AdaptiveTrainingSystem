@@ -233,7 +233,7 @@ class ColoTracer(Tracer):
             args_metas, kwargs_metas = extract_meta(*args, **kwargs)
 
             if kind == "call_function":
-                # Our meta data will not record the nn.parameter.Parameter attribute。
+                # Our meta data will not record the nn.parameter.Parameter attribute
                 # It works fine in most of the case, but it may cause some problems after
                 # the bias addition manipulation.
                 # Therefore, I need to record the nn.parameter.Parameter attribute for the operation
@@ -259,7 +259,7 @@ class ColoTracer(Tracer):
                     meta_out = torch.nn.Parameter(meta_out)
 
             elif kind == "call_method":
-                # Our meta data will not record the nn.parameter.Parameter attribute。
+                # Our meta data will not record the nn.parameter.Parameter attribute
                 # It works fine in most of the case, but it may cause some problems after
                 # the bias addition manipulation.
                 # Therefore, I need to record the nn.parameter.Parameter attribute for the operation

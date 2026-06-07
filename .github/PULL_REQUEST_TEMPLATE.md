@@ -19,15 +19,15 @@ Relates to #
 
 <!-- Mark the relevant option with an 'x' -->
 
-- [ ] 🐛 Bug fix (non-breaking change which fixes an issue)
-- [ ] ✨ New feature (non-breaking change which adds functionality)
-- [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] 📝 Documentation update
-- [ ] ⚡ Performance improvement
-- [ ] ♻️ Code refactoring
-- [ ] ✅ Test addition or update
-- [ ] 🔧 Configuration change
-- [ ] 🎨 UI/UX improvement
+- [ ]  Bug fix (non-breaking change which fixes an issue)
+- [ ]  New feature (non-breaking change which adds functionality)
+- [ ]  Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ]  Documentation update
+- [ ]  Performance improvement
+- [ ]  Code refactoring
+- [ ]  Test addition or update
+- [ ]  Configuration change
+- [ ]  UI/UX improvement
 
 ---
 
@@ -236,7 +236,7 @@ Depends on: #
 ---
 
 <!-- 
-Thank you for contributing to LuminaAI! 🚀
+Thank you for contributing to LuminaAI! 
 
 Please ensure you've:
 1. Read CONTRIBUTING.md

@@ -29,7 +29,7 @@ def test_to_scalar():
     # Test with None
     assert _to_scalar(None) == 0.0
     
-    print("✅ _to_scalar tests passed")
+    print(" _to_scalar tests passed")
 
 def test_scaler_with_tensors():
     print("Testing EnhancedChinchillaScaler with tensors...")
@@ -98,15 +98,15 @@ def test_scaler_with_tensors():
     report = scaler.get_status_report()
     print(f"Current loss from report: {report['training']['current_loss']}")
     
-    print("✅ EnhancedChinchillaScaler tensor handling tests passed")
+    print(" EnhancedChinchillaScaler tensor handling tests passed")
 
 if __name__ == "__main__":
     try:
         test_to_scalar()
         test_scaler_with_tensors()
-        print("\n🎉 All tests passed!")
+        print("\n All tests passed!")
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

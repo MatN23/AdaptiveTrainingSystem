@@ -44,13 +44,13 @@ Mr. Gardner bakes a total of 20 + 25 + 35 = 80 sweet treats
 Each student will receive 80 / 20 = 4 sweet treats
 The answer is 4
 
-Question: A used car lot has 24 cars and motorcycles (in total) for sale. A third of the vehicles are motorcycles, and a quarter of the cars have a spare tire included. How many tires are on the used car lot’s vehicles in all?
+Question: A used car lot has 24 cars and motorcycles (in total) for sale. A third of the vehicles are motorcycles, and a quarter of the cars have a spare tire included. How many tires are on the used car lots vehicles in all?
 Let's think step by step
 The used car lot has 24 / 3 = 8 motorcycles with 2 tires each.
 The lot has 24 - 8 = 16 cars for sale
 There are 16 / 4 = 4 cars with a spare tire with 5 tires each.
 The lot has 16 - 4 = 12 cars with 4 tires each.
-Thus, the used car lot’s vehicles have 8 * 2 + 4 * 5 + 12 * 4 = 16 + 20 + 48 = 84 tires in all.
+Thus, the used car lots vehicles have 8 * 2 + 4 * 5 + 12 * 4 = 16 + 20 + 48 = 84 tires in all.
 The answer is 84
 
 Question: Norma takes her clothes to the laundry. She leaves 9 T-shirts and twice as many sweaters as T-shirts in the washer. When she returns she finds 3 sweaters and triple the number of T-shirts. How many items are missing?

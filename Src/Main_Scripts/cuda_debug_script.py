@@ -23,10 +23,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import moe_cuda_ops
     CUDA_AVAILABLE = True
-    print("✅ CUDA ops imported successfully")
+    print(" CUDA ops imported successfully")
 except ImportError as e:
     CUDA_AVAILABLE = False
-    print(f"❌ CUDA ops import failed: {e}")
+    print(f" CUDA ops import failed: {e}")
 
 # Check if CUDA is actually available
 print(f"PyTorch CUDA available: {torch.cuda.is_available()}")
@@ -81,7 +81,7 @@ class SimplifiedMoELayer(nn.Module):
             'total_forwards': 0,
         }
         
-        print(f"🔧 MoE Layer: {config.num_experts} experts, top-{config.moe_top_k}")
+        print(f" MoE Layer: {config.num_experts} experts, top-{config.moe_top_k}")
         print(f"   CUDA ops enabled: {self.use_cuda_ops}")
     
     def _pytorch_dispatch(self, tokens, top_k_indices, num_experts, capacity):
@@ -178,7 +178,7 @@ class SimplifiedMoELayer(nn.Module):
                     self.call_counts['cuda_routing'] += 1
                     routing_method = "CUDA"
                 except Exception as e:
-                    print(f"⚠️  CUDA routing failed: {e}, falling back to PyTorch")
+                    print(f"  CUDA routing failed: {e}, falling back to PyTorch")
                     # Fallback to PyTorch
                     top_k_values, top_k_indices = torch.topk(
                         gate_logits / self.routing_temperature, 
@@ -229,7 +229,7 @@ class SimplifiedMoELayer(nn.Module):
                 self.timings['dispatch'] += (time.perf_counter() - start) * 1000
                 dispatch_method = "CUDA"
             except Exception as e:
-                print(f"⚠️  CUDA dispatch failed: {e}, falling back to PyTorch")
+                print(f"  CUDA dispatch failed: {e}, falling back to PyTorch")
                 # PyTorch fallback
                 expert_inputs, token_map = self._pytorch_dispatch(
                     x_flat, top_k_indices, self.num_experts, capacity
@@ -271,7 +271,7 @@ class SimplifiedMoELayer(nn.Module):
                 self.timings['combine'] += (time.perf_counter() - start) * 1000
                 combine_method = "CUDA"
             except Exception as e:
-                print(f"⚠️  CUDA combine failed: {e}, falling back to PyTorch")
+                print(f"  CUDA combine failed: {e}, falling back to PyTorch")
                 # PyTorch fallback
                 output = self._pytorch_combine(
                     expert_outputs, token_map, top_k_probs, total_tokens
@@ -336,7 +336,7 @@ class SimplifiedMoELayer(nn.Module):
         print(f"PyTorch routing calls: {self.call_counts['pytorch_routing']}")
         
         if self.call_counts['cuda_routing'] == 0:
-            print("\n❌ WARNING: CUDA ROUTING NEVER USED!")
+            print("\n WARNING: CUDA ROUTING NEVER USED!")
             print("   Your CUDA kernels are NOT being called!")
             print("   Possible reasons:")
             print("   - Problem size below thresholds")
@@ -344,7 +344,7 @@ class SimplifiedMoELayer(nn.Module):
             print("   - Should_use_cuda() returning False")
         else:
             cuda_pct = self.call_counts['cuda_routing'] / n * 100
-            print(f"\n✅ CUDA routing used {self.call_counts['cuda_routing']}/{n} times ({cuda_pct:.1f}%)")
+            print(f"\n CUDA routing used {self.call_counts['cuda_routing']}/{n} times ({cuda_pct:.1f}%)")
         
         print(f"\n{'Operation':<20} {'Total (ms)':<12} {'Avg (ms)':<12} {'% of Total':<12}")
         print("-"*70)
@@ -366,20 +366,20 @@ class SimplifiedMoELayer(nn.Module):
         operation_times = {k: v for k, v in self.timings.items() if k != 'total'}
         max_time = max(operation_times.values())
         bottleneck = [k for k, v in operation_times.items() if v == max_time][0]
-        print(f"\n🔍 BOTTLENECK: {bottleneck} ({max_time/n:.4f} ms per call)")
+        print(f"\n BOTTLENECK: {bottleneck} ({max_time/n:.4f} ms per call)")
         
         if bottleneck == 'expert_compute':
-            print("   ✅ This is EXPECTED - expert computation should dominate")
+            print("    This is EXPECTED - expert computation should dominate")
             print("   The experts are doing real work (matrix multiplications)")
         elif bottleneck == 'dispatch' or bottleneck == 'combine':
-            print("   ⚠️  Dispatch/combine is slow - CUDA kernels should help here!")
+            print("     Dispatch/combine is slow - CUDA kernels should help here!")
             if self.call_counts['cuda_routing'] == 0:
                 print("   But CUDA isn't being used - check thresholds")
         elif bottleneck == 'pytorch_routing':
-            print("   ❌ Using PyTorch routing instead of CUDA!")
+            print("    Using PyTorch routing instead of CUDA!")
             print("   This means CUDA acceleration is NOT working")
         elif bottleneck == 'cuda_routing':
-            print("   ⚠️  CUDA routing is the bottleneck")
+            print("     CUDA routing is the bottleneck")
             print("   This is unusual - may indicate kernel inefficiency")
         
         # Speedup analysis
@@ -388,15 +388,15 @@ class SimplifiedMoELayer(nn.Module):
             pytorch_avg = self.timings['pytorch_routing'] / max(self.call_counts['pytorch_routing'], 1)
             if cuda_avg > 0:
                 speedup = pytorch_avg / cuda_avg
-                print(f"\n📊 ROUTING SPEEDUP: {speedup:.2f}x")
+                print(f"\n ROUTING SPEEDUP: {speedup:.2f}x")
                 if speedup > 2.0:
-                    print(f"   ✅ EXCELLENT - CUDA is {speedup:.1f}x faster than PyTorch!")
+                    print(f"    EXCELLENT - CUDA is {speedup:.1f}x faster than PyTorch!")
                 elif speedup > 1.2:
-                    print(f"   ✅ GOOD - CUDA is {speedup:.1f}x faster")
+                    print(f"    GOOD - CUDA is {speedup:.1f}x faster")
                 elif speedup > 0.8:
-                    print(f"   ⚠️  Marginal speedup - only {speedup:.1f}x")
+                    print(f"     Marginal speedup - only {speedup:.1f}x")
                 else:
-                    print(f"   ❌ CUDA is SLOWER - only {speedup:.1f}x (problem too small?)")
+                    print(f"    CUDA is SLOWER - only {speedup:.1f}x (problem too small?)")
 
 
 def debug_moe_performance(config):
@@ -460,10 +460,10 @@ def debug_moe_performance(config):
         print(f"  Hidden: {config.hidden_size} (threshold: {MoECUDAOps.CUDA_THRESHOLD_HIDDEN})")
         
         if not should_use:
-            print("\n⚠️  Problem size is BELOW CUDA thresholds!")
+            print("\n  Problem size is BELOW CUDA thresholds!")
             print("   Try increasing batch_size or seq_len for better speedup")
     except ImportError:
-        print("⚠️  Could not import MoECUDAOps for threshold checks")
+        print("  Could not import MoECUDAOps for threshold checks")
     
     print("\n" + "="*70)
 

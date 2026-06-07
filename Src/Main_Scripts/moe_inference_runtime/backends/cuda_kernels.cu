@@ -30,7 +30,7 @@ static void init_cuda() {
         
         cudaDeviceProp prop;
         cudaGetDeviceProperties(&prop, 0);
-        printf("✓ CUDA initialized: %s\n", prop.name);
+        printf(" CUDA initialized: %s\n", prop.name);
     }
 }
 

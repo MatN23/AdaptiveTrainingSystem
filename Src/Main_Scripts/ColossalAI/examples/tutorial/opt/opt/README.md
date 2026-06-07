@@ -27,7 +27,7 @@ the tokenization). This training script is adapted from the [HuggingFace Languag
 ## Our Modifications
 We adapt the OPT training code to ColossalAI by leveraging Gemini and ZeRO DDP.
 
-## 🚀Quick Start for Tutorial
+## Quick Start for Tutorial
 1. Install the dependency
 ```bash
 pip install datasets accelerate
@@ -63,7 +63,7 @@ bash ./run_clm_synthetic.sh <batch-size-per-gpu> <mem-cap> <model> <gpu-num>
 ```
 
 ## Remarkable Performance
-On a single GPU, Colossal-AI’s automatic strategy provides remarkable performance gains from the ZeRO Offloading strategy by Microsoft DeepSpeed.
+On a single GPU, Colossal-AIs automatic strategy provides remarkable performance gains from the ZeRO Offloading strategy by Microsoft DeepSpeed.
 Users can experience up to a 40% speedup, at a variety of model scales. However, when using a traditional deep learning training framework like PyTorch, a single GPU can no longer support the training of models at such a scale.
 
 <p align="center">

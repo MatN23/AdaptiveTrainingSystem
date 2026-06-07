@@ -41,7 +41,7 @@ def test_zh_retrievalQA():
         en_model_name=en_model_name,
         sql_file_path=sql_file_path,
     )
-    ans = qa_session.run("哪家公司在经营酒店业务？", which_language="zh")
+    ans = qa_session.run("", which_language="zh")
     print(ans)
 
 

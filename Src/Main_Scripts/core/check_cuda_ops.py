@@ -34,24 +34,24 @@ try:
     print("-" * 30)
     print("BACKEND CONFIGURATION")
     print("-" * 30)
-    print(f"Unified Backend System: {'✅ Enabled' if USE_UNIFIED_BACKEND else '❌ Disabled'}")
+    print(f"Unified Backend System: {' Enabled' if USE_UNIFIED_BACKEND else ' Disabled'}")
     print(f"Selected Backend:       {BACKEND.upper()}")
     
     print("-" * 30)
     print("KERNEL STATUS")
     print("-" * 30)
-    print(f"Triton Support:         {'✅ Available' if HAS_TRITON else '❌ Missing'}")
-    print(f"CUDA Fused Ops:         {'✅ Active' if HAS_TRANSFORMER_CUDA else '❌ Inactive'}")
+    print(f"Triton Support:         {' Available' if HAS_TRITON else ' Missing'}")
+    print(f"CUDA Fused Ops:         {' Active' if HAS_TRANSFORMER_CUDA else ' Inactive'}")
     print(f"  - C++ Extension:      {'Loaded' if HAS_CUDA_OPS else 'Not Loaded'}")
-    print(f"Metal Fused Ops:        {'✅ Active' if HAS_METAL_OPS else '❌ Inactive'}")
+    print(f"Metal Fused Ops:        {' Active' if HAS_METAL_OPS else ' Inactive'}")
     
     if HAS_TRANSFORMER_CUDA or HAS_METAL_OPS:
-        print("\n✅ CONCLUSION: Optimized Kernels are ENABLED.")
+        print("\n CONCLUSION: Optimized Kernels are ENABLED.")
     else:
-        print("\n⚠️  CONCLUSION: Using Standard PyTorch Kernels (Reference Implementation).")
+        print("\n  CONCLUSION: Using Standard PyTorch Kernels (Reference Implementation).")
         
 except ImportError as e:
-    print(f"\n❌ Error importing core modules: {e}")
+    print(f"\n Error importing core modules: {e}")
     print("Make sure you are running from 'Src/Main_Scripts' directory.")
 
 print("="*60)

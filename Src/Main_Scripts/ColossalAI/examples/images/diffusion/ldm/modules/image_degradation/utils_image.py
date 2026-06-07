@@ -55,7 +55,7 @@ def surf(Z, cmap="rainbow", figsize=None):
     yy = np.arange(0, h, 1)
     X, Y = np.meshgrid(xx, yy)
     ax3.plot_surface(X, Y, Z, cmap=cmap)
-    # ax3.contour(X,Y,Z, zdim='z',offset=-2，cmap=cmap)
+    # ax3.contour(X,Y,Z, zdim='z',offset=-2cmap=cmap)
     plt.show()
 
 

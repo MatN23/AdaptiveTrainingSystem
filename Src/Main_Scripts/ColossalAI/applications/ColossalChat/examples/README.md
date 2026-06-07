@@ -406,14 +406,14 @@ You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the 
 - We support 2 kinds of loss function named `log_sig`(used by OpenAI) and `log_exp`(used by Anthropic).
 - We log the training accuracy `train/acc`, `reward_chosen` and `reward_rejected` to monitor progress during training.
 - We use cosine-reducing lr-scheduler for RM training.
-- We set value_head as 1 liner layer and initialize the weight of value_head using N(0，1/(d_model + 1)) distribution.
+- We set value_head as 1 liner layer and initialize the weight of value_head using N(01/(d_model + 1)) distribution.
 
 #### Note on Reward Model Training
 
 Before you move on the next stage, please check the following list to ensure that your reward model is stable and robust. You can check the reward chart and the accuracy chart on wandb.
 - The mean reward for chosen data is much higher than those for rejected data
 - The accuracy is larger than 0.5 by a significant margin (usually should be greater than 0.6)
-- Optional：check the reward is positive for chosen data vice versa
+- Optionalcheck the reward is positive for chosen data vice versa
 
 Your training reward curves should look similar to the following charts.
 <p align="center">

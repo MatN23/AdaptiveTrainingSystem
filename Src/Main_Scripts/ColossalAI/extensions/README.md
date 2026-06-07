@@ -1,20 +1,20 @@
-# 🔌 Extensions
+#  Extensions
 
-## 📌 Table of Contents
+##  Table of Contents
 
-- [🔌 Extensions](#-extensions)
-  - [📌 Table of Contents](#-table-of-contents)
-  - [📚 Introduction](#-introduction)
-  - [🪅 Design](#-design)
-  - [🛠 API Usage](#-api-usage)
-  - [🏗 Write a customized extension](#-write-a-customized-extension)
-  - [✏️ Acknowledgement](#️-acknowledgement)
+- [ Extensions](#-extensions)
+  - [ Table of Contents](#-table-of-contents)
+  - [ Introduction](#-introduction)
+  - [ Design](#-design)
+  - [ API Usage](#-api-usage)
+  - [ Write a customized extension](#-write-a-customized-extension)
+  - [ Acknowledgement](#-acknowledgement)
 
-## 📚 Introduction
+##  Introduction
 
 This module is a designed to offer extensions to the existing ColossalAI framework. It is designed to be a collection of high-performance kernels to speed up the training and inference process. Different from writing an individual kernel, the `extensions` module offers a layer of abstraction to collate kernels written in different compiler backends and for different hardware backends in an organized way. Please see the design and usage in the sections below.
 
-## 🪅 Design
+##  Design
 
 The `extensions` module is a sub-module of the `colossalai.kernel` module. This module is put at the project root directory so that it can be imported for AOT (ahead-of-time) build. At the same time, it is symbolically linked at the `colossalai.kernel.extensions` path for runtime build.
 
@@ -31,7 +31,7 @@ kernel = CPUAdamLoader().load()
 
 ![](https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/extensions.png?raw=true)
 
-## 🛠 API Usage
+##  API Usage
 
 To make the `colossalai.kernel` easy to use, we expose some simple APIs and you can use them based on your scenario.
 
@@ -83,7 +83,7 @@ CPUAdamLoader.register_extension(MyExtension)
 kernel = CPUAdamLoader().load()
 ```
 
-## 🏗 Write a customized extension
+##  Write a customized extension
 
 It is easy to write a customized extension. If you have experience writing CUDA/triton kernels, you should get familiar with the process quickly.
 
@@ -134,7 +134,7 @@ class MyExtension(_Extension):
 
 ```
 
-## ✏️ Acknowledgement
+##  Acknowledgement
 
 This module is written from scratch but we learnt a lot by looking into [DeepSpeed'
 s op_builder](https://github.com/microsoft/DeepSpeed/tree/master/op_builder). We wish to acknowledge their great work and contributions to the open-source community.

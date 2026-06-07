@@ -9,7 +9,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 class ChineseTextSplitter(RecursiveCharacterTextSplitter):
     def __init__(self, separators: Optional[List[str]] = None, is_separator_regrx: bool = False, **kwargs: Any):
-        self._separators = separators or ["\n\n", "\n", "，", "。", "！", "？", "?"]
+        self._separators = separators or ["\n\n", "\n", "", "", "", "", "?"]
         if "chunk_size" not in kwargs:
             kwargs["chunk_size"] = 50
         if "chunk_overlap" not in kwargs:
@@ -28,11 +28,11 @@ class ChineseTextSplitter(RecursiveCharacterTextSplitter):
                     pos = text.find(segs[i])
                     pos_end = pos + len(segs[i])
                     if i > 0:
-                        last_sentence_start = max([text.rfind(m, 0, pos) for m in ["。", "！", "？"]])
+                        last_sentence_start = max([text.rfind(m, 0, pos) for m in ["", "", ""]])
                         pos = last_sentence_start + 1
                         segs[i] = str(text[pos:pos_end])
                     if i != len(segs) - 1:
-                        next_sentence_end = max([text.find(m, pos_end) for m in ["。", "！", "？"]])
+                        next_sentence_end = max([text.find(m, pos_end) for m in ["", "", ""]])
                         segs[i] = str(text[pos : next_sentence_end + 1])
                 splitted.append(segs[i])
         if len(splitted) <= 1:

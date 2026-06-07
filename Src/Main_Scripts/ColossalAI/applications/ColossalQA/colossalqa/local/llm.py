@@ -8,7 +8,7 @@ model_path = os.environ.get("ZH_MODEL_PATH")
 model_name = "chatglm2"
 colossal_api = ColossalAPI(model_name, model_path)
 llm = ColossalLLM(n=1, api=colossal_api)
-TEST_PROMPT_CHATGLM="续写文章：惊蛰一过，春寒加剧。先是料料峭峭，继而雨季开始，"
+TEST_PROMPT_CHATGLM=""
 logger.info(llm(TEST_PROMPT_CHATGLM, max_new_tokens=100), verbose=True)
 
 """

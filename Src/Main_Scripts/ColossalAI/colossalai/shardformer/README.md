@@ -1,32 +1,32 @@
-# ⚡️ ShardFormer
+#  ShardFormer
 
-## 📚 Table of Contents
+##  Table of Contents
 
-- [⚡️ ShardFormer](#️-shardformer)
-  - [📚 Table of Contents](#-table-of-contents)
-  - [🔗 Introduction](#-introduction)
-  - [🔨 Usage](#-usage)
+- [ ShardFormer](#-shardformer)
+  - [ Table of Contents](#-table-of-contents)
+  - [ Introduction](#-introduction)
+  - [ Usage](#-usage)
     - [Quick Start](#quick-start)
     - [Write your own policy](#write-your-own-policy)
-  - [🗺 Roadmap](#-roadmap)
-  - [💡 API Design](#-api-design)
+  - [ Roadmap](#-roadmap)
+  - [ API Design](#-api-design)
     - [Distributed Modules](#distributed-modules)
     - [Shard Config](#shard-config)
     - [Policy](#policy)
     - [Model Sharder](#model-sharder)
     - [User-facing API](#user-facing-api)
-  - [⌨️ Development Notes](#️-development-notes)
+  - [ Development Notes](#-development-notes)
     - [Add New Policy to Shardformer](#add-new-policy-to-shardformer)
     - [Write Your Unit Testing](#write-your-unit-testing)
-  - [📊 Benchmarking](#-benchmarking)
+  - [ Benchmarking](#-benchmarking)
     - [System Performance](#system-performance)
     - [Convergence](#convergence)
 
-## 🔗 Introduction
+##  Introduction
 
 **Shardformer** is a module that automatically parallelizes the mainstream models in libraries such as HuggingFace and TIMM. This module aims to make parallelization hassle-free for users who are not from the system background.
 
-## 🔨 Usage
+##  Usage
 
 ### Quick Start
 
@@ -105,7 +105,7 @@ shard_former.optimize(model, my_policy)
 
 ```
 
-## 🗺 Roadmap
+##  Roadmap
 
 We will follow this roadmap to develop Shardformer:
 
@@ -116,18 +116,18 @@ We will follow this roadmap to develop Shardformer:
 
 |    model    | tensor parallel | pipeline parallel | lazy initialization | xformer | flash attn2 | jit fused operator | fused layernorm | sequence parallel | overlap |
 |:-----------:|:---------------:|:-----------------:|:-------------------:|:-------:|:-----------:|:------------------:|:---------------:|:-----------------:|:-------:|
-|    bert     |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
-|     t5      |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
-| llama V1/V2 |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
-|    gpt2     |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
-|     opt     |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
-|    bloom    |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
-|  chatglm2   |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [√]         |       [√]       |        [√]        |   [√]   |
-|     vit     |       [√]       |        [√]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
-|   whisper   |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [ ]         |       [√]       |        [ ]        |   [ ]   |
-|     sam     |       [√]       |        [ ]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
-|    blip2    |       [√]       |        [ ]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
-|   falcon    |       [√]       |        [√]        |         [√]         |   [√]   |     [√]     |        [ ]         |       [√]       |        [ ]        |   [ ]   |
+|    bert     |       []       |        []        |         []         |   []   |     []     |        []         |       []       |        []        |   []   |
+|     t5      |       []       |        []        |         []         |   []   |     []     |        []         |       []       |        [ ]        |   [ ]   |
+| llama V1/V2 |       []       |        []        |         []         |   []   |     []     |        []         |       []       |        [ ]        |   [ ]   |
+|    gpt2     |       []       |        []        |         []         |   []   |     []     |        []         |       []       |        []        |   []   |
+|     opt     |       []       |        []        |         []         |   []   |     []     |        []         |       []       |        [ ]        |   [ ]   |
+|    bloom    |       []       |        []        |         []         |   []   |     []     |        []         |       []       |        []        |   []   |
+|  chatglm2   |       []       |        []        |         []         |   []   |     []     |        []         |       []       |        []        |   []   |
+|     vit     |       []       |        []        |         [ ]         |   []   |     []     |        []         |       []       |        [ ]        |   [ ]   |
+|   whisper   |       []       |        []        |         []         |   []   |     []     |        [ ]         |       []       |        [ ]        |   [ ]   |
+|     sam     |       []       |        [ ]        |         [ ]         |   []   |     []     |        []         |       []       |        [ ]        |   [ ]   |
+|    blip2    |       []       |        [ ]        |         [ ]         |   []   |     []     |        []         |       []       |        [ ]        |   [ ]   |
+|   falcon    |       []       |        []        |         []         |   []   |     []     |        [ ]         |       []       |        [ ]        |   [ ]   |
 |   roberta   |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
 |   albert    |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
 |    ernie    |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
@@ -137,10 +137,10 @@ We will follow this roadmap to develop Shardformer:
 |    swin     |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
 |   swin V2   |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
 |    qwen     |       [ ]       |        [ ]        |         [ ]         |   [ ]   |     [ ]     |        [ ]         |       [ ]       |        [ ]        |   [ ]   |
-|   mistral   |       [√]       |        [ ]        |         [ ]         |   [√]   |     [√]     |        [√]         |       [√]       |        [ ]        |   [ ]   |
+|   mistral   |       []       |        [ ]        |         [ ]         |   []   |     []     |        []         |       []       |        [ ]        |   [ ]   |
 
 
-## 💡 API Design
+##  API Design
 
 We will discuss the major components of `ShardFormer` below to help you better understand how things work.
 This section serves as the design doc for Shardformer and the function signature might differ from the actual implementation.
@@ -355,7 +355,7 @@ class ShardFormer:
         return model, shared_params
 ```
 
-## ⌨️ Development Notes
+##  Development Notes
 
 ### Add New Policy to Shardformer
 
@@ -452,7 +452,7 @@ pytest tests/test_shardformer/test_model/<your-file>.py
 pytest tests/test_shardformer
 ```
 
-## 📊 Benchmarking
+##  Benchmarking
 
 ### System Performance
 

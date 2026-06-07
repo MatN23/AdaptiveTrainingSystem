@@ -107,7 +107,7 @@ if __name__ == "__main__":
     while True:
         user_input = input("User: ")
         if "END" == user_input:
-            print("Agent: Happy to chat with you ：)")
+            print("Agent: Happy to chat with you )")
             break
         agent_response = retrieval_chain.run(
             query=user_input,

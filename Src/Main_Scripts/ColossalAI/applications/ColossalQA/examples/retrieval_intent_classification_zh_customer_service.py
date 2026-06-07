@@ -89,9 +89,9 @@ if __name__ == "__main__":
     while True:
         user_input = input("User: ")
         if "END" == user_input:
-            print("Agent: Happy to chat with you ：)")
+            print("Agent: Happy to chat with you )")
             break
-        # 要使用和custom_service_classification.json 里的key 类似的句子做输入
+        # custom_service_classification.json key 
         agent_response = retrieval_chain.run(query=user_input, stop=["Human: "])
         agent_response = agent_response.split("\n")[0]
         print(f"Agent: {agent_response}")

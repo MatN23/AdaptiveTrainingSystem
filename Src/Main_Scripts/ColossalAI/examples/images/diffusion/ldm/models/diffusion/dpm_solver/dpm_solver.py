@@ -967,7 +967,7 @@ class DPM_Solver:
                 The type slightly impacts the performance. We recommend to use 'dpm_solver' type.
         Returns:
             x_0: A pytorch tensor. The approximated solution at time `t_0`.
-        [1] A. Jolicoeur-Martineau, K. Li, R. Piché-Taillefer, T. Kachman, and I. Mitliagkas, "Gotta go fast when generating data with score-based models," arXiv preprint arXiv:2105.14080, 2021.
+        [1] A. Jolicoeur-Martineau, K. Li, R. Pich-Taillefer, T. Kachman, and I. Mitliagkas, "Gotta go fast when generating data with score-based models," arXiv preprint arXiv:2105.14080, 2021.
         """
         ns = self.noise_schedule
         s = t_T * torch.ones((x.shape[0],)).to(x)

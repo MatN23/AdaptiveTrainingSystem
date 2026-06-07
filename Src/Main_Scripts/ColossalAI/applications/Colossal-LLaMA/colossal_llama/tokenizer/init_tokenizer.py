@@ -80,7 +80,7 @@ def main():
     with open(file=args.expand_tokens_file, mode="r", encoding="utf-8") as fp_reader:
         for line in fp_reader:
             item = json.loads(line)
-            # e.g., {"piece": "你好"}
+            # e.g., {"piece": ""}
             token = item["piece"]
             if token in expand_tokens:
                 continue

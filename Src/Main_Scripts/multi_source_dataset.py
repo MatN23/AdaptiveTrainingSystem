@@ -2,10 +2,10 @@
 Download and process LEGAL data sources for base training.
 
 100% LEGAL SOURCES:
-✅ Wikipedia: Official Wikimedia dumps (CC BY-SA)
-✅ Project Gutenberg: Public domain books  
-✅ ArXiv: Open access scientific papers
-✅ Stack Overflow: CC BY-SA licensed Q&A
+ Wikipedia: Official Wikimedia dumps (CC BY-SA)
+ Project Gutenberg: Public domain books  
+ ArXiv: Open access scientific papers
+ Stack Overflow: CC BY-SA licensed Q&A
 
 Creates .txt files compatible with BaseTrainingDataset in dataset.py.
 
@@ -336,7 +336,7 @@ class WikipediaProcessor:
         # Remove ALL file/image references (more patterns)
         text = re.sub(r'\[\[File:.*?\]\]', '', text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r'\[\[Image:.*?\]\]', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'\[\[Файл:.*?\]\]', '', text, flags=re.IGNORECASE | re.DOTALL)  # Russian
+        text = re.sub(r'\[\[:.*?\]\]', '', text, flags=re.IGNORECASE | re.DOTALL)  # Russian
         
         # Remove gallery tags
         text = re.sub(r'<gallery.*?>.*?</gallery>', '', text, flags=re.DOTALL | re.IGNORECASE)
@@ -472,7 +472,7 @@ class WikipediaProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"wikipedia_{file_idx+1}.txt"
             
-            logging.info(f"\n📚 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             current_bytes = 0
             articles_written = 0
@@ -502,7 +502,7 @@ class WikipediaProcessor:
                         break
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {articles_written:,} articles")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {articles_written:,} articles")
             created_files.append((str(output_path), final_mb))
         
         return created_files
@@ -580,7 +580,7 @@ class GutenbergProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"gutenberg_{file_idx+1}.txt"
             
-            logging.info(f"\n📚 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             current_bytes = 0
             books_downloaded = 0
@@ -607,7 +607,7 @@ class GutenbergProcessor:
                     time.sleep(1)  # Be respectful to Gutenberg servers
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {books_downloaded} books")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {books_downloaded} books")
             created_files.append((str(output_path), final_mb))
         
         return created_files
@@ -696,7 +696,7 @@ class ArXivProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"arxiv_{file_idx+1}.txt"
             
-            logging.info(f"\n📄 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             start_idx = file_idx * papers_per_file
             end_idx = min(start_idx + papers_per_file, len(all_papers))
@@ -720,7 +720,7 @@ class ArXivProcessor:
                     papers_written += 1
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {papers_written} papers")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {papers_written} papers")
             created_files.append((str(output_path), final_mb))
         
         return created_files
@@ -816,7 +816,7 @@ class StackOverflowProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"stackoverflow_{file_idx+1}.txt"
             
-            logging.info(f"\n💬 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             start_idx = file_idx * questions_per_file
             end_idx = min(start_idx + questions_per_file, len(all_questions))
@@ -843,7 +843,7 @@ class StackOverflowProcessor:
                     questions_written += 1
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {questions_written} questions")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {questions_written} questions")
             created_files.append((str(output_path), final_mb))
         
         return created_files
@@ -974,7 +974,7 @@ class PubMedProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"pubmed_{file_idx+1}.txt"
             
-            logging.info(f"\n🏥 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             start_idx = file_idx * articles_per_file
             end_idx = min(start_idx + articles_per_file, len(all_articles))
@@ -1003,7 +1003,7 @@ class PubMedProcessor:
                                    f"({progress_pct:.1f}%) - {articles_written:,} articles")
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {articles_written} articles")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {articles_written} articles")
             created_files.append((str(output_path), final_mb))
         
         return created_files
@@ -1092,7 +1092,7 @@ class OpenWebTextProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"openwebtext_{file_idx+1}.txt"
             
-            logging.info(f"\n🌐 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             start_idx = file_idx * posts_per_file
             end_idx = min(start_idx + posts_per_file, len(all_posts))
@@ -1113,7 +1113,7 @@ class OpenWebTextProcessor:
                     posts_written += 1
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {posts_written} posts")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {posts_written} posts")
             created_files.append((str(output_path), final_mb))
             
             if final_mb < mb_per_file * 0.1:  # If file is too small, stop making more
@@ -1196,7 +1196,7 @@ class PhilPapersProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"philpapers_{file_idx+1}.txt"
             
-            logging.info(f"\n🧠 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             start_idx = file_idx * papers_per_file
             end_idx = min(start_idx + papers_per_file, len(all_papers))
@@ -1217,7 +1217,7 @@ class PhilPapersProcessor:
                     papers_written += 1
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {papers_written} papers")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {papers_written} papers")
             created_files.append((str(output_path), final_mb))
             
             if final_mb < mb_per_file * 0.1:
@@ -1317,7 +1317,7 @@ class CommonCrawlNewsProcessor:
         for file_idx in range(num_files):
             output_path = output_dir / f"ccnews_{file_idx+1}.txt"
             
-            logging.info(f"\n📰 Creating file {file_idx+1}/{num_files}: {output_path.name}")
+            logging.info(f"\n Creating file {file_idx+1}/{num_files}: {output_path.name}")
             
             start_idx = file_idx * articles_per_file
             end_idx = min(start_idx + articles_per_file, len(all_articles))
@@ -1338,7 +1338,7 @@ class CommonCrawlNewsProcessor:
                     articles_written += 1
             
             final_mb = current_bytes / (1024 * 1024)
-            logging.info(f"  ✅ File {file_idx+1} complete: {final_mb:.1f} MB, {articles_written} articles")
+            logging.info(f"   File {file_idx+1} complete: {final_mb:.1f} MB, {articles_written} articles")
             created_files.append((str(output_path), final_mb))
             
             if final_mb < mb_per_file * 0.1:
@@ -1351,28 +1351,28 @@ def main():
     """Main execution function."""
     
     print("\n" + "="*60)
-    print("🚀 LEGAL DATA SOURCE DOWNLOADER")
+    print(" LEGAL DATA SOURCE DOWNLOADER")
     print("="*60)
     print(f"Output Directory: {OUTPUT_DIR}")
     print(f"Max Files per Source: {MAX_FILES_PER_SOURCE}")
     print(f"Target MB per File: {MB_PER_FILE}")
     print("\nEnabled Sources:")
     if ENABLE_WIKIPEDIA:
-        print(f"  ✅ Wikipedia ({WIKI_LANGUAGE})")
+        print(f"   Wikipedia ({WIKI_LANGUAGE})")
     if ENABLE_GUTENBERG:
-        print(f"  ✅ Project Gutenberg")
+        print(f"   Project Gutenberg")
     if ENABLE_ARXIV:
-        print(f"  ✅ ArXiv Papers")
+        print(f"   ArXiv Papers")
     if ENABLE_STACKOVERFLOW:
-        print(f"  ✅ Stack Overflow")
+        print(f"   Stack Overflow")
     if ENABLE_PUBMED:
-        print(f"  ✅ PubMed")
+        print(f"   PubMed")
     if ENABLE_OPENWEBTEXT:
-        print(f"  ✅ OpenWebText (Reddit)")
+        print(f"   OpenWebText (Reddit)")
     if ENABLE_PHIL_PAPERS:
-        print(f"  ✅ PhilPapers")
+        print(f"   PhilPapers")
     if ENABLE_COMMON_CRAWL_NEWS:
-        print(f"  ✅ Common Crawl News")
+        print(f"   Common Crawl News")
     print("="*60)
     
     output_dir = Path(OUTPUT_DIR)
@@ -1503,17 +1503,17 @@ def main():
     
     # Print summary
     print(f"\n{'='*60}")
-    print("✅ ALL DATASETS CREATED SUCCESSFULLY!")
+    print(" ALL DATASETS CREATED SUCCESSFULLY!")
     print(f"{'='*60}")
     print(f"\nTotal Files: {len(all_created_files)}")
     print(f"Total Size: {total_mb:.1f} MB")
     print(f"\nCreated files:")
     for filepath, mb in all_created_files:
-        print(f"  • {filepath} ({mb:.1f} MB)")
+        print(f"   {filepath} ({mb:.1f} MB)")
     
     # Print usage instructions
     print(f"\n{'='*60}")
-    print("📚 USAGE WITH YOUR TRAINING SYSTEM")
+    print(" USAGE WITH YOUR TRAINING SYSTEM")
     print(f"{'='*60}")
     print("\nAdd this to your training config:\n")
     print("config.base_training_paths = [")
@@ -1522,29 +1522,29 @@ def main():
     print("]")
     print("\nconfig.training_mode = 'base_only'  # Pure base training")
     print("# OR")
-    print("# config.training_mode = 'hybrid'  # Base training → fine-tuning")
+    print("# config.training_mode = 'hybrid'  # Base training  fine-tuning")
     print("\n# Then run your training:")
     print("# python train.py")
     print(f"\n{'='*60}")
     
     # Verify compatibility with dataset.py
-    print("\n🔍 VERIFYING COMPATIBILITY")
+    print("\n VERIFYING COMPATIBILITY")
     print("="*60)
     try:
         from core.dataset import BaseTrainingDataset, setup_datasets
-        print("✅ dataset.py imports successful")
-        print("✅ Your training system is ready to use these files!")
+        print(" dataset.py imports successful")
+        print(" Your training system is ready to use these files!")
         print("\nYour BaseTrainingDataset will automatically:")
-        print("  • Load .txt files line by line")
-        print("  • Tokenize the text")
-        print("  • Create fixed-length training chunks")
-        print("  • Handle document continuation across chunks")
+        print("   Load .txt files line by line")
+        print("   Tokenize the text")
+        print("   Create fixed-length training chunks")
+        print("   Handle document continuation across chunks")
     except ImportError as e:
-        print(f"⚠️  Could not import dataset.py: {e}")
+        print(f"  Could not import dataset.py: {e}")
         print("Make sure dataset.py is in the same directory")
     
     print("\n" + "="*60)
-    print("🎉 SETUP COMPLETE!")
+    print(" SETUP COMPLETE!")
     print("="*60)
 
 

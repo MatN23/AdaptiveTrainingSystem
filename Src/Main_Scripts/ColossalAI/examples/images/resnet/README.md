@@ -1,6 +1,6 @@
 # Train ResNet on CIFAR-10 from scratch
 
-## 🚀 Quick Start
+##  Quick Start
 
 This example provides a training script and an evaluation script. The training script provides an example of training ResNet on CIFAR10 dataset from scratch.
 

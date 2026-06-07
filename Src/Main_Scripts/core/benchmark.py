@@ -28,7 +28,7 @@ try:
     from core.moe_cuda_wrapper import MoECUDAOps, CUDA_OPS_AVAILABLE as MOE_AVAILABLE
 except ImportError:
     MOE_AVAILABLE = False
-    print("⚠️  MoE wrapper not found")
+    print("  MoE wrapper not found")
 
 # 2. Transformer Ops
 try:
@@ -41,7 +41,7 @@ try:
         TRANSFORMER_AVAILABLE = False
 except ImportError:
     TRANSFORMER_AVAILABLE = False
-    print("⚠️  Transformer wrapper not found")
+    print("  Transformer wrapper not found")
 
 
 
@@ -571,7 +571,7 @@ if __name__ == "__main__":
     configure_benchmark(args)
 
     if not torch.cuda.is_available():
-        print("❌ CUDA not available")
+        print(" CUDA not available")
         sys.exit(0)
         
     print(f"Device: {torch.cuda.get_device_name(0)}")
@@ -621,7 +621,7 @@ if __name__ == "__main__":
             )
         except RuntimeError as e:
             if "out of memory" in str(e).lower():
-                print("⚠️  MoE full-step benchmark OOM at full shape, retrying smaller shape...")
+                print("  MoE full-step benchmark OOM at full shape, retrying smaller shape...")
                 torch.cuda.empty_cache()
                 benchmark_moe_full_step(
                     max(1, FB // 2),

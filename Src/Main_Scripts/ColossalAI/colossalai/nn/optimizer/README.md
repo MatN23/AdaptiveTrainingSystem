@@ -12,7 +12,7 @@ many advanced technologies such as multi-dimensional tensor parallelism, sequenc
 large-scale optimization, adaptive task scheduling, etc. By using Colossal-AI, we could help users to efficiently and
 quickly deploy large AI model training and inference, reducing large AI model training budgets and scaling down the labor cost of learning and deployment.
 
-### 🚀 Quick Links
+###  Quick Links
 
 [**Colossal-AI**](https://github.com/hpcaitech/ColossalAI) |
 [**Paper**](https://arxiv.org/abs/2110.14883) |

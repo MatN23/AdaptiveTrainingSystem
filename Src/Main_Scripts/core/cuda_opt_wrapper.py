@@ -98,11 +98,11 @@ def _compile_transformer_ops(target_sms: List[str]) -> bool:
     core_path = _core_dir()
     compile_script = core_path / "compile_transformer_ops.sh"
     if not compile_script.exists():
-        logger.warning("❌ compile_transformer_ops.sh not found at %s", compile_script)
+        logger.warning(" compile_transformer_ops.sh not found at %s", compile_script)
         return False
 
     target_desc = ", ".join(f"sm_{sm}" for sm in target_sms)
-    logger.info("🔨 Compiling transformer CUDA ops for %s", target_desc)
+    logger.info(" Compiling transformer CUDA ops for %s", target_desc)
 
     try:
         compile_script.chmod(0o755)
@@ -118,16 +118,16 @@ def _compile_transformer_ops(target_sms: List[str]) -> bool:
         )
         if result.returncode != 0:
             error_output = result.stderr.strip() or result.stdout.strip()
-            logger.error("❌ transformer ops compilation failed:\n%s", error_output)
+            logger.error(" transformer ops compilation failed:\n%s", error_output)
             return False
 
         try:
             _transformer_arch_stamp_path().write_text(f"{_sms_signature(target_sms)}\n")
         except Exception as write_err:
-            logger.warning("⚠️  Could not write transformer arch stamp: %s", write_err)
+            logger.warning("  Could not write transformer arch stamp: %s", write_err)
         return True
     except Exception as compile_err:
-        logger.error("❌ transformer ops compilation error: %s", compile_err)
+        logger.error(" transformer ops compilation error: %s", compile_err)
         return False
 
 
@@ -144,11 +144,11 @@ def _find_transformer_so():
     for location in possible_locations:
         so_path = location / "transformer_ops.so"
         if so_path.exists():
-            logger.info(f"✅ Found transformer_ops.so in: {location}")
+            logger.info(f" Found transformer_ops.so in: {location}")
             return so_path
     
     # If not found, log all locations searched
-    logger.warning("❌ transformer_ops.so not found! Searched:")
+    logger.warning(" transformer_ops.so not found! Searched:")
     for loc in possible_locations:
         logger.warning(f"   - {loc}")
     
@@ -163,7 +163,7 @@ def _load_transformer_ops():
         return True
     
     if not torch.cuda.is_available():
-        logger.warning("⚠️  CUDA not available")
+        logger.warning("  CUDA not available")
         return False
     
     target_sms = _resolve_target_sms()
@@ -181,30 +181,30 @@ def _load_transformer_ops():
     needs_rebuild = so_path is None or current_signature != target_signature
     if needs_rebuild:
         if so_path is None:
-            logger.info("🔁 transformer_ops.so missing, triggering JIT build")
+            logger.info(" transformer_ops.so missing, triggering JIT build")
         else:
             logger.info(
-                "🔁 Rebuilding transformer ops for %s (previous build: %s)",
+                " Rebuilding transformer ops for %s (previous build: %s)",
                 ", ".join(f"sm_{sm}" for sm in target_sms),
                 current_signature or "unknown"
             )
         if _compile_transformer_ops(target_sms):
             so_path = _find_transformer_so()
         elif so_path is None:
-            logger.warning("❌ transformer_ops.so not found and auto-build failed")
+            logger.warning(" transformer_ops.so not found and auto-build failed")
             return False
     
     try:
         _transformer_ops_lib = ctypes.CDLL(str(so_path))
-        logger.info(f"✅ Loaded: {so_path}")
+        logger.info(f" Loaded: {so_path}")
         
         _transformer_ops_loaded = True
         TRANSFORMER_OPS_AVAILABLE = True
-        logger.info("✅ Transformer CUDA ops loaded successfully!")
+        logger.info(" Transformer CUDA ops loaded successfully!")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Failed to load transformer ops: {e}")
+        logger.error(f" Failed to load transformer ops: {e}")
         return False
 
 
@@ -228,7 +228,7 @@ class RMSNormFunction(Function):
         batch_seq = x_flat.size(0)
         hidden_size = weight.shape[0]
         
-        # ⚠️ CRITICAL: C++ kernel currently only specialized for 4096
+        #  CRITICAL: C++ kernel currently only specialized for 4096
         # if hidden_size != 4096:
         #    return RMSNormFunction._pytorch_eval(x, weight, eps)
 
@@ -454,9 +454,9 @@ class FusedRMSNorm(nn.Module):
         self.cuda_enabled = TRANSFORMER_OPS_AVAILABLE
         
         if self.cuda_enabled:
-            logger.info(f"✅ FusedRMSNorm: CUDA acceleration enabled (hidden_size={hidden_size})")
+            logger.info(f" FusedRMSNorm: CUDA acceleration enabled (hidden_size={hidden_size})")
         else:
-            logger.info(f"⚠️  FusedRMSNorm: Using PyTorch fallback")
+            logger.info(f"  FusedRMSNorm: Using PyTorch fallback")
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not self.cuda_enabled or not x.is_cuda or _transformer_ops_lib is None:
@@ -500,9 +500,9 @@ class FusedRoPE(nn.Module):
                 self.cuda_enabled = False
         
         if self.cuda_enabled:
-            logger.info(f"✅ FusedRoPE: CUDA acceleration enabled (head_dim={head_dim})")
+            logger.info(f" FusedRoPE: CUDA acceleration enabled (head_dim={head_dim})")
         else:
-            logger.info(f"⚠️  FusedRoPE: Using PyTorch fallback")
+            logger.info(f"  FusedRoPE: Using PyTorch fallback")
     
     def _precompute_cuda_cache(self):
         """Precompute cos/sin using CUDA kernel"""
@@ -665,7 +665,7 @@ class FusedSwiGLU(nn.Module):
         self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=use_bias)
         self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=use_bias)
         
-        # logger.info(f"⚠️  FusedSwiGLU: Deprecated. Use FusedMLPBlock for acceleration.")
+        # logger.info(f"  FusedSwiGLU: Deprecated. Use FusedMLPBlock for acceleration.")
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         gate = self.gate_proj(x)
@@ -844,21 +844,21 @@ class FusedMLPBlock(nn.Module):
 
 
 # Initialize on import
-print("🔍 Loading transformer CUDA ops...")
+print(" Loading transformer CUDA ops...")
 if _load_transformer_ops():
-    print("✅ Transformer CUDA ops ready for use!")
+    print(" Transformer CUDA ops ready for use!")
     print("   - RMSNorm: 2-3x faster than PyTorch")
     print("   - RoPE: 3-5x faster than PyTorch")
     print("   - SwiGLU: 1.5-2x faster than PyTorch")
 else:
-    print("⚠️  Transformer ops not loaded - using PyTorch fallback")
+    print("  Transformer ops not loaded - using PyTorch fallback")
 
 
 # Re-implementing test function
 def test_transformer_ops():
     """Test all transformer operations"""
     if not torch.cuda.is_available():
-        print("❌ CUDA not available")
+        print(" CUDA not available")
         return False
     
     print("\n" + "="*80)
@@ -877,10 +877,10 @@ def test_transformer_ops():
         rms_norm = FusedRMSNorm(hidden_size).to(device).half()
         x = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=torch.float16, requires_grad=True)
         output = rms_norm(x)
-        print(f"   ✅ Input: {x.shape} {x.dtype}")
+        print(f"    Input: {x.shape} {x.dtype}")
         loss = output.sum()
         loss.backward()
-        print(f"   ✅ Backward pass successful")
+        print(f"    Backward pass successful")
 
         # Test 2: FusedMLPBlock (FP16 - Standard)
         print("\n2. Testing FusedMLPBlock (FP16 Standard)...")
@@ -896,14 +896,14 @@ def test_transformer_ops():
             output = mlp(x)
         end_event.record()
         torch.cuda.synchronize()
-        print(f"   ✅ Forward successful (Mean time: {start_event.elapsed_time(end_event)/10:.3f} ms)")
+        print(f"    Forward successful (Mean time: {start_event.elapsed_time(end_event)/10:.3f} ms)")
         
         # Test 3: FusedMLPBlock (FP32 - High Precision)
         print("\n3. Testing FusedMLPBlock (FP32 Mode)...")
         mlp_fp32 = FusedMLPBlock(hidden_size, intermediate_size).to(device).float()
         x_fp32 = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=torch.float32, requires_grad=True)
         output = mlp_fp32(x_fp32)
-        print(f"   ✅ FP32 Forward successful. Output dtype: {output.dtype}")
+        print(f"    FP32 Forward successful. Output dtype: {output.dtype}")
         
         # Test 4: FusedMLPBlock (W8A16 - Quantized Weights)
         print("\n4. Testing FusedMLPBlock (W8A16 Mode)...")
@@ -915,15 +915,15 @@ def test_transformer_ops():
         
         x_fp16 = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=torch.float16)
         output = mlp_int8(x_fp16)
-        print(f"   ✅ W8A16 Forward successful. Output dtype: {output.dtype}")
+        print(f"    W8A16 Forward successful. Output dtype: {output.dtype}")
         
         print("\n" + "="*80)
-        print("✅ ALL TESTS PASSED!")
+        print(" ALL TESTS PASSED!")
         print("="*80 + "\n")
         return True
         
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()
         return False

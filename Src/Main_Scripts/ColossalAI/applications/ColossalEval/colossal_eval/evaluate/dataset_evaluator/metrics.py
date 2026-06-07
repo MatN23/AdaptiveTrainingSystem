@@ -523,7 +523,7 @@ def normalize_zh_answer(s):
         return "".join(text.split())
 
     def remove_punc(text):
-        cn_punctuation = "！？｡。＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏."
+        cn_punctuation = "."
         all_punctuation = set(string.punctuation + cn_punctuation)
         return "".join(ch for ch in text if ch not in all_punctuation)
 
@@ -557,7 +557,7 @@ def retrieval_score(prediction, reference, **kwargs):
 
 
 def retrieval_zh_score(prediction, reference, **kwargs):
-    pattern = r"段落(\d+)"
+    pattern = r"(\d+)"
     matches = re.findall(pattern, reference)
     ground_truth_id = matches[0]
     numbers = re.findall(r"\d+", prediction)

@@ -210,7 +210,7 @@ class PreTrainingDataset:
 
         random.shuffle(cand_indexes)
 
-        output_tokens = [t[2:] if len(self.whole_rec.findall(t)) > 0 else t for t in tokens]  # 去掉"##"
+        output_tokens = [t[2:] if len(self.whole_rec.findall(t)) > 0 else t for t in tokens]  # "##"
 
         num_to_predict = min(self.max_predictions_per_seq, max(1, int(round(len(tokens) * self.masked_lm_prob))))
 
@@ -242,7 +242,7 @@ class PreTrainingDataset:
                     if random.random() < 0.5:
                         masked_token = (
                             tokens[index][2:] if len(self.whole_rec.findall(tokens[index])) > 0 else tokens[index]
-                        )  # 去掉"##"
+                        )  # "##"
                     # 10% of the time, replace with random word
                     else:
                         masked_token = self.vocab_words[random.randint(0, len(self.vocab_words) - 1)]

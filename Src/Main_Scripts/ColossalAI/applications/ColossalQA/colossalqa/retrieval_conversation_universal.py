@@ -121,7 +121,7 @@ class UniversalRetrievalConversation:
             user_input = input("User: ")
             lang = detect_lang_naive(user_input)
             if "END" == user_input:
-                print("Agent: Happy to chat with you ：)")
+                print("Agent: Happy to chat with you )")
                 break
             agent_response = self.run(user_input, which_language=lang)
             print(f"Agent: {agent_response}")

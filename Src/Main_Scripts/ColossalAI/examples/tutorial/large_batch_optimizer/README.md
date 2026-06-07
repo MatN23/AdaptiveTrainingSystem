@@ -4,10 +4,10 @@
 
 - [Large Batch Training Optimization](#large-batch-training-optimization)
   - [Table of contents](#table-of-contents)
-  - [📚 Overview](#-overview)
-  - [🚀 Quick Start](#-quick-start)
+  - [ Overview](#-overview)
+  - [ Quick Start](#-quick-start)
 
-## 📚 Overview
+##  Overview
 
 This example lets you to quickly try out the large batch training optimization provided by Colossal-AI. We use synthetic dataset to go through the process, thus, you don't need to prepare any dataset. You can try out the `Lamb` and `Lars` optimizers from Colossal-AI with the following code.
 
@@ -15,7 +15,7 @@ This example lets you to quickly try out the large batch training optimization p
 from colossalai.nn.optimizer import Lamb, Lars
 ```
 
-## 🚀 Quick Start
+##  Quick Start
 
 1. Install PyTorch
 

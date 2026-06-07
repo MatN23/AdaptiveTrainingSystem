@@ -65,8 +65,8 @@ class HuggingFaceModel(BaseModel):
         Get indices for each choice
 
         Some tokenizer will insert BOS if you don't specify add_special_tokens=False such as Llama-2.
-        The indices for choices may be different given the context. For example, for Llama-2 tokenizer, for Chinese context like "答案：{choice}", indices for choices A, B, C and D are 29909, 29933, 29907 and 29928, for English context like "Answer: {choice}", indices for choices A, B, C and D are 319, 350, 315 and 360.
-        print(self.tokenizer("答案：A")) to see
+        The indices for choices may be different given the context. For example, for Llama-2 tokenizer, for Chinese context like "{choice}", indices for choices A, B, C and D are 29909, 29933, 29907 and 29928, for English context like "Answer: {choice}", indices for choices A, B, C and D are 319, 350, 315 and 360.
+        print(self.tokenizer("A")) to see
         print(self.tokenizer("Answer: A")) to see
 
         """
@@ -77,7 +77,7 @@ class HuggingFaceModel(BaseModel):
             self.indices_for_choices[0].append(
                 self.tokenizer(f"Answer: {choice}", add_special_tokens=False).input_ids[-1]
             )
-            self.indices_for_choices[1].append(self.tokenizer(f"答案：{choice}", add_special_tokens=False).input_ids[-1])
+            self.indices_for_choices[1].append(self.tokenizer(f"{choice}", add_special_tokens=False).input_ids[-1])
 
     def _load_tokenizer(self, path: str, tokenizer_path: Optional[str], tokenizer_kwargs: dict):
         """

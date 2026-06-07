@@ -912,10 +912,10 @@ class ConfigPresets:
             micro_batch_size=1,
             gradient_accumulation_steps=1,
 
-            # MoE settings — THIS is what makes the CUDA path shine
+            # MoE settings  THIS is what makes the CUDA path shine
             use_moe=True,
             num_experts=32,               # enough to make routing nontrivial
-            moe_top_k=2,                  # makes dispatch 2× heavier
+            moe_top_k=2,                  # makes dispatch 2 heavier
             capacity_factor=1.25,         # realistic routing load
             load_balancing_weight=0.01,
             expert_parallel_size=4,       # uses EP kernels if you have them

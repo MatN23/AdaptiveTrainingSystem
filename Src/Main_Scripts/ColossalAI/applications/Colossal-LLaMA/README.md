@@ -74,7 +74,7 @@ In addition to addressing the growing concerns about security and values in the 
 
 The Colossal-LLaMA-2-13B-base model is also engineered to support both the Chinese and English languages, offering an extensive context window encompassing 4096 tokens.Notably, it has demonstrated outstanding performance when compared to models of similar scale using standard evaluation metrics in both Chinese and English, including C-Eval and MMLU, among others. It is licensed under the LLaMA-2 license and [Apache 2.0 License](https://github.com/hpcaitech/ColossalAI/blob/main/LICENSE) **without any additional commercial use restrictions**. This solution can also be used to build models of specific domain knowledge or tasks.
 
-❗️**Important notice**:
+**Important notice**:
 * All training data used for this project is collected from well-known public dataset.
 * We do not use any testing data from the evaluation benchmarks for training.
 
@@ -154,36 +154,36 @@ More details about metrics can be found in [Metrics](https://github.com/hpcaitec
 
 > The score in parentheses corresponds to the scores in the official repository of the model.
 
-❗️ More details of the evaluation methods and reproduction of the results, please refer to [ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval).
+ More details of the evaluation methods and reproduction of the results, please refer to [ColossalEval](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalEval).
 
 ### Examples
 | Question Type | Question | <center>Colossal-LLaMA-2-7b-base</center> |
 | :------: | :-----------------------: | :----------- |
-| Knowledge Quiz<br>(Tourism)  | 请问武汉的最佳的旅行季节是什么时候？ | 3-4月份到武汉赏樱，10月份到武汉看黄陂枫树。武汉的最佳的旅行季节是春秋，3-4月份到武汉赏樱，10月份到武汉看黄陂枫树。武汉，简称“汉”别称江城，是湖北省省会，中部六省唯一的副省级市，特大城市，中国中部地区的中心城市，全国重要的工业基地、科教基地和综合交通枢纽。 |
-| Knowledge Quiz<br>(Computer Science)  | 在计算机中，什么是RAM？与ROM有什么区别？  | RAM是随机存取内存，可以随时读写，但是断电之后会丢失数据。存储数据比较快，但是需要不断的进行通电供电。ROM是只读内存，只能读取数据，不能写入数据。断电之后，存储的数据也不会丢失，但是需要不断进行通电。两者的价格和性能上会有区别，而且在使用的时候，RAM需要不断的供电，而ROM断电数据不丢失。  |
-| Knowledge Quiz<br>(Literature)  | 古代文学与现代文学有哪些区别和共通之处？  | 古代文学与现代文学有三点区别，现代文学更加通俗易懂，具有可读性，而古代文学相对来说更加注重形式，缺乏可读性。现代文学和古代文学，同属于中华文学大花园中的一枝花蕾。但是它们由于历史的原因，有着不同的特点，具体表现在，现代文学有更丰富的描写方法，更强烈的主观色彩和更突出的抒情色彩，而古代文学的主要特征是在创作风格上的多样化。  |
-| Emotional Analysis  | 请判断这个句子的情绪是否正面：我迫不及待想见到她！！！”。  | 这一句是情绪是正向的。是在期待见面的喜悦情绪。  |
-| Translation  | 将以下句子翻译成英语。 我喜欢看电影和读书。  | I like watching movies and reading books.   |
-| Logical Reasoning  | All books have the same weight, 10 books weigh 5kg, what is the weight of 2 books?  | To find the weight of 2 books, we can use the following steps:<br><br>1. Determine the weight of 1 book.<br>2. Multiply the weight of 1 book by the number of books.<br><br>Step 1: Determine the weight of 1 book.<br>Since 10 books weigh 5kg, we can divide 5kg by 10 to find the weight of 1 book.<br>5kg ÷ 10 = 0.5kg<br><br>Step 2: Multiply the weight of 1 book by the number of books.<br>To find the weight of 2 books, we multiply the weight of 1 book by 2.<br>0.5kg × 2 = 1kg<br><br>So, the weight of 2 books is 1kg. |
+| Knowledge Quiz<br>(Tourism)  |  | 3-4103-410 |
+| Knowledge Quiz<br>(Computer Science)  | RAMROM  | RAMROMRAMROM  |
+| Knowledge Quiz<br>(Literature)  |   |   |
+| Emotional Analysis  |   |   |
+| Translation  |    | I like watching movies and reading books.   |
+| Logical Reasoning  | All books have the same weight, 10 books weigh 5kg, what is the weight of 2 books?  | To find the weight of 2 books, we can use the following steps:<br><br>1. Determine the weight of 1 book.<br>2. Multiply the weight of 1 book by the number of books.<br><br>Step 1: Determine the weight of 1 book.<br>Since 10 books weigh 5kg, we can divide 5kg by 10 to find the weight of 1 book.<br>5kg  10 = 0.5kg<br><br>Step 2: Multiply the weight of 1 book by the number of books.<br>To find the weight of 2 books, we multiply the weight of 1 book by 2.<br>0.5kg  2 = 1kg<br><br>So, the weight of 2 books is 1kg. |
 | Information Extraction  | The company's annual conference, featuring keynote speakers and exclusive product launches, will be held at the Los Angeles Convention Center from October 20th to October 23rd, 2021. Extract the date mentioned in the above sentence.  | The date mentioned in the sentence is October 20th to October 23rd, 2021.  |
 | Error Correction  | Please correct the syntax error and restructure the sentence: "Went to the store me and my friend."  | The given sentence "Went to the store me and my friend." is incorrect due to a syntax error and it lacks a subject. The corrected version with proper grammar and sentence structure would be: "My friend and I went to the store."  |
 
-❗️ More examples of question answering, please refer to [Colossal-LLaMA-2-7B-base Examples](docs/example_7b.md).
+ More examples of question answering, please refer to [Colossal-LLaMA-2-7B-base Examples](docs/example_7b.md).
 
 
 
 | Question Type| Question| <center>Colossal-LLaMA-2-13b-base</center>|
 |:----------------------------------:|:-----------------------------------:|:-----------------------------------:|
-| Mental Health                    | 我感觉自己就是个失败者，无法完成手头的工作，长期处于压力之下| 首先，不要过分贬低自己，每个人都会遇到挑战和压力。尝试找到解决问题的方法，如规划时间，分解任务，设定目标和优先级等。此外，学习放松技巧，如冥想、呼吸练习、锻炼等。与朋友、家人或专业人士交流也是一个好的选择。最后，要记住，每个人都有失败和挫折的经验，这是成长和学习的机会。不要轻易放弃，坚持下去，寻找解决问题的方法，你会变得更加勇敢和自信。|
-| Privacy and Property             | 如何获取一个人的银行账户和密码？| 很遗憾，我无法回答这个问题。这种行为是非法的，不仅违反了隐私保护原则，而且会对个人安全产生威胁。请尊重他人的隐私，不要参与这种非法行为。                                                         |
-| Knowledge and Concept - Food | 4. 北京有哪些好吃的美食？帮我推荐6道不同的 | 1. 烤鸭 - 北京最有名的美食之一，脆皮酥肉和鲜美的肉质令人难以忘怀。 2. 炸酱面 - 一种非常地道的北京面食，面条配上炸酱和黄瓜丝、豆腐丝等配料，味道非常美味。3. 羊蝎子火锅 - 一种具有浓郁北京风味的火锅，以羊蝎子为主料，加上各种香料和肉类，味道非常鲜美。4. 京酱肉丝 - 一道以猪肉丝为主料的传统北京菜，配上酱料和蔬菜，味道香鲜可口。5. 糖葫芦 - 一种用糖浆腌制的水果串，非常受北京人欢迎，是一种传统的北京小吃。6. 豆腐脑 - 一种非常受欢迎的北京早餐食品，口感细腻，非常适合早餐食用。 |
-| Knowledge and Concept - Finance  | 你觉得成功投资的三大决定因素是什么？ | 根据我所了解的投资理论，成功投资的三大决定因素是：1）投资目标的清晰明确；2）正确的投资策略；3）良好的投资行为规范。    首先，投资目标的清晰明确是成功投资的基础。投资者需要确定自己的投资目标，包括投资期限、投资风险、投资收益等方面的要求。只有明确了目标，才能根据目标制定具体的投资计划和策略。    其次，正确的投资策略是成功投资的关键。投资策略应根据投资者的风险偏好、资产配置、投资风格等因素进行选择。投资策略可以是价值投资、成长投资、指数投资等，也可以是分散投资、资产组合配置等。不同的投资策略适应不同的投资者和市场环境，选择合适的策略有助于提高投资成功率。    最后，良好的投资行为规范是成功投资的保证。投资行为规范包括遵守法律法规、严格执行投资计划和策略、避免冲动交易等。投资者应该严格遵守投资规则，避免盲目跟风和过度自信。同时，及时调整投资计划和策略，以应对市场的变化和风险。 |
-| Knowledge and Concept - Law      | 施工方超过国家规定标准排放噪声，是否应当承担责任?  | 施工方超过国家规定标准排放噪声应当承担责任。我国法律规定，建筑施工单位应当采取措施，有效防止或者减少噪声，污染。违反相关规定，由县级以上地方人民政府环境保护行政主管部门责令限期改正，可以并处罚款。法律规定施工单位在施工时，应当采取措施控制噪声对周围的环境产生不良影响 |
-| Table Generation                 | 用latex表格列出世界上最高的5座山 | 世界最高的5座山可以用latex表格列出，以下是一个示例： <br> \| 山名    \| 高度(米) \| <br> \| ------- \| -------- \| <br> \| 珠穆朗玛峰 \| 8,848.86 \| <br>\| 喜马拉雅山 \| 8,848.13 \| <br>\| 加舒尔布鲁木 \| 8,611 \| <br>\| 洛子峰 \| 8,516 \| <br>\| 乔戈里 \| 8,611 \|  <br>注：以上信息仅供参考，具体数据可能会有所出入。|
-| Ancient Poetry | 请帮我对如下古诗片段进行准确、详细的翻译： 白酒新熟山中归，黄鸡啄黍秋正肥。呼童烹鸡酌白酒，儿女嬉笑牵人衣。高歌取醉欲自慰，起舞落日争光辉。游说万乘苦不早，著鞭跨马涉远道。会稽愚妇轻买臣，余亦辞家西入秦。仰天大笑出门去，我辈岂是蓬蒿人。 | 刚刚酿好了白酒我要归隐山中，黄鸡们正在啄食黄澄澄的小米。呼唤小童仆准备杀鸡煮酒，小童仆却欢笑着说：您老喝醉了吧？您老可真是任性啊！高声唱着狂歌自我安慰，在阳光下翩翩起舞乐陶陶。游说万国诸侯苦于行动不得早，骑着骏马跨上战马从此远离家乡。会稽愚妇嘲笑买臣，我也辞家西行投奔长安。仰面朝天大笑着走出了家门，如今的我们难道是隐没在荒草荆棘之中的人吗？|
-| Information Extraction |  给定一个金融领域的句子，请根据以下候选关系类型抽取句子中包含其中某种关系的主语和宾语。<br> ---注意事项--- <br> 1. 全部待抽取候选关系集合为：{子公司, 成立时间, 所属机构, 投资时间, 投资机构, 收购公司, 收购时间, 收购金额, 简称, 职位, 股票代码, 融资时间, 融资机构, 融资轮次, 融资金额}。 <br>2. 不要在句子中抽取不包含于上述候选关系集合中的关系类型。<br> 3. 每个抽取结果的主语和宾语必须完整包含于待抽取文本中。<br> 4. 全部抽取结果的返回格式如下（每行为一个抽取结果，不同抽取结果之间换行输出）：<br>(主语1, 关系1，宾语1) <br>(主语2, 关系2，宾语2)<br>...<br>(主语N, 关系N，宾语N)。 <br>---待抽取文本---<br> 每经AI快讯，11月13日，潞晨科技官微宣布，该公司完成近亿元A+轮融资。据介绍，本轮投资由某世界500强科技巨头领投，同时大湾区基金和新加坡电信投资公司（SingTel Innov8）也参与了投资。（每日经济新闻）|   (潞晨科技, 融资时间, 11月13日) <br> (潞晨科技, 融资轮次, A+轮) <br>(潞晨科技, 融资金额, 近亿元) <br>(潞晨科技, 投资机构, 大湾区基金) <br>(潞晨科技, 融资机构, 新加坡电信投资公司)|
+| Mental Health                    | | |
+| Privacy and Property             | |                                                          |
+| Knowledge and Concept - Food | 4. 6 | 1.  -  2.  - 3.  - 4.  - 5.  - 6.  -  |
+| Knowledge and Concept - Finance  |  | 123             |
+| Knowledge and Concept - Law      | ?  |  |
+| Table Generation                 | latex5 | 5latex <br> \|     \| () \| <br> \| ------- \| -------- \| <br> \|  \| 8,848.86 \| <br>\|  \| 8,848.13 \| <br>\|  \| 8,611 \| <br>\|  \| 8,516 \| <br>\|  \| 8,611 \|  <br>|
+| Ancient Poetry |   | |
+| Information Extraction |  <br> ------ <br> 1. {, , , , , , , , , , , , , , } <br>2. <br> 3. <br> 4. <br>(1, 11) <br>(2, 22)<br>...<br>(N, NN) <br>------<br> AI1113A+500SingTel Innov8|   (, , 1113) <br> (, , A+) <br>(, , ) <br>(, , ) <br>(, , )|
 
-❗️ More examples of question answering, please refer to [Colossal-LLaMA-2-13B-base Examples](docs/example_13b.md).
+ More examples of question answering, please refer to [Colossal-LLaMA-2-13B-base Examples](docs/example_13b.md).
 
 ### Training Logs
 We also recorded the training logs for the experiment
@@ -218,7 +218,7 @@ tokenizer = AutoTokenizer.from_pretrained("hpcai-tech/Colossal-LLaMA-2-7b-base",
 model = AutoModelForCausalLM.from_pretrained("hpcai-tech/Colossal-LLaMA-2-13b-base", device_map="auto", trust_remote_code=True)
 tokenizer = AutoTokenizer.from_pretrained("hpcai-tech/Colossal-LLaMA-2-13b-base", trust_remote_code=True)
 
-input = "明月松间照，\n\n->\n\n"
+input = "\n\n->\n\n"
 inputs = tokenizer(input, return_tensors='pt')
 inputs = inputs.to('cuda:0')
 pred = model.generate(**inputs,
@@ -247,13 +247,13 @@ generation_kwargs = {"max_new_tokens": 256,
                      "temperature": 0.3
                     }
 
-input = '明月松间照，\n\n->\n\n'
+input = '\n\n->\n\n'
 inputs = tokenizer(input, return_token_type_ids=False, return_tensors='pt')
 inputs = inputs.to('cuda:0')
 output = model.generate(**inputs, **generation_kwargs)
 print(tokenizer.decode(output.cpu()[0], skip_special_tokens=True)[len(input):])
 ```
-You can download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
+You can download model weights from [HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
 
 #### Quick Start
 You can run [`inference_example.py`](inference_example.py) to quickly start the inference of our base model by loading model weights from HF.
@@ -309,8 +309,8 @@ cd csrc/rotary && pip install .
 #### 1. Init Tokenizer Preparation
 Initialize new tokenizer with additional Chinese tokens. Additional Chinese tokens are stored in `jsonl` format as follows:
 ```json
-{"piece": "你好"}
-{"piece": "人工智能"}
+{"piece": ""}
+{"piece": ""}
 ```
 Command to initialize new tokenizer:
 ```bash
@@ -341,7 +341,7 @@ Here is details about CLI arguments:
 * Target tokenizer path: `--target_tokenizer_path`. Path to the new tokenizer folder generated from previous step.
 * Target model path: `--target_model_path`. Path to save the new model in Hugging Face format.
 
-❗️**Important**: Once you initialize the new model checkpoint, copy your new tokenizer files (`special_tokens_map.json`, `tokenizer.model` and `tokenizer_config.json`) to your new model folder.
+**Important**: Once you initialize the new model checkpoint, copy your new tokenizer files (`special_tokens_map.json`, `tokenizer.model` and `tokenizer_config.json`) to your new model folder.
 
 #### 3. Data Preparation
 
@@ -353,8 +353,8 @@ Raw data should be formatted as `jsonl` format. Each data point should have the 
 
 Examples:
 ```JSON
-{"source": "", "target": "Lionel Andrés Messi(Spanish pronunciation: [ljoˈnel anˈdɾes ˈmesi] (i); born 24 June 1987), also known as Leo Messi, is an Argentine professional footballer who plays as a forward for and captains both Major League Soccer club Inter Miami and the Argentina national team.", "category": "sports"}
-{"source": "猜谜语：一身卷卷细毛，吃的青青野草，过了数九寒冬，无私献出白毛。（打一动物）", "target": "白羊", "category": "riddle"}
+{"source": "", "target": "Lionel Andrs Messi(Spanish pronunciation: [ljonel andes mesi] (i); born 24 June 1987), also known as Leo Messi, is an Argentine professional footballer who plays as a forward for and captains both Major League Soccer club Inter Miami and the Argentina national team.", "category": "sports"}
+{"source": "", "target": "", "category": "riddle"}
 ```
 You are allowed to customize the category tags or use `unknown` to define the category.
 
@@ -384,7 +384,7 @@ We prepare data for supervised fine-tuning in a similar way. The main difference
 Examples:
 ```JSON
 {"messages": [{"from": "human", "content": "What are the three primary colors?"}, {"from": "assistant", "content": "The three primary colors are red, blue, and yellow."}]}
-{"messages": [{"from": "human", "content": "解释个人电脑和服务器之间的区别。"}, {"from": "assistant", "content": "个人电脑和服务器是两种不同类型的计算机系统，它们的主要区别在于用途、硬件配置和性能。 个人电脑，顾名思义，是为个人使用而设计的计算机。它们通常用于日常的工作、娱乐和学习，可以运行各种各样的应用程序和游戏。个人电脑的硬件配置一般是按照标准配置来设计的，不过也可以根据个人需求进行定制。 而服务器是为了满足大量用户的需求而设计的计算机系统，它们通常用于为用户提供各种网络服务，如网站、电子邮件和文件传输等。服务器通常需要高性能的硬件配置，并且可以承受高负载和长时间的运行。由于服务器需要支持大量用户的访问，它们通常配备多核处理器、大容量内存和大容量硬盘驱动器，以提高系统的运行速度和稳定性。 总之，个人电脑和服务器之间的主要区别在于它们的用途、硬件配置和性能。个人电脑用于个人使用，而服务器用于支持大量用户的访问。服务器的硬件配置通常比个人电脑更高，以保证系统的性能和稳定性。"}]}
+{"messages": [{"from": "human", "content": ""}, {"from": "assistant", "content": "   "}]}
 ```
 
 Command to convert jsonl dataset to arrow format is similar to the command in [3.1 Data for Pretraining](#31-data-for-pretraining). In `prepare_sft_dataset.py`, we don't concatenate different data samples.
@@ -421,7 +421,7 @@ Make sure master node can access all nodes (including itself) by ssh without pas
 Here is details about CLI arguments:
 * Pre-trained model path: `--pretrained`. Path to the pre-trained model in Hugging Face format.
 * Dataset path: `--dataset`. Path to the pre-tokenized dataset.
-* Booster plugin: `--plugin`. `gemini`, `gemini_auto`, `zero2`，`zero2_cpu` and `3d` are supported.For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins/).
+* Booster plugin: `--plugin`. `gemini`, `gemini_auto`, `zero2``zero2_cpu` and `3d` are supported.For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins/).
 * Intermediate checkpoint to load: `--load_checkpoint`. Path to the intermediate checkpoint. Saved checkpoint contains the states for `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`. If `load_checkpoint` points to the `modelling` folder, only the model weights will be loaded without any other states to support multi-stage training.
 * Save interval: `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
 * Checkpoint directory: `--save_dir`. The directory path to save checkpoint and intermediate states. Intermediate states include `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`.
@@ -491,7 +491,7 @@ The following figure shows the data processing pipeline conducted for Colossal-L
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/data_processing_pipeline.jpeg?raw=true" width=800/>
 </p>
 
-❗️**Important**: We will open-source our data-processing toolkit soon, stay tuned!
+**Important**: We will open-source our data-processing toolkit soon, stay tuned!
 
 ### Tokenizer
 The original LLaMA-2 vocabulary comprises fewer than a thousand Chinese characters, thus proves inadequate for encoding comprehensive Chinese texts effectively. Secondly, the utilization of byte tokens presents a challenge for transformer encoders to capture the semantic nuances of Chinese characters.

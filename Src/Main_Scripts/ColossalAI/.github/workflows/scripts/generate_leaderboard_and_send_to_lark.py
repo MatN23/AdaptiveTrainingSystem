@@ -473,10 +473,10 @@ def upload_image_to_lark(lark_tenant_token: str, image_path: str) -> str:
         image_path (str): the path to the image to be uploaded
     """
     url = "https://open.feishu.cn/open-apis/im/v1/images"
-    form = {"image_type": "message", "image": (open(image_path, "rb"))}  # 需要替换具体的path
+    form = {"image_type": "message", "image": (open(image_path, "rb"))}  # path
     multi_form = MultipartEncoder(form)
     headers = {
-        "Authorization": f"Bearer {lark_tenant_token}",  ## 获取tenant_access_token, 需要替换为实际的token
+        "Authorization": f"Bearer {lark_tenant_token}",  ## tenant_access_token, token
     }
     headers["Content-Type"] = multi_form.content_type
     response = requests.request("POST", url, headers=headers, data=multi_form).json()
@@ -545,13 +545,13 @@ if __name__ == "__main__":
 
     # send message to lark
     LARK_WEBHOOK_URL = os.environ["LARK_WEBHOOK_URL"]
-    message = """本周的社区榜单出炉啦！
-1. 开发贡献者榜单
-2. 用户互动榜单
+    message = """
+1. 
+2. 
 
-注：
-- 开发贡献者测评标准为：本周由公司成员与社区在所有开源仓库提交的Pull Request次数
-- 用户互动榜单测评标准为：本周由公司成员在非成员在所有开源仓库创建的issue/PR/discussion中回复的次数
+
+- Pull Request
+- issue/PR/discussion
 """
 
     send_message_to_lark(message, LARK_WEBHOOK_URL)
@@ -560,10 +560,10 @@ if __name__ == "__main__":
     if contrib_success:
         send_image_to_lark(contributor_image_key, LARK_WEBHOOK_URL)
     else:
-        send_message_to_lark("本周没有成员贡献PR，无榜单图片生成。", LARK_WEBHOOK_URL)
+        send_message_to_lark("PR", LARK_WEBHOOK_URL)
 
     # send user engagement image to lark
     if engagement_success:
         send_image_to_lark(user_engagement_image_key, LARK_WEBHOOK_URL)
     else:
-        send_message_to_lark("本周没有成员互动，无榜单图片生成。", LARK_WEBHOOK_URL)
+        send_message_to_lark("", LARK_WEBHOOK_URL)

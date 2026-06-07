@@ -160,7 +160,7 @@ class TestFullModel:
         
         loss.backward()
         
-        # 🔍 DIAGNOSTIC: Find parameters with None gradients
+        #  DIAGNOSTIC: Find parameters with None gradients
         params_without_grad = []
         for name, param in small_model.named_parameters():
             if param.requires_grad and param.grad is None:
@@ -173,7 +173,7 @@ class TestFullModel:
         # Print diagnostics if any params have None grad
         if params_without_grad:
             print("\n" + "="*70)
-            print("❌ PARAMETERS WITH MISSING GRADIENTS:")
+            print(" PARAMETERS WITH MISSING GRADIENTS:")
             print("="*70)
             for info in params_without_grad:
                 print(f"  Name: {info['name']}")
@@ -182,7 +182,7 @@ class TestFullModel:
                 print("-"*70)
             
             # Additional context
-            print("\n📊 GRADIENT STATISTICS:")
+            print("\n GRADIENT STATISTICS:")
             total_params = sum(1 for p in small_model.parameters() if p.requires_grad)
             params_with_grad = sum(1 for p in small_model.parameters() 
                                 if p.requires_grad and p.grad is not None)

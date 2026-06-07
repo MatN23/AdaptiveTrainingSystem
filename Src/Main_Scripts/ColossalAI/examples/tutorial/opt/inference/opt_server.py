@@ -88,7 +88,7 @@ FIXED_CACHE_KEYS = [
         64,
     ),
     (
-        "English: I am happy today.\nChinese: 我今天很开心。\n\nEnglish: I am going to play basketball.\nChinese: 我一会去打篮球。\n\nEnglish: Let's celebrate our anniversary.\nChinese:",
+        "English: I am happy today.\nChinese: \n\nEnglish: I am going to play basketball.\nChinese: \n\nEnglish: Let's celebrate our anniversary.\nChinese:",
         64,
     ),
 ]

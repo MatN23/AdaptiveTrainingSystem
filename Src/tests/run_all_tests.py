@@ -25,7 +25,7 @@ def run_command(cmd, description):
 def main():
     if importlib.util.find_spec("pytest") is None:
         print("\n" + "=" * 80)
-        print("❌ pytest is not installed in the active Python environment")
+        print(" pytest is not installed in the active Python environment")
         print(f"Interpreter: {sys.executable}")
         print("Install with: python -m pip install pytest")
         print("=" * 80)
@@ -100,7 +100,7 @@ def main():
     
     if success:
         print(f"\\n{'='*80}")
-        print("✅ ALL TESTS PASSED")
+        print(" ALL TESTS PASSED")
         print(f"{'='*80}")
         
         if args.coverage:
@@ -109,7 +109,7 @@ def main():
         return 0
     else:
         print(f"\\n{'='*80}")
-        print("❌ TESTS FAILED")
+        print(" TESTS FAILED")
         print(f"{'='*80}")
         return 1
 

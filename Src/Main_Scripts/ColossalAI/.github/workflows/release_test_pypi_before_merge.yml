@@ -8,7 +8,7 @@ on:
 jobs:
   build-n-publish:
     if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI'
-    name: Build and publish Python 🐍 distributions 📦 to Test PyPI
+    name: Build and publish Python  distributions  to Test PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -13,7 +13,7 @@ many advanced technologies such as multi-dimensional tensor parallelism, sequenc
 large-scale optimization, adaptive task scheduling, etc. By using Colossal-AI, we could help users to efficiently and
 quickly deploy large AI model training and inference, reducing large AI model training budgets and scaling down the labor cost of learning and deployment.
 
-### 🚀 Quick Links
+###  Quick Links
 
 [**Colossal-AI**](https://github.com/hpcaitech/ColossalAI) |
 [**Paper**](https://arxiv.org/abs/2110.14883) |
@@ -43,14 +43,14 @@ If you think there is a need to discuss anything, you may jump to our [Slack](ht
 
 If you encounter any problem while running these tutorials, you may want to raise an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose) in this repository.
 
-## 🛠️ Setup environment
+##  Setup environment
 [[video]](https://www.youtube.com/watch?v=dpMYj974ZIc) You should use `conda` to create a virtual environment, we recommend **python 3.8**, e.g. `conda create -n colossal python=3.8`. This installation commands are for CUDA 11.3, if you have a different version of CUDA, please download PyTorch and Colossal-AI accordingly.
 You can refer to the [Installation](https://github.com/hpcaitech/ColossalAI#installation) to set up your environment.
 
-You can run `colossalai check -i` to verify if you have correctly set up your environment 🕹️.
+You can run `colossalai check -i` to verify if you have correctly set up your environment .
 ![](https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/tutorial/colossalai%20check%20-i.png)
 
-If you encounter messages like `please install with cuda_ext`, do let me know as it could be a problem of the distribution wheel. 😥
+If you encounter messages like `please install with cuda_ext`, do let me know as it could be a problem of the distribution wheel. 
 
 Then clone the Colossal-AI repository from GitHub.
 ```bash

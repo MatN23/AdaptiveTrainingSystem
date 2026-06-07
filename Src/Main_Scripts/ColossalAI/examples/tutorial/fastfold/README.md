@@ -4,15 +4,15 @@
 
 - [FastFold Inference](#fastfold-inference)
   - [Table of contents](#table-of-contents)
-  - [📚 Overview](#-overview)
-  - [🚀 Quick Start](#-quick-start)
-  - [🔍 Dive into FastFold](#-dive-into-fastfold)
+  - [ Overview](#-overview)
+  - [ Quick Start](#-quick-start)
+  - [ Dive into FastFold](#-dive-into-fastfold)
 
-## 📚 Overview
+##  Overview
 
 This example lets you to try out the inference of [FastFold](https://github.com/hpcaitech/FastFold).
 
-## 🚀 Quick Start
+##  Quick Start
 
 1. Install FastFold
 
@@ -39,7 +39,7 @@ bash inference.sh
 ```
 You can find predictions under the `outputs` dir.
 
-## 🔍 Dive into FastFold
+##  Dive into FastFold
 
 There are another features of [FastFold](https://github.com/hpcaitech/FastFold), such as:
 + more excellent kernel based on triton

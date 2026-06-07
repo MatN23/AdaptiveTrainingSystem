@@ -83,7 +83,7 @@ def generate_streamingly(prompt, max_length, max_new_tokens, top_k, top_p, tempe
             if is_first_word:
                 out_string = out_string.lstrip()
                 is_first_word = False
-            elif current_sub_tokens[0].startswith("▁"):
+            elif current_sub_tokens[0].startswith(""):
                 # whitespace will be ignored by the frontend
                 out_string = " " + out_string
             yield out_string

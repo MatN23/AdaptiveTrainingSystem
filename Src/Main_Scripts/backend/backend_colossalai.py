@@ -23,10 +23,10 @@ try:
     from colossalai.cluster import DistCoordinator
     from colossalai.nn.optimizer import HybridAdam
     COLOSSALAI_AVAILABLE = True
-    logging.info("✓ ColossalAI loaded from local repo")
+    logging.info(" ColossalAI loaded from local repo")
 except ImportError as e:
     COLOSSALAI_AVAILABLE = False
-    logging.warning(f"⚠ ColossalAI not available: {e}")
+    logging.warning(f" ColossalAI not available: {e}")
 
 COLOSSALAI_AVAILABLE = True
 

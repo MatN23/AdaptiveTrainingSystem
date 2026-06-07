@@ -120,7 +120,7 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
         rejection_trigger_keywords = inputs.get("rejection_trigger_keywords", [])
         answer = answer if all([rej not in answer for rej in rejection_trigger_keywords]) else None
         if answer is None:
-            answer = inputs.get("rejection_answer", "抱歉，根据提供的信息无法回答该问题。")
+            answer = inputs.get("rejection_answer", "")
         if self.combine_documents_chain.memory is not None:
             self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})
 
@@ -168,7 +168,7 @@ class CustomBaseRetrievalQA(BaseRetrievalQA):
             else None
         )
         if answer is None:
-            answer = inputs.get("rejection_answer", "抱歉，根据提供的信息无法回答该问题。")
+            answer = inputs.get("rejection_answer", "")
         self.combine_documents_chain.memory.save_context({"question": question}, {"output": answer})
 
         if self.return_source_documents:

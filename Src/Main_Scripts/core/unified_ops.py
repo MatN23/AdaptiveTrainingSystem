@@ -53,7 +53,7 @@ if HAS_CUDA:
         )
         HAS_CUDA_OPS = TRANSFORMER_OPS_AVAILABLE
         if HAS_CUDA_OPS:
-            logger.info("âœ… CUDA Transformer operations loaded (direct import)")
+            logger.info(" CUDA Transformer operations loaded (direct import)")
     except ImportError as e:
         logger.debug(f"Direct import failed: {e}, trying package import...")
         
@@ -67,7 +67,7 @@ if HAS_CUDA:
             )
             HAS_CUDA_OPS = TRANSFORMER_OPS_AVAILABLE
             if HAS_CUDA_OPS:
-                logger.info("âœ… CUDA Transformer operations loaded (package import)")
+                logger.info(" CUDA Transformer operations loaded (package import)")
         except ImportError as e2:
             logger.debug(f"Package import also failed: {e2}")
             HAS_CUDA_OPS = False
@@ -77,13 +77,13 @@ if HAS_CUDA:
         from moe_cuda_wrapper import MoECUDAOps, CUDA_OPS_AVAILABLE
         HAS_CUDA_MOE = CUDA_OPS_AVAILABLE
         if HAS_CUDA_MOE:
-            logger.info("âœ… CUDA MoE operations loaded (direct import)")
+            logger.info(" CUDA MoE operations loaded (direct import)")
     except ImportError as e:
         try:
             from Main_Scripts.core.moe_cuda_wrapper import MoECUDAOps, CUDA_OPS_AVAILABLE
             HAS_CUDA_MOE = CUDA_OPS_AVAILABLE
             if HAS_CUDA_MOE:
-                logger.info("âœ… CUDA MoE operations loaded (package import)")
+                logger.info(" CUDA MoE operations loaded (package import)")
         except ImportError as e2:
             logger.debug(f"MoE CUDA import failed: {e2}")
             HAS_CUDA_MOE = False
@@ -103,7 +103,7 @@ if IS_MACOS and HAS_MPS:
         )
         HAS_METAL_OPS = METAL_OPS_AVAILABLE
         if HAS_METAL_OPS:
-            logger.info("âœ… Metal Transformer operations loaded")
+            logger.info(" Metal Transformer operations loaded")
     except ImportError:
         try:
             from Main_Scripts.core.metal_opt_wrapper import (
@@ -114,7 +114,7 @@ if IS_MACOS and HAS_MPS:
             )
             HAS_METAL_OPS = METAL_OPS_AVAILABLE
             if HAS_METAL_OPS:
-                logger.info("âœ… Metal Transformer operations loaded")
+                logger.info(" Metal Transformer operations loaded")
         except ImportError as e:
             logger.debug(f"Metal operations not available: {e}")
             HAS_METAL_OPS = False
@@ -124,13 +124,13 @@ if IS_MACOS and HAS_MPS:
         from moe_metal_wrapper import MoEMetalOps, HAS_METAL_OPS as METAL_MOE_AVAILABLE
         HAS_METAL_MOE = METAL_MOE_AVAILABLE
         if HAS_METAL_MOE:
-            logger.info("✅ Metal MoE operations loaded (direct import)")
+            logger.info(" Metal MoE operations loaded (direct import)")
     except ImportError:
         try:
             from Main_Scripts.core.moe_metal_wrapper import MoEMetalOps, HAS_METAL_OPS as METAL_MOE_AVAILABLE
             HAS_METAL_MOE = METAL_MOE_AVAILABLE
             if HAS_METAL_MOE:
-                logger.info("✅ Metal MoE operations loaded (package import)")
+                logger.info(" Metal MoE operations loaded (package import)")
         except ImportError as e:
             logger.debug(f"Metal MoE operations not available: {e}")
             HAS_METAL_MOE = False
@@ -162,16 +162,16 @@ BACKEND = select_backend()
 
 # Log backend selection with clear status
 if BACKEND == 'cuda':
-    logger.info(f"🎯 Backend: CUDA (HW: âœ…, Ops: âœ…, MoE: {'âœ…' if HAS_CUDA_MOE else 'âŒ'})")
+    logger.info(f" Backend: CUDA (HW: , Ops: , MoE: {'' if HAS_CUDA_MOE else ''})")
 elif BACKEND == 'metal':
-    logger.info(f"🎯 Backend: Metal (HW: âœ…, Ops: âœ…, MoE: {'âœ…' if HAS_METAL_MOE else 'âŒ'})")
+    logger.info(f" Backend: Metal (HW: , Ops: , MoE: {'' if HAS_METAL_MOE else ''})")
 else:
     if HAS_CUDA:
-        logger.warning(f"âš ï¸  Backend: PyTorch fallback (CUDA available but ops not compiled)")
+        logger.warning(f"   Backend: PyTorch fallback (CUDA available but ops not compiled)")
     elif HAS_MPS:
-        logger.warning(f"âš ï¸  Backend: PyTorch fallback (Metal available but ops not compiled)")
+        logger.warning(f"   Backend: PyTorch fallback (Metal available but ops not compiled)")
     else:
-        logger.info(f"ℹ️  Backend: PyTorch (CPU mode)")
+        logger.info(f"  Backend: PyTorch (CPU mode)")
 
 # ============================================================================
 # PYTORCH FALLBACK IMPLEMENTATIONS
@@ -191,7 +191,7 @@ class PyTorchRMSNorm(nn.Module):
         x = x.to(torch.float32)
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
-        # ✅ FIX: Clone output to prevent CUDAGraph buffer overwrite.
+        #  FIX: Clone output to prevent CUDAGraph buffer overwrite.
         # torch.compile (reduce-overhead/CUDAGraphs) reuses static memory across
         # replays. Without .clone(), step N+1 forward overwrites step N backward's
         # input before autograd reads it.
@@ -437,25 +437,25 @@ def print_backend_info():
     print()
     
     print("Hardware:")
-    print(f"  CUDA Available: {'Yes âœ…' if info.has_cuda else 'No âŒ'}")
+    print(f"  CUDA Available: {'Yes ' if info.has_cuda else 'No '}")
     if info.has_cuda:
         if info.device_name:
             print(f"    Device: {info.device_name}")
-        print(f"    Transformer Ops: {'Enabled âœ…' if info.has_cuda_ops else 'Not compiled âŒ'}")
+        print(f"    Transformer Ops: {'Enabled ' if info.has_cuda_ops else 'Not compiled '}")
         if info.has_cuda_ops:
             print(f"      RMSNorm: 3-4x faster")
             print(f"      RoPE: 5-7x faster")
             print(f"      SwiGLU: 2-3x faster")
-        print(f"    MoE Ops: {'Enabled âœ…' if info.has_cuda_moe else 'Not compiled âŒ'}")
+        print(f"    MoE Ops: {'Enabled ' if info.has_cuda_moe else 'Not compiled '}")
         if info.has_cuda_moe:
             print(f"      Routing: 2-4x faster")
     
-    print(f"  Metal (MPS) Available: {'Yes âœ…' if info.has_mps else 'No âŒ'}")
+    print(f"  Metal (MPS) Available: {'Yes ' if info.has_mps else 'No '}")
     if info.has_mps:
         if info.device_name:
             print(f"    Device: {info.device_name}")
-        print(f"    Transformer Ops: {'Enabled âœ…' if info.has_metal_ops else 'Not compiled âŒ'}")
-        print(f"    MoE Ops: {'Enabled âœ…' if info.has_metal_moe else 'Not compiled âŒ'}")
+        print(f"    Transformer Ops: {'Enabled ' if info.has_metal_ops else 'Not compiled '}")
+        print(f"    MoE Ops: {'Enabled ' if info.has_metal_moe else 'Not compiled '}")
     
     print()
     print("Operations:")
@@ -468,20 +468,20 @@ def print_backend_info():
     print("Recommendations:")
     if info.name == 'pytorch':
         if HAS_CUDA and not HAS_CUDA_OPS:
-            print("  âš ï¸  CUDA available but kernels not compiled")
+            print("     CUDA available but kernels not compiled")
             print("     Run: bash compile_transformer_ops.sh && bash compile_cuda_moe.sh")
         elif HAS_MPS and not HAS_METAL_OPS:
-            print("  âš ï¸  MPS available but Metal kernels not compiled")
+            print("     MPS available but Metal kernels not compiled")
             print("     Run: bash compile_metal.sh")
         else:
-            print("  â„¹ï¸  Using CPU - consider using GPU for faster training")
+            print("    Using CPU - consider using GPU for faster training")
     elif info.name == 'cuda':
         if not info.has_cuda_moe:
-            print("  â„¹ï¸  MoE acceleration available - run: bash compile_cuda_moe.sh")
+            print("    MoE acceleration available - run: bash compile_cuda_moe.sh")
         else:
-            print("  âœ… Fully optimized for NVIDIA GPU!")
+            print("   Fully optimized for NVIDIA GPU!")
     elif info.name == 'metal':
-        print("  âœ… Optimized for Apple Silicon!")
+        print("   Optimized for Apple Silicon!")
     
     print("="*70 + "\n")
 
@@ -530,7 +530,7 @@ __all__ = [
 if __name__ == "__main__":
     print_backend_info()
     
-    print("🧪 Quick Test:")
+    print(" Quick Test:")
     device = get_recommended_device()
     print(f"   Recommended device: {device}")
     
@@ -538,23 +538,23 @@ if __name__ == "__main__":
     try:
         print("\n   Testing RMSNorm...")
         norm = get_rms_norm(768)
-        print(f"      âœ… Created: {type(norm).__name__}")
+        print(f"       Created: {type(norm).__name__}")
         
         print("   Testing RoPE...")
         rope = get_rope(64)
-        print(f"      âœ… Created: {type(rope).__name__}")
+        print(f"       Created: {type(rope).__name__}")
         
         print("   Testing SwiGLU...")
         swiglu = get_swiglu(768, 3072)
-        print(f"      âœ… Created: {type(swiglu).__name__}")
+        print(f"       Created: {type(swiglu).__name__}")
         
         print("   Testing MoE Ops...")
         moe_ops = get_moe_ops()
-        print(f"      âœ… Got: {moe_ops.__name__}")
+        print(f"       Got: {moe_ops.__name__}")
         
-        print("\nâœ… All operations available and working!\n")
+        print("\n All operations available and working!\n")
         
     except Exception as e:
-        print(f"\nâŒ Error during testing: {e}\n")
+        print(f"\n Error during testing: {e}\n")
         import traceback
         traceback.print_exc()

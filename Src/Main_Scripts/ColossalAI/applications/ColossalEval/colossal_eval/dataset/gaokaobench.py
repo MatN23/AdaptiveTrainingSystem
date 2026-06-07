@@ -43,7 +43,7 @@ default_inference_kwargs = {
 
 def get_all_classes(instruction: str):
     letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    pattern = r"([A-Z]\. |[A-Z]．|[A-Z]\.)"
+    pattern = r"([A-Z]\. |[A-Z]|[A-Z]\.)"
     options = sorted(list(set(re.findall(pattern, instruction))))
     options = sorted(list(set([string[0] for string in options])))
 
@@ -113,7 +113,7 @@ class GaoKaoBenchDataset(BaseDataset):
                             "dataset": "gaokaobench",
                             "split": "test",
                             "category": f"{category[:-10]}-{subject}",
-                            "instruction": sample["question"].strip() + "\n答案：",
+                            "instruction": sample["question"].strip() + "\n",
                             "input": "",
                             "output": "",
                             "target": sample["answer"],

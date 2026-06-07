@@ -41,10 +41,10 @@ def update_docs(data: DocUpdateReq, request: Request):
         all_docs = ""
         for doc in chatbot.docs_names:
             all_docs += f"\t{doc}\n\n"
-        return {"response": f"文件上传完成，所有数据库文件：\n\n{all_docs}让我们开始对话吧！"}
+        return {"response": f"\n\n{all_docs}"}
     elif data.action == "clear":
         chatbot.clear_docs(**all_config["chain"])
-        return {"response": f"已清空数据库。"}
+        return {"response": f""}
 
 
 @app.post("/generate")
@@ -53,7 +53,7 @@ def generate(data: GenerationTaskReq, request: Request):
         chatbot_response, chatbot.memory = chatbot.run(data.user_input, chatbot.memory)
         return {"response": chatbot_response, "error": ""}
     except Exception as e:
-        return {"response": "模型生成回答有误", "error": f"Error in generating answers, details: {e}"}
+        return {"response": "", "error": f"Error in generating answers, details: {e}"}
 
 
 if __name__ == "__main__":

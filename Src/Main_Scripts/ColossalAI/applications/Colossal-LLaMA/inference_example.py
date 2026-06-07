@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--temperature", type=float, default=0.3, help="Set temperature value")
     parser.add_argument("--top_k", type=int, default=50, help="Set top_k value for top-k-filtering")
     parser.add_argument("--top_p", type=float, default=0.95, help="Set top_p value for generation")
-    parser.add_argument("--input_txt", type=str, default="明月松间照，", help="The prompt input to the model")
+    parser.add_argument("--input_txt", type=str, default="", help="The prompt input to the model")
     parser.add_argument("--prompt_style", choices=["sft", "pretrained"], default="sft", help="The style of the prompt")
     args = parser.parse_args()
     generate(args)

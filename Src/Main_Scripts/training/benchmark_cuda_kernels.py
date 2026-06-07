@@ -25,7 +25,7 @@ try:
     from cuda_kernels import FusedLoss, FusedGradClip, CUSTOM_KERNELS_AVAILABLE
     KERNELS_AVAILABLE = CUSTOM_KERNELS_AVAILABLE
 except ImportError:
-    print("⚠️  Could not import cuda_kernels module")
+    print("  Could not import cuda_kernels module")
     KERNELS_AVAILABLE = False
 
 
@@ -182,10 +182,10 @@ def benchmark_loss_computation(
     if KERNELS_AVAILABLE:
         fused_loss = FusedLoss()
         if not fused_loss.enabled:
-            print("\n⚠️  CUDA kernel not enabled, skipping CUDA benchmark")
+            print("\n  CUDA kernel not enabled, skipping CUDA benchmark")
             cuda_results = None
     else:
-        print("\n⚠️  CUDA kernels not available, skipping CUDA benchmark")
+        print("\n  CUDA kernels not available, skipping CUDA benchmark")
         cuda_results = None
     
     # Benchmark PyTorch
@@ -222,9 +222,9 @@ def benchmark_loss_computation(
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             if i == 0:
-                print("  ✓ Compilation successful")
+                print("   Compilation successful")
     except Exception as e:
-        print(f"  ⚠️  torch.compile failed: {e}")
+        print(f"    torch.compile failed: {e}")
         print("  Falling back to eager mode for comparison...")
         compile_failed = True
         for _ in range(warmup):
@@ -324,10 +324,10 @@ def benchmark_gradient_clipping(
     if KERNELS_AVAILABLE:
         fused_clip = FusedGradClip()
         if not fused_clip.cuda_enabled:
-            print("\n⚠️  CUDA kernel not enabled, skipping CUDA benchmark")
+            print("\n  CUDA kernel not enabled, skipping CUDA benchmark")
             cuda_results = None
     else:
-        print("\n⚠️  CUDA kernels not available, skipping CUDA benchmark")
+        print("\n  CUDA kernels not available, skipping CUDA benchmark")
         cuda_results = None
     
     # Benchmark PyTorch
@@ -363,9 +363,9 @@ def benchmark_gradient_clipping(
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             if i == 0:
-                print("  ✓ Using baseline PyTorch (grad clipping not compiled)")
+                print("   Using baseline PyTorch (grad clipping not compiled)")
     except Exception as e:
-        print(f"  ⚠️  Unexpected error: {e}")
+        print(f"    Unexpected error: {e}")
     
     for i in range(num_iterations):
         if device.type == 'cuda':
@@ -461,16 +461,16 @@ def print_speedup_table(pytorch_results: BenchmarkResults,
         if cuda_stats['mean'] < compiled_stats['mean']:
             speedup = cuda_vs_compiled
             time_saved = compiled_stats['mean'] - cuda_stats['mean']
-            print(f"\n🏆 CUDA wins by {speedup:.2f}x")
+            print(f"\n CUDA wins by {speedup:.2f}x")
             print(f"   Time saved: {time_saved:.3f} ms per call")
             print(f"   For 1000 iterations: {time_saved * 1000 / 1000:.1f} seconds saved")
         elif compiled_stats['mean'] < cuda_stats['mean']:
             speedup = compiled_stats['mean'] / cuda_stats['mean']
             time_saved = cuda_stats['mean'] - compiled_stats['mean']
-            print(f"\n🏆 torch.compile wins by {1/speedup:.2f}x")
+            print(f"\n torch.compile wins by {1/speedup:.2f}x")
             print(f"   CUDA is slower by: {time_saved:.3f} ms per call")
         else:
-            print(f"\n🤝 TIE - Both within measurement error")
+            print(f"\n TIE - Both within measurement error")
 
 
 def benchmark_full_training_step(
@@ -483,7 +483,7 @@ def benchmark_full_training_step(
     warmup: int = 10
 ) -> Tuple[BenchmarkResults, BenchmarkResults]:
     """
-    Benchmark FULL training step: forward → loss → backward → grad_clip → optimizer.
+    Benchmark FULL training step: forward  loss  backward  grad_clip  optimizer.
     
     This simulates actual training workload, not isolated kernel calls.
     """
@@ -658,9 +658,9 @@ def print_training_comparison(pytorch_results: BenchmarkResults,
         
         print(f"\n{'='*80}")
         if speedup > 1.0:
-            print(f"🏆 CUDA WINS by {speedup:.2f}x ({throughput_diff:.0f} tok/s faster)")
+            print(f" CUDA WINS by {speedup:.2f}x ({throughput_diff:.0f} tok/s faster)")
         else:
-            print(f"🏆 PyTorch WINS by {1/speedup:.2f}x ({-throughput_diff:.0f} tok/s faster)")
+            print(f" PyTorch WINS by {1/speedup:.2f}x ({-throughput_diff:.0f} tok/s faster)")
         print(f"{'='*80}")
 
 
@@ -704,7 +704,7 @@ def main():
     print(f"PyTorch version: {torch.__version__}")
     
     if not torch.cuda.is_available():
-        print("\n⚠️  CUDA not available - benchmarks will run on CPU")
+        print("\n  CUDA not available - benchmarks will run on CPU")
         return
     
     # Full training step benchmark (most realistic)

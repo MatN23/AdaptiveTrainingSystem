@@ -43,10 +43,10 @@ print_header() {
     echo -e "${BLUE}========================================${NC}"
 }
 
-print_success() { echo -e "${GREEN}✓${NC} $1"; }
-print_error() { echo -e "${RED}✗${NC} $1"; }
-print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
-print_info() { echo -e "${BLUE}ℹ${NC} $1"; }
+print_success() { echo -e "${GREEN}${NC} $1"; }
+print_error() { echo -e "${RED}${NC} $1"; }
+print_warning() { echo -e "${YELLOW}${NC} $1"; }
+print_info() { echo -e "${BLUE}${NC} $1"; }
 
 normalize_arch_list() {
     local raw="$1"
@@ -265,7 +265,7 @@ fi
 # Compilation - Step 1: CUDA to Object File
 ################################################################################
 
-print_header "Step 3: Compiling CUDA Kernel (.cu → .o)"
+print_header "Step 3: Compiling CUDA Kernel (.cu  .o)"
 
 # Build nvcc command
 NVCC_CMD="nvcc"
@@ -360,7 +360,7 @@ print_success "Created: moe_cuda_ops.o ($OBJECT_SIZE)"
 # Linking - Step 2: Object to Shared Library
 ################################################################################
 
-print_header "Step 4: Linking (.o → .so)"
+print_header "Step 4: Linking (.o  .so)"
 
 # Build linker command
 LINK_CMD="g++"
@@ -485,7 +485,7 @@ print("")
 
 # Check if file exists
 if not os.path.exists('moe_cuda_ext.so'):
-    print("✗ ERROR: moe_cuda_ext.so not found!")
+    print(" ERROR: moe_cuda_ext.so not found!")
     print(f"Files in directory: {os.listdir('.')[:10]}")
     sys.exit(1)
 
@@ -496,7 +496,7 @@ print("")
 # Try importing
 try:
     import moe_cuda_ext
-    print("✓ SUCCESS: Module imported!")
+    print(" SUCCESS: Module imported!")
     print("")
     
     # Show module info
@@ -507,7 +507,7 @@ try:
     funcs = [f for f in dir(moe_cuda_ext) if not f.startswith('_')]
     print(f"Available functions ({len(funcs)}):")
     for func in funcs:
-        print(f"  • {func}")
+        print(f"   {func}")
     print("")
     
     # Quick functionality test
@@ -519,32 +519,32 @@ try:
             # Test top-k gating
             gate_logits = torch.randn(10, 8, device='cuda')
             indices, probs = moe_cuda_ext.topk_gating(gate_logits, 2, 1.0)
-            print(f"  ✓ topk_gating: {indices.shape}, {probs.shape}")
+            print(f"   topk_gating: {indices.shape}, {probs.shape}")
             
             # Test dispatch
             tokens = torch.randn(10, 768, device='cuda')
             expert_inputs, token_map = moe_cuda_ext.dispatch_tokens(
                 tokens, indices, 8, 20
             )
-            print(f"  ✓ dispatch_tokens: {expert_inputs.shape}")
+            print(f"   dispatch_tokens: {expert_inputs.shape}")
             
             # Test combine
             expert_outputs = torch.randn(8, 20, 768, device='cuda')
             combined = moe_cuda_ext.combine_expert_outputs(
                 expert_outputs, token_map, probs, 10, 2
             )
-            print(f"  ✓ combine_expert_outputs: {combined.shape}")
+            print(f"   combine_expert_outputs: {combined.shape}")
             
             print("")
-            print("✓ All operations working correctly!")
+            print(" All operations working correctly!")
         except Exception as e:
-            print(f"  ⚠ Function test failed: {e}")
+            print(f"   Function test failed: {e}")
             print("  (Module imported but operations may have issues)")
     else:
-        print("  ⚠ CUDA not available - skipping functionality test")
+        print("   CUDA not available - skipping functionality test")
     
 except ImportError as e:
-    print(f"✗ IMPORT FAILED: {e}")
+    print(f" IMPORT FAILED: {e}")
     print("")
     print("Troubleshooting:")
     print("  1. Check file: ls -lh moe_cuda_ext.so")
@@ -552,7 +552,7 @@ except ImportError as e:
     print("  3. Verify CUDA: python3 -c 'import torch; print(torch.cuda.is_available())'")
     sys.exit(1)
 except Exception as e:
-    print(f"✗ UNEXPECTED ERROR: {e}")
+    print(f" UNEXPECTED ERROR: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)
@@ -576,16 +576,16 @@ fi
 # Success Summary
 ################################################################################
 
-print_header "Build Complete! 🎉"
+print_header "Build Complete! "
 
 echo ""
 echo -e "${GREEN}Successfully built CUDA MoE operations!${NC}"
 echo ""
 echo "Module details:"
-echo "  • File: $OUTPUT_FILE"
-echo "  • Size: $SO_SIZE"
-echo "  • Architectures: $(format_arch_list "$GPU_ARCHS")"
-echo "  • Location: $(pwd)/$OUTPUT_FILE"
+echo "   File: $OUTPUT_FILE"
+echo "   Size: $SO_SIZE"
+echo "   Architectures: $(format_arch_list "$GPU_ARCHS")"
+echo "   Location: $(pwd)/$OUTPUT_FILE"
 echo ""
 echo "Usage in Python:"
 echo "  import moe_cuda_ext"
@@ -602,7 +602,7 @@ rm -f moe_cuda_ops.o
 print_success "Removed: moe_cuda_ops.o"
 
 echo ""
-print_success "Ready to use! 🚀"
+print_success "Ready to use! "
 echo ""
 
 # Offer benchmark
@@ -618,7 +618,7 @@ import moe_cuda_ext
 import time
 
 if not torch.cuda.is_available():
-    print("⚠ CUDA not available - skipping benchmark")
+    print(" CUDA not available - skipping benchmark")
     exit(0)
 
 print("Benchmarking CUDA MoE operations...")
@@ -656,8 +656,8 @@ torch.cuda.synchronize()
 routing_time = (time.perf_counter() - start) * 1000 / num_iterations
 
 print(f"Results:")
-print(f"  ✓ Routing time: {routing_time:.3f}ms per call")
-print(f"  ✓ Throughput: {num_tokens / (routing_time / 1000):,.0f} tokens/sec")
+print(f"   Routing time: {routing_time:.3f}ms per call")
+print(f"   Throughput: {num_tokens / (routing_time / 1000):,.0f} tokens/sec")
 print("")
 
 # Benchmark dispatch
@@ -670,7 +670,7 @@ for _ in range(num_iterations):
 torch.cuda.synchronize()
 dispatch_time = (time.perf_counter() - start) * 1000 / num_iterations
 
-print(f"  ✓ Dispatch time: {dispatch_time:.3f}ms per call")
+print(f"   Dispatch time: {dispatch_time:.3f}ms per call")
 print("")
 
 # Benchmark combine
@@ -683,14 +683,14 @@ for _ in range(num_iterations):
 torch.cuda.synchronize()
 combine_time = (time.perf_counter() - start) * 1000 / num_iterations
 
-print(f"  ✓ Combine time: {combine_time:.3f}ms per call")
+print(f"   Combine time: {combine_time:.3f}ms per call")
 print("")
 
 total_time = routing_time + dispatch_time + combine_time
 print(f"Total MoE overhead: {total_time:.3f}ms per forward pass")
 print("")
 print("=" * 70)
-print("✓ CUDA operations are fast and working correctly!")
+print(" CUDA operations are fast and working correctly!")
 BENCHMARK
     
     echo ""

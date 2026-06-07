@@ -124,7 +124,7 @@ if __name__ == "__main__":
     while True:
         user_input = input("User: ")
         if " end " in user_input:
-            print("Agent: Happy to chat with you ：)")
+            print("Agent: Happy to chat with you )")
             break
         agent_response = llm_chain.run(user_input)
         agent_response = agent_response.split("\n")[0]

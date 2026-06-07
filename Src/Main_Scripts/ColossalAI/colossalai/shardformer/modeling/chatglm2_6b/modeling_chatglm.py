@@ -3,9 +3,9 @@ The ChatGLM2-6B License
 
 1. Definitions
 
-“Licensor” means the ChatGLM2-6B Model Team that distributes its Software.
+Licensor means the ChatGLM2-6B Model Team that distributes its Software.
 
-“Software” means the ChatGLM2-6B model parameters made available under this license.
+Software means the ChatGLM2-6B model parameters made available under this license.
 
 2. License Grant
 
@@ -29,7 +29,7 @@ EXCEPT TO THE EXTENT PROHIBITED BY APPLICABLE LAW, IN NO EVENT AND UNDER NO LEGA
 
 6. Dispute Resolution
 
-This license shall be governed and construed in accordance with the laws of People’s Republic of China. Any dispute arising from or in connection with this License shall be submitted to Haidian District People's Court in Beijing.
+This license shall be governed and construed in accordance with the laws of Peoples Republic of China. Any dispute arising from or in connection with this License shall be submitted to Haidian District People's Court in Beijing.
 
 Note that the license is subject to update to a more comprehensive version.  For any questions related to the license and copyright, please contact us at glm-130b@googlegroups.com.
 """
@@ -1145,7 +1145,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
     def process_response(self, response):
         response = response.strip()
-        response = response.replace("[[训练时间]]", "2023年")
+        response = response.replace("[[]]", "2023")
         return response
 
     def build_inputs(self, tokenizer, query: str, history: List[Tuple[str, str]] = None):
@@ -1156,12 +1156,12 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
 
     def build_stream_inputs(self, tokenizer, query: str, history: List[Tuple[str, str]] = None):
         if history:
-            prompt = "\n\n[Round {}]\n\n问：{}\n\n答：".format(len(history) + 1, query)
+            prompt = "\n\n[Round {}]\n\n{}\n\n".format(len(history) + 1, query)
             input_ids = tokenizer.encode(prompt, add_special_tokens=False)
             input_ids = input_ids[1:]
             inputs = tokenizer.batch_encode_plus([(input_ids, None)], return_tensors="pt", add_special_tokens=False)
         else:
-            prompt = "[Round {}]\n\n问：{}\n\n答：".format(len(history) + 1, query)
+            prompt = "[Round {}]\n\n{}\n\n".format(len(history) + 1, query)
             inputs = tokenizer([prompt], return_tensors="pt")
         inputs = inputs.to(self.device)
         return inputs
@@ -1252,7 +1252,7 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
                 outputs, past_key_values = outputs
             outputs = outputs.tolist()[0][len(inputs["input_ids"][0]) :]
             response = tokenizer.decode(outputs)
-            if response and response[-1] != "�":
+            if response and response[-1] != "":
                 response = self.process_response(response)
                 new_history = history + [(query, response)]
                 if return_past_key_values:

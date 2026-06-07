@@ -267,7 +267,7 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     input0      [1,2,3]         [6,7]           []
     input1      []              [9]             [13,15]
     input2      [1,5]           [6,8]           [11]
-                  ↑               ↑               ↑
+                                                
                 rank 0          rank 0          rank 1
     in KJT format
     """

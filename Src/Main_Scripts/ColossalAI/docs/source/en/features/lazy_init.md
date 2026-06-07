@@ -45,7 +45,7 @@ with LazyInitContext():
 model, *_ = booster.boost(model)
 ```
 
-> ⚠️ Lazy initialization from pretrained is supported for colossalai>0.3.3 or main branch.
+>  Lazy initialization from pretrained is supported for colossalai>0.3.3 or main branch.
 
 ## Limitations
 

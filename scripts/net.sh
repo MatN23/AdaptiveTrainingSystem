@@ -14,14 +14,14 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Print header
-echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║           LuminaAI Network Diagnostics for Distributed Training       ║${NC}"
-echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${CYAN}${NC}"
+echo -e "${CYAN}           LuminaAI Network Diagnostics for Distributed Training       ${NC}"
+echo -e "${CYAN}${NC}"
 echo ""
 
 # Function to print section headers
 print_section() {
-    echo -e "\n${MAGENTA}═══ $1 ═══${NC}"
+    echo -e "\n${MAGENTA} $1 ${NC}"
 }
 
 # Function to print key-value pairs
@@ -31,17 +31,17 @@ print_kv() {
 
 # Function to print warnings
 print_warn() {
-    echo -e "  ${YELLOW}⚠ WARNING${NC}: $1"
+    echo -e "  ${YELLOW} WARNING${NC}: $1"
 }
 
 # Function to print errors
 print_error() {
-    echo -e "  ${RED}✗ ERROR${NC}: $1"
+    echo -e "  ${RED} ERROR${NC}: $1"
 }
 
 # Function to print success
 print_success() {
-    echo -e "  ${GREEN}✓${NC} $1"
+    echo -e "  ${GREEN}${NC} $1"
 }
 
 # ============================================================================
@@ -98,16 +98,16 @@ if command -v ip &> /dev/null; then
         IP=$(echo $line | awk '{print $3}')
         
         if [ "$STATE" == "UP" ]; then
-            echo -e "  ${GREEN}✓${NC} $IFACE ($STATE) - $IP"
+            echo -e "  ${GREEN}${NC} $IFACE ($STATE) - $IP"
         else
-            echo -e "  ${YELLOW}○${NC} $IFACE ($STATE) - $IP"
+            echo -e "  ${YELLOW}${NC} $IFACE ($STATE) - $IP"
         fi
     done
 elif [[ "$(uname -s)" == "Darwin" ]]; then
     echo ""
     ifconfig | grep "^[a-z]" | while read -r line; do
         IFACE=$(echo $line | awk -F: '{print $1}')
-        echo -e "  ${GREEN}✓${NC} $IFACE"
+        echo -e "  ${GREEN}${NC} $IFACE"
     done
 fi
 
@@ -196,15 +196,15 @@ for port_info in "${PORTS[@]}"; do
     
     if command -v netstat &> /dev/null; then
         if netstat -tuln 2>/dev/null | grep -q ":$PORT "; then
-            echo -e "  ${YELLOW}⚠${NC} Port $PORT ($DESC) - IN USE"
+            echo -e "  ${YELLOW}${NC} Port $PORT ($DESC) - IN USE"
         else
-            echo -e "  ${GREEN}✓${NC} Port $PORT ($DESC) - Available"
+            echo -e "  ${GREEN}${NC} Port $PORT ($DESC) - Available"
         fi
     elif command -v ss &> /dev/null; then
         if ss -tuln 2>/dev/null | grep -q ":$PORT "; then
-            echo -e "  ${YELLOW}⚠${NC} Port $PORT ($DESC) - IN USE"
+            echo -e "  ${YELLOW}${NC} Port $PORT ($DESC) - IN USE"
         else
-            echo -e "  ${GREEN}✓${NC} Port $PORT ($DESC) - Available"
+            echo -e "  ${GREEN}${NC} Port $PORT ($DESC) - Available"
         fi
     else
         echo -e "  ${BLUE}?${NC} Port $PORT ($DESC) - Cannot check (netstat/ss not available)"
@@ -258,25 +258,25 @@ echo "  Distributed Training Environment Variables:"
 if [ -n "$MASTER_ADDR" ]; then
     print_kv "MASTER_ADDR" "$MASTER_ADDR"
 else
-    echo -e "  ${BLUE}○${NC} MASTER_ADDR not set"
+    echo -e "  ${BLUE}${NC} MASTER_ADDR not set"
 fi
 
 if [ -n "$MASTER_PORT" ]; then
     print_kv "MASTER_PORT" "$MASTER_PORT"
 else
-    echo -e "  ${BLUE}○${NC} MASTER_PORT not set"
+    echo -e "  ${BLUE}${NC} MASTER_PORT not set"
 fi
 
 if [ -n "$WORLD_SIZE" ]; then
     print_kv "WORLD_SIZE" "$WORLD_SIZE"
 else
-    echo -e "  ${BLUE}○${NC} WORLD_SIZE not set"
+    echo -e "  ${BLUE}${NC} WORLD_SIZE not set"
 fi
 
 if [ -n "$RANK" ]; then
     print_kv "RANK" "$RANK"
 else
-    echo -e "  ${BLUE}○${NC} RANK not set"
+    echo -e "  ${BLUE}${NC} RANK not set"
 fi
 
 # ============================================================================
@@ -312,7 +312,7 @@ if [ $# -gt 0 ]; then
         if nc -z -w 2 $node 29500 2>/dev/null; then
             print_success "PyTorch DDP port (29500) is open"
         else
-            echo -e "  ${BLUE}○${NC} PyTorch DDP port (29500) not open (may be fine if not running)"
+            echo -e "  ${BLUE}${NC} PyTorch DDP port (29500) not open (may be fine if not running)"
         fi
     done
 fi
@@ -327,18 +327,18 @@ echo ""
 # Single node vs multi-node
 if [ $# -eq 0 ]; then
     echo "  ${CYAN}Single Node Training:${NC}"
-    echo "    • Use NCCL for multi-GPU communication"
-    echo "    • Set MASTER_PORT to an available port (e.g., 29500)"
-    echo "    • Example: export MASTER_PORT=29500"
+    echo "     Use NCCL for multi-GPU communication"
+    echo "     Set MASTER_PORT to an available port (e.g., 29500)"
+    echo "     Example: export MASTER_PORT=29500"
     echo ""
     echo "  ${CYAN}To test multi-node connectivity:${NC}"
-    echo "    • Run: ./net.sh node1 node2 node3"
+    echo "     Run: ./net.sh node1 node2 node3"
 else
     echo "  ${CYAN}Multi-Node Training:${NC}"
-    echo "    • Ensure all nodes can reach each other"
-    echo "    • Use consistent network interface on all nodes"
-    echo "    • Configure firewall to allow ports 22 and 29500"
-    echo "    • Set up SSH key-based authentication"
+    echo "     Ensure all nodes can reach each other"
+    echo "     Use consistent network interface on all nodes"
+    echo "     Configure firewall to allow ports 22 and 29500"
+    echo "     Set up SSH key-based authentication"
     echo ""
     echo "  ${CYAN}Environment setup:${NC}"
     echo "    export MASTER_ADDR=$1"
@@ -350,10 +350,10 @@ fi
 # Bandwidth recommendations
 echo ""
 echo "  ${CYAN}Bandwidth Requirements:${NC}"
-echo "    • Local training: N/A"
-echo "    • Multi-GPU (single node): PCIe/NVLink bandwidth important"
-echo "    • Multi-node training: 10+ Gbps recommended"
-echo "    • Large model training: 25+ Gbps or InfiniBand preferred"
+echo "     Local training: N/A"
+echo "     Multi-GPU (single node): PCIe/NVLink bandwidth important"
+echo "     Multi-node training: 10+ Gbps recommended"
+echo "     Large model training: 25+ Gbps or InfiniBand preferred"
 
 # ============================================================================
 # DEEPSPEED SPECIFIC CHECKS
@@ -372,7 +372,7 @@ if python3 -c "import deepspeed" 2>/dev/null; then
             echo "    $line"
         done
     else
-        echo -e "  ${BLUE}○${NC} No hostfile found (create one for multi-node training)"
+        echo -e "  ${BLUE}${NC} No hostfile found (create one for multi-node training)"
         echo ""
         echo "  Example hostfile:"
         echo "    node1 slots=4"
@@ -383,17 +383,17 @@ if python3 -c "import deepspeed" 2>/dev/null; then
     # SSH configuration
     echo ""
     echo "  ${CYAN}DeepSpeed SSH Requirements:${NC}"
-    echo "    • Password-less SSH between all nodes"
-    echo "    • Consistent Python environment on all nodes"
-    echo "    • Same working directory on all nodes"
+    echo "     Password-less SSH between all nodes"
+    echo "     Consistent Python environment on all nodes"
+    echo "     Same working directory on all nodes"
     echo ""
     echo "  Test SSH access:"
     if [ $# -gt 0 ]; then
         for node in "$@"; do
             if ssh -o BatchMode=yes -o ConnectTimeout=5 $node "echo OK" 2>/dev/null | grep -q "OK"; then
-                echo -e "    ${GREEN}✓${NC} SSH to $node: Working"
+                echo -e "    ${GREEN}${NC} SSH to $node: Working"
             else
-                echo -e "    ${RED}✗${NC} SSH to $node: Failed (configure key-based auth)"
+                echo -e "    ${RED}${NC} SSH to $node: Failed (configure key-based auth)"
             fi
         done
     else
@@ -413,17 +413,17 @@ READY=true
 
 # Check basic connectivity
 if ping -c 1 -W 2 8.8.8.8 > /dev/null 2>&1; then
-    echo "    ✓ Internet connectivity working"
+    echo "     Internet connectivity working"
 else
-    echo "    ✗ No internet connectivity"
+    echo "     No internet connectivity"
     READY=false
 fi
 
 # Check for distributed training capabilities
 if python3 -c "import torch; torch.cuda.nccl.version()" 2>/dev/null; then
-    echo "    ✓ NCCL available for multi-GPU"
+    echo "     NCCL available for multi-GPU"
 else
-    echo "    ⚠ NCCL not available (needed for multi-GPU)"
+    echo "     NCCL not available (needed for multi-GPU)"
 fi
 
 if [ $# -gt 0 ]; then
@@ -436,22 +436,22 @@ if [ $# -gt 0 ]; then
     done
     
     if $ALL_REACHABLE; then
-        echo "    ✓ All specified nodes reachable"
+        echo "     All specified nodes reachable"
     else
-        echo "    ✗ Some nodes unreachable"
+        echo "     Some nodes unreachable"
         READY=false
     fi
 fi
 
 echo ""
 if $READY; then
-    echo -e "  ${GREEN}✓ Network ready for distributed training!${NC}"
+    echo -e "  ${GREEN} Network ready for distributed training!${NC}"
 else
-    echo -e "  ${YELLOW}⚠ Some network issues detected. Review recommendations above.${NC}"
+    echo -e "  ${YELLOW} Some network issues detected. Review recommendations above.${NC}"
 fi
 
 echo ""
-echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}${NC}"
 echo ""
 
 # Save to file

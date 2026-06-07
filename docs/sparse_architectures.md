@@ -19,7 +19,7 @@ sequence_lengths = {
 }
 
 # Memory impact:
-# - Attention is O(N²) in memory
+# - Attention is O(N) in memory
 # - 2048 -> 4096 = 4x attention memory
 # - Consider using Flash Attention for long sequences
 
@@ -312,7 +312,7 @@ if step % 100 == 0:
 
 ---
 
-## 🎓 Advanced Use Cases
+##  Advanced Use Cases
 
 ### Custom Architecture Integration
 
@@ -512,7 +512,7 @@ code_metrics = {
 
 ---
 
-## 🔐 Security & Safety
+##  Security & Safety
 
 ### Safe Training Practices
 
@@ -625,7 +625,7 @@ comparison = ab_tester.run_comparison(
 
 ---
 
-## 📖 Citation
+##  Citation
 
 If you use LuminaAI in your research, please cite:
 
@@ -641,13 +641,13 @@ If you use LuminaAI in your research, please cite:
 
 ---
 
-## 📄 License
+##  License
 
 This project is licensed under a Custom License. See [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
@@ -661,7 +661,7 @@ Key areas for contribution:
 
 ---
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - **DeepSpeed team** for distributed training framework
 - **Flash Attention authors** for efficient attention implementation
@@ -677,7 +677,7 @@ Special thanks to researchers and practitioners who provided feedback on the Ada
 
 <div align="center">
 
-**Built with ❤️ for the AI research community**
+**Built with  for the AI research community**
 
 *Featuring autonomous training intelligence that learns, adapts, and optimizes*
 
@@ -725,14 +725,14 @@ class MetaLearningEngine:
 
 ```
 Training Run 1: Standard config, loss plateaus at 2.5
-  → Meta-learner records: "Default LR too conservative for this model size"
+   Meta-learner records: "Default LR too conservative for this model size"
 
 Training Run 2: Increased initial LR by 2x, better convergence to 2.1
-  → Meta-learner records: "Aggressive early LR beneficial, reduce after 30% training"
+   Meta-learner records: "Aggressive early LR beneficial, reduce after 30% training"
 
 Training Run 3: Applied learned strategy, reached 1.8 in same time
-  → Meta-learner confirms: "Strategy generalized successfully"
-  → Adds to successful_strategies with confidence score 0.85
+   Meta-learner confirms: "Strategy generalized successfully"
+   Adds to successful_strategies with confidence score 0.85
 
 Future Training: Automatically applies learned strategy with 2x speed improvement
 ```
@@ -847,12 +847,12 @@ Real-world performance improvements from the Adaptive Orchestrator:
 - Final loss: 2.18 (7% better)
 
 **Orchestrator Actions**:
-1. Step 1200: Detected slow convergence → Increased LR by 1.4x
-2. Step 2800: Memory pressure detected → Reduced batch size 16→12, increased grad accum
-3. Step 3500: Expert 3 underutilized → Adjusted routing temperature
-4. Step 4800: Loss plateau → Increased LR by 1.6x
-5. Step 6200: Expert imbalance → Enabled expert dropout
-6. Step 7500: Convergence predicted → Smoothly reduced LR for final phase
+1. Step 1200: Detected slow convergence  Increased LR by 1.4x
+2. Step 2800: Memory pressure detected  Reduced batch size 1612, increased grad accum
+3. Step 3500: Expert 3 underutilized  Adjusted routing temperature
+4. Step 4800: Loss plateau  Increased LR by 1.6x
+5. Step 6200: Expert imbalance  Enabled expert dropout
+6. Step 7500: Convergence predicted  Smoothly reduced LR for final phase
 
 #### **Case Study 2: 1B Hybrid MoE+MoD on RTX 4090**
 
@@ -868,19 +868,19 @@ Real-world performance improvements from the Adaptive Orchestrator:
 
 **With Orchestrator**:
 - Automatic batch size tuning from first run
-- MoD capacity optimized dynamically (0.5 → 0.7 → 0.55)
+- MoD capacity optimized dynamically (0.5  0.7  0.55)
 - Expert routing balanced via automatic capacity adjustments
 - Gradient checkpointing enabled automatically for memory
 - Total training time: 6 hours (25% faster)
 - Final loss: 2.71 (6% better)
 
 **Key Adaptive Decisions**:
-1. Step 200: Auto-tuned batch size: 8 → 6 (optimal for hardware)
-2. Step 800: MoD too aggressive → Increased capacity 0.5 → 0.7
-3. Step 1500: Expert collapse detected → Added expert dropout
-4. Step 2200: Memory spike → Enabled gradient checkpointing
-5. Step 3000: MoD too conservative → Reduced capacity 0.7 → 0.55
-6. Step 4000: Routing stabilized → Maintained current settings
+1. Step 200: Auto-tuned batch size: 8  6 (optimal for hardware)
+2. Step 800: MoD too aggressive  Increased capacity 0.5  0.7
+3. Step 1500: Expert collapse detected  Added expert dropout
+4. Step 2200: Memory spike  Enabled gradient checkpointing
+5. Step 3000: MoD too conservative  Reduced capacity 0.7  0.55
+6. Step 4000: Routing stabilized  Maintained current settings
 
 #### **Case Study 3: 14B Model on Multi-GPU Setup**
 
@@ -903,16 +903,16 @@ Real-world performance improvements from the Adaptive Orchestrator:
 - Final loss: 1.87 (4% better)
 
 **Orchestrator Optimizations**:
-1. Step 500: Analyzed communication patterns → Optimized expert parallel size
-2. Step 1500: Detected gradient sync delays → Adjusted bucket sizes
-3. Step 3000: Memory imbalance detected → Redistributed experts
-4. Step 5000: Convergence analysis → Adjusted learning rate schedule
-5. Step 8000: Expert utilization diverging → Rebalanced capacity factors
-6. Step 12000: Final phase predicted → Optimized for convergence
+1. Step 500: Analyzed communication patterns  Optimized expert parallel size
+2. Step 1500: Detected gradient sync delays  Adjusted bucket sizes
+3. Step 3000: Memory imbalance detected  Redistributed experts
+4. Step 5000: Convergence analysis  Adjusted learning rate schedule
+5. Step 8000: Expert utilization diverging  Rebalanced capacity factors
+6. Step 12000: Final phase predicted  Optimized for convergence
 
 ---
 
-## 🏗️ Training Modes Deep Dive
+##  Training Modes Deep Dive
 
 ### 1. Base/Pre-Training Mode
 
@@ -1202,7 +1202,7 @@ training_params = {
 
 ---
 
-## 🔍 Precision & Quantization: Complete Guide
+##  Precision & Quantization: Complete Guide
 
 ### Precision Management
 
@@ -1265,7 +1265,7 @@ config.precision = 'mixed_bf16'  # Mixed precision recommended
 # Hardware: Requires NVIDIA Ampere (compute capability 8.0+)
 ```
 
-**FP8 (Float8) - 8-bit** ⚠️ Experimental
+**FP8 (Float8) - 8-bit**  Experimental
 ```python
 config.precision = 'fp8_e4m3'  # 4-bit exponent, 3-bit mantissa
 config.precision = 'fp8_e5m2'  # 5-bit exponent, 2-bit mantissa
@@ -1552,7 +1552,7 @@ if detect_memory_pressure():
 
 ---
 
-## 🎯 Advanced Optimization Techniques
+##  Advanced Optimization Techniques
 
 ### DeepSpeed ZeRO Optimization Stages
 
@@ -1831,7 +1831,7 @@ else:
 
 ---
 
-## 🔬 Monitoring, Metrics & Analytics
+##  Monitoring, Metrics & Analytics
 
 ### Comprehensive Metrics Dashboard
 
@@ -2214,7 +2214,7 @@ communication_stats = {
 
 ---
 
-## 🛡️ Production Deployment Guide
+##  Production Deployment Guide
 
 ### Checkpoint Management & Resume
 
@@ -2386,7 +2386,7 @@ inference_config = {
 
 ---
 
-## 📚 Training Best Practices
+##  Training Best Practices
 
 ### Hyperparameter Selection Guide
 
@@ -2457,13 +2457,13 @@ batch_sizes = {
 
 *A production-ready system featuring autonomous training optimization, real-time intelligence, and state-of-the-art architecture support*
 
-[Features](#-key-features) • [Architecture](#-architecture) • [Adaptive Orchestrator](#-adaptive-training-orchestrator) • [Quick Start](#-quick-start) • [Configurations](#-model-configurations)
+[Features](#-key-features)  [Architecture](#-architecture)  [Adaptive Orchestrator](#-adaptive-training-orchestrator)  [Quick Start](#-quick-start)  [Configurations](#-model-configurations)
 
 </div>
 
 ---
 
-## 🌟 Overview
+##  Overview
 
 LuminaAI is a comprehensive deep learning training system that combines cutting-edge transformer architectures with **autonomous AI-driven training optimization**. At its core is the **Adaptive Training Orchestrator** - an intelligent system that continuously monitors, analyzes, and optimizes training in real-time, making hundreds of micro-decisions to ensure optimal convergence and resource utilization.
 
@@ -2471,19 +2471,19 @@ The system supports both traditional dense architectures and advanced sparse arc
 
 ### Why LuminaAI?
 
-- **🧠 Autonomous Intelligence**: Self-optimizing training with AI-driven decision making
-- **🎯 Production-Ready**: Comprehensive error handling, checkpointing, and monitoring
-- **⚡ Efficient**: 10-30% faster than baseline implementations with 15-25% less memory
-- **🔧 Flexible**: Support for multiple training paradigms (base, fine-tuning, hybrid)
-- **📊 Observable**: Extensive metrics, profiling, and real-time health monitoring
-- **🚀 Scalable**: From single GPU to multi-node distributed training
-- **🔬 Advanced**: MoE, MoD, Flash Attention, GQA, and hybrid architectures
+- ** Autonomous Intelligence**: Self-optimizing training with AI-driven decision making
+- ** Production-Ready**: Comprehensive error handling, checkpointing, and monitoring
+- ** Efficient**: 10-30% faster than baseline implementations with 15-25% less memory
+- ** Flexible**: Support for multiple training paradigms (base, fine-tuning, hybrid)
+- ** Observable**: Extensive metrics, profiling, and real-time health monitoring
+- ** Scalable**: From single GPU to multi-node distributed training
+- ** Advanced**: MoE, MoD, Flash Attention, GQA, and hybrid architectures
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-### 🤖 Adaptive Training Orchestrator
+###  Adaptive Training Orchestrator
 
 **The brain of LuminaAI** - an autonomous training intelligence system that revolutionizes the training process:
 
@@ -2520,7 +2520,7 @@ The orchestrator makes intelligent decisions during training:
 
 ---
 
-### 🗃️ Architecture Capabilities
+###  Architecture Capabilities
 
 #### **Mixture of Experts (MoE)**
 - Sparse activation for massive parameter efficiency
@@ -2537,7 +2537,7 @@ The orchestrator makes intelligent decisions during training:
 - Adaptive capacity factors for different use cases
 - **Real-time capacity adjustment** based on training phase
 
-#### **Hybrid MoE + MoD** 🚀
+#### **Hybrid MoE + MoD** 
 - **NEW**: Combine MoE and MoD in the same model!
 - MoE layers for expert routing on complex layers
 - MoD routing on dense layers for token efficiency
@@ -2551,7 +2551,7 @@ The orchestrator makes intelligent decisions during training:
 
 ---
 
-### ⚡ Training & Optimization
+###  Training & Optimization
 
 #### **Multi-Device Support**
 - **NVIDIA CUDA**: Full feature support with DeepSpeed integration
@@ -2567,7 +2567,7 @@ The orchestrator makes intelligent decisions during training:
 
 #### **Flash Attention 2**
 - 2-4x faster attention for long sequences
-- O(N) memory complexity vs O(N²) standard attention
+- O(N) memory complexity vs O(N) standard attention
 - Automatic fallback to optimized standard attention
 
 #### **Advanced Training Features**
@@ -2579,7 +2579,7 @@ The orchestrator makes intelligent decisions during training:
 
 ---
 
-### 📊 Data Processing
+###  Data Processing
 
 #### **Multi-Dataset Support**
 - Base/Pre-training: Raw text (The Pile, C4, etc.) - supports `.txt` and `.jsonl`
@@ -2590,7 +2590,7 @@ The orchestrator makes intelligent decisions during training:
 #### **Training Modes**
 - **Base Only**: Pre-training on raw text
 - **Fine-tuning Only**: Instruction tuning on conversations
-- **Hybrid**: Sequential (base → fine-tuning)
+- **Hybrid**: Sequential (base  fine-tuning)
 - **Interleaved**: Mixed base and fine-tuning with adaptive ratios
 
 #### **Smart Data Loading**
@@ -2603,7 +2603,7 @@ The orchestrator makes intelligent decisions during training:
 
 ---
 
-### 🔬 Monitoring & Analysis
+###  Monitoring & Analysis
 
 #### **Real-Time Health Monitoring**
 - **Adaptive anomaly detection** (loss spikes, gradient explosion)
@@ -2629,119 +2629,119 @@ The orchestrator makes intelligent decisions during training:
 
 ---
 
-## 🛠️ Architecture
+##  Architecture
 
 ### Model Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│         Token Embeddings (+ scaling)         │
-└──────────────────┬──────────────────────────┘
-                   │
-        ┌──────────▼──────────┐
-        │  Transformer Block  │  ×N layers
-        └──────────┬──────────┘
-                   │
-    ┌──────────────▼────────────────────┐
-    │       Pre-normalization        │
-    │         (RMSNorm)              │
-    └──────────────┬────────────────────┘
-                   │
-    ┌──────────────▼────────────────────┐
-    │   Grouped Query Attention      │
-    │   • Multi-head attention       │
-    │   • Rotary embeddings (RoPE)   │
-    │   • Flash Attention support    │
-    │   • KV cache for inference     │
-    └──────────────┬────────────────────┘
-                   │
-    ┌──────────────▼────────────────────┐
-    │         Residual Add           │
-    └──────────────┬────────────────────┘
-                   │
-    ┌──────────────▼────────────────────┐
-    │       Post-normalization       │
-    │         (RMSNorm)              │
-    └──────────────┬────────────────────┘
-                   │
-    ┌──────────────▼────────────────────┐
-    │      Feed-Forward Network      │
-    │                                │
-    │  Choice of:                    │
-    │  ├─ Dense SwiGLU               │
-    │  ├─ Dense SwiGLU + MoD         │
-    │  └─ Mixture of Experts (MoE)   │
-    │     • Top-k expert routing     │
-    │     • Load balancing           │
-    │     • 8-64 expert support      │
-    │     • Adaptive management      │
-    └──────────────┬────────────────────┘
-                   │
-    ┌──────────────▼────────────────────┐
-    │         Residual Add           │
-    └──────────────┬────────────────────┘
-                   │
+
+         Token Embeddings (+ scaling)         
+
+                   
+        
+          Transformer Block    N layers
+        
+                   
+    
+           Pre-normalization        
+             (RMSNorm)              
+    
+                   
+    
+       Grouped Query Attention      
+        Multi-head attention       
+        Rotary embeddings (RoPE)   
+        Flash Attention support    
+        KV cache for inference     
+    
+                   
+    
+             Residual Add           
+    
+                   
+    
+           Post-normalization       
+             (RMSNorm)              
+    
+                   
+    
+          Feed-Forward Network      
+                                    
+      Choice of:                    
+       Dense SwiGLU               
+       Dense SwiGLU + MoD         
+       Mixture of Experts (MoE)   
+          Top-k expert routing     
+          Load balancing           
+          8-64 expert support      
+          Adaptive management      
+    
+                   
+    
+             Residual Add           
+    
+                   
                 [Repeat]
-                   │
-        ┌──────────▼──────────┐
-        │   Final RMSNorm     │
-        └──────────┬──────────┘
-                   │
-        ┌──────────▼──────────┐
-        │   Language Model    │
-        │   Head (Linear)     │
-        └─────────────────────┘
+                   
+        
+           Final RMSNorm     
+        
+                   
+        
+           Language Model    
+           Head (Linear)     
+        
 ```
 
 ### System Architecture
 
 ```
-┌──────────────────────────────────────────────┐
-│              Main.py                         │
-│  • Configuration management                  │
-│  • System diagnostics                        │
-│  • Data path validation                      │
-│  • Training orchestration                    │
-└──────────────┬───────────────────────────────┘
-               │
-    ┌──────────▼────────────┐
-    │  Orchestrator.py      │  🧠 ADAPTIVE INTELLIGENCE
-    │  • Meta-learning      │
-    │  • Real-time monitor  │
-    │  • Auto-optimization  │
-    │  • Anomaly detection  │
-    │  • Decision making    │
-    └──────────┬────────────┘
-               │
-    ┌──────────▼────────────┐
-    │    Trainer.py         │
-    │  • Training loops     │
-    │  • Loss computation   │
-    │  • Gradient handling  │
-    │  • Quantization       │
-    │  • 18 adaptive methods│
-    └──────────┬────────────┘
-               │
-    ┌──────────▼──────────────────────┐
-    │  Dataset.py (HybridManager)   │
-    │  • Base training datasets     │
-    │  • Fine-tuning datasets       │
-    │  • Multi-file support         │
-    │  • Streaming datasets         │
-    └──────────┬──────────────────────┘
-               │
-    ┌──────────▼────────────┐
-    │   Model.py            │
-    │  • Transformer core   │
-    │  • MoE layers         │
-    │  • MoD routing        │
-    │  • Attention          │
-    └───────────────────────┘
+
+              Main.py                         
+   Configuration management                  
+   System diagnostics                        
+   Data path validation                      
+   Training orchestration                    
+
+               
+    
+      Orchestrator.py         ADAPTIVE INTELLIGENCE
+       Meta-learning      
+       Real-time monitor  
+       Auto-optimization  
+       Anomaly detection  
+       Decision making    
+    
+               
+    
+        Trainer.py         
+       Training loops     
+       Loss computation   
+       Gradient handling  
+       Quantization       
+       18 adaptive methods
+    
+               
+    
+      Dataset.py (HybridManager)   
+       Base training datasets     
+       Fine-tuning datasets       
+       Multi-file support         
+       Streaming datasets         
+    
+               
+    
+       Model.py            
+       Transformer core   
+       MoE layers         
+       MoD routing        
+       Attention          
+    
 ```
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 
@@ -2837,7 +2837,7 @@ training_params = {
 
 ---
 
-## 🎛️ Model Configurations
+##  Model Configurations
 
 ### Available Presets
 
@@ -2891,7 +2891,7 @@ training_params = {
     'batch_size': 16,
     'gradient_accumulation_steps': 8,
     'use_moe': True,
-    'use_mod': True,  # 🚀 HYBRID MODE
+    'use_mod': True,  #  HYBRID MODE
     'num_experts': 8,
     'moe_top_k': 2,
     'mod_capacity_factor': 0.5,
@@ -2962,7 +2962,7 @@ use_adaptive_training = True
 
 ---
 
-## 💻 Advanced Features
+##  Advanced Features
 
 ### Adaptive Training Orchestrator
 
@@ -2973,14 +2973,14 @@ The orchestrator provides AI-driven training optimization that makes your traini
 use_adaptive_training = True  # Recommended for all production training
 
 # What the orchestrator does automatically:
-# ✅ Meta-learning from previous runs
-# ✅ Real-time performance monitoring
-# ✅ Automatic hyperparameter adjustments
-# ✅ Anomaly detection and recovery
-# ✅ Expert utilization optimization
-# ✅ Memory pressure management
-# ✅ Convergence prediction
-# ✅ Emergency intervention
+#  Meta-learning from previous runs
+#  Real-time performance monitoring
+#  Automatic hyperparameter adjustments
+#  Anomaly detection and recovery
+#  Expert utilization optimization
+#  Memory pressure management
+#  Convergence prediction
+#  Emergency intervention
 ```
 
 #### Key Adaptive Features
@@ -3000,11 +3000,11 @@ use_adaptive_training = True  # Recommended for all production training
 ```python
 # During training, the orchestrator makes intelligent decisions:
 #
-# IF loss plateaus → Increase LR or add expert
-# IF gradients explode → Emergency LR reduction
-# IF expert imbalance → Adjust routing parameters
-# IF memory pressure → Reduce batch size
-# IF convergence predicted → Optimize for final phase
+# IF loss plateaus  Increase LR or add expert
+# IF gradients explode  Emergency LR reduction
+# IF expert imbalance  Adjust routing parameters
+# IF memory pressure  Reduce batch size
+# IF convergence predicted  Optimize for final phase
 ```
 
 **3. Advanced Recovery**
@@ -3098,7 +3098,7 @@ deepspeed --num_nodes=4 --num_gpus=8 --node_rank=N Main.py
 
 ---
 
-## 📊 Monitoring & Debugging
+##  Monitoring & Debugging
 
 ### Training Metrics
 
@@ -3174,7 +3174,7 @@ checkpoint_params = {
 
 ---
 
-## 🔧 Troubleshooting
+##  Troubleshooting
 
 ### Out of Memory (OOM)
 
@@ -3254,7 +3254,7 @@ training_params = {
 
 ---
 
-## 📊 Example: Adaptive Training in Action
+##  Example: Adaptive Training in Action
 
 Here's what happens during a typical adaptive training run:
 
@@ -3271,7 +3271,7 @@ Here's what happens during a typical adaptive training run:
   Loss: 2.234 | PPL: 9.34 | Acc: 48.7%
 
 [ORCHESTRATOR] Expert imbalance detected
-  Decision: Adjust capacity factor 1.25 → 1.75
+  Decision: Adjust capacity factor 1.25  1.75
   Confidence: 82%
   Reasoning: Expert 3 utilization at 92%, Expert 5 at 8%
 
@@ -3289,12 +3289,12 @@ Here's what happens during a typical adaptive training run:
 [ORCHESTRATOR] Convergence predicted in ~200 steps
   Decision: Continue current settings
   Confidence: 88%
-  Expected final loss: 2.05 ± 0.15
+  Expected final loss: 2.05  0.15
 ```
 
 ---
 
-## 📖 Citation
+##  Citation
 
 If you use LuminaAI in your research, please cite:
 
@@ -3310,19 +3310,19 @@ If you use LuminaAI in your research, please cite:
 
 ---
 
-## 📄 License
+##  License
 
 This project is licensed under a Custom License. See [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - DeepSpeed team for distributed training framework
 - Flash Attention authors for efficient attention implementation
@@ -3333,7 +3333,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ---
 
-## 🔗 Additional Resources
+##  Additional Resources
 
 - **Documentation**: [docs/](docs/)
 - **Adaptive Training Guide**: [docs/adaptive_training.md](docs/adaptive_training.md)
@@ -3345,10 +3345,10 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 <div align="center">
 
-**Built with ❤️ for the AI research community**
+**Built with  for the AI research community**
 
 *Featuring autonomous training intelligence that learns, adapts, and optimizes*
 
-[Documentation](docs/) • [Issues](issues/) • [Discussions](discussions/)
+[Documentation](docs/)  [Issues](issues/)  [Discussions](discussions/)
 
 </div>

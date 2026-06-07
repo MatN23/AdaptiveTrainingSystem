@@ -18,7 +18,7 @@ class CachedEmbeddingBag(BaseEmbeddingBag):
     Args:
         num_embeddings (int): size of the dictionary of embeddings
         embedding_dim (int):  the size of each embedding vector
-        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient; therefore, the embedding vector at padding_idx is not updated during training, i.e. it remains as a fixed “pad”. For a newly constructed EmbeddingBag, the embedding vector at padding_idx will default to all zeros, but can be updated to another value to be used as the padding vector. Note that the embedding vector at padding_idx is excluded from the reduction.
+        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient; therefore, the embedding vector at padding_idx is not updated during training, i.e. it remains as a fixed pad. For a newly constructed EmbeddingBag, the embedding vector at padding_idx will default to all zeros, but can be updated to another value to be used as the padding vector. Note that the embedding vector at padding_idx is excluded from the reduction.
         max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is renormalized to have norm max_norm
         norm_type (str, optional): The p of the p-norm to compute for the max_norm option. Defaults to 2.
         scale_grad_by_freq (bool, optional): if given, this will scale gradients by the inverse of frequency of the words in the mini-batch. Default False. Note: this option is not supported when mode="max". Defaults to False.

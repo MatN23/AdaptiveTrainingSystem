@@ -273,7 +273,7 @@ class ConversationalChat:
         if self.secure_chat.require_authentication:
             session_token = self._handle_authentication()
             if not session_token:
-                print("❌ Authentication failed")
+                print(" Authentication failed")
                 return
         else:
             session_token = "no_auth_required"
@@ -282,7 +282,7 @@ class ConversationalChat:
         
         try:
             while True:
-                user_input = input("👤 You: ").strip()
+                user_input = input(" You: ").strip()
                 
                 if not user_input:
                     continue
@@ -298,9 +298,9 @@ class ConversationalChat:
                 )
                 
                 if result['success']:
-                    print(f"🤖 Assistant: {result['response']}")
+                    print(f" Assistant: {result['response']}")
                 else:
-                    print(f"❌ Error: {result['error']}")
+                    print(f" Error: {result['error']}")
                     if result.get('error_code') == 'RATE_LIMITED':
                         print(f"   Please wait until: {result.get('retry_after')}")
         
@@ -309,14 +309,14 @@ class ConversationalChat:
     
     def _handle_authentication(self) -> Optional[str]:
         '''Handle user authentication.'''
-        print("🔐 Authentication Required")
+        print(" Authentication Required")
         
         for attempt in range(3):
             username = input("Username: ").strip()
             password = input("Password: ").strip()
             
             if not username or not password:
-                print("❌ Username and password required")
+                print(" Username and password required")
                 continue
             
             session_token = self.secure_chat.authenticate_user(
@@ -324,10 +324,10 @@ class ConversationalChat:
             )
             
             if session_token:
-                print(f"✅ Welcome, {username}!")
+                print(f" Welcome, {username}!")
                 return session_token
             else:
-                print("❌ Invalid credentials")
+                print(" Invalid credentials")
         
         return None
 """

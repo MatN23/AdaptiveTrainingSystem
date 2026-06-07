@@ -15,17 +15,17 @@ from colossal_eval.utils import jdump, jload
 
 ref_step_template = {
     "en": "Now please compare the answer with the {adjective} answer, determine whether the answer is able to achieve the same level of {metric}.\n\n",
-    "cn": "请比较答案与上面的{adjective}答案，确定答案是否可以达到与该{adjective}答案同样水平的{metric}。\n\n",
+    "cn": "{adjective}{adjective}{metric}\n\n",
 }
 
 ref_answer_template_general = {
     "en": "\nAn example answer with good quality is as follows:\n\n{answer}\n\n",
-    "cn": "\n一个优质的示例答案如下：\n\n{answer}\n\n",
+    "cn": "\n\n\n{answer}\n\n",
 }
 
 ref_answer_template_correctness = {
     "en": "\nA correct answer is as follows:\n\n{answer}\n\n",
-    "cn": "\n标准答案如下：\n\n{answer}\n\n",
+    "cn": "\n\n\n{answer}\n\n",
 }
 
 
@@ -265,17 +265,17 @@ def reference_template(metric: str, language: str, reference: Dict[str, Any]) ->
     for_the_given_answer = (
         "{metric} (1-5) (directly give the score for the given answer):"
         if language == "en"
-        else "{metric} (1-5) (直接对给定答案打分)"
+        else "{metric} (1-5) ()"
     )
 
     # adjective is used to describe the word "answer" in the prompt.
-    adjective = "example" if language == "en" else "示例"
+    adjective = "example" if language == "en" else ""
     answer_to_add = ref_answer_template_general[language]
 
     # Only for correctness, we will provide a correct answer and so the adjective for "answer" will be "correct". The prompt words will be "a correct answer".
     # In other cases, the prompt words will be "an example answer with good quality" by default.
     if metric.lower() == "correctness":
-        adjective = "correct" if language == "en" else "标准"
+        adjective = "correct" if language == "en" else ""
         answer_to_add = ref_answer_template_correctness[language]
 
     answer_to_add = answer_to_add.format(answer=reference["target"] if reference["target"] else reference["output"])

@@ -23,9 +23,9 @@ if IS_MACOS:
         import Metal
         HAS_METAL_OPS = torch.backends.mps.is_available()
         if HAS_METAL_OPS:
-            logger.info("✅ Metal MoE operations available")
+            logger.info(" Metal MoE operations available")
     except ImportError:
-        logger.warning("⚠️  Metal framework not available (install: pip install pyobjc-framework-Metal)")
+        logger.warning("  Metal framework not available (install: pip install pyobjc-framework-Metal)")
         HAS_METAL_OPS = False
 else:
     HAS_METAL_OPS = False
@@ -278,7 +278,7 @@ def benchmark_metal_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2,
         runs: Number of benchmark iterations
     """
     if not torch.backends.mps.is_available():
-        print("❌ MPS not available")
+        print(" MPS not available")
         return
     
     import time
@@ -286,7 +286,7 @@ def benchmark_metal_moe_ops(num_tokens=1024, hidden_dim=768, num_experts=8, k=2,
     device = torch.device('mps')
     
     print(f"\n{'='*70}")
-    print(f"🚀 METAL MoE BENCHMARK")
+    print(f" METAL MoE BENCHMARK")
     print(f"{'='*70}")
     print(f"Tokens: {num_tokens}, Hidden: {hidden_dim}")
     print(f"Experts: {num_experts}, Top-K: {k}")
@@ -427,13 +427,13 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("METAL MoE OPERATIONS")
     print("="*70)
-    print(f"macOS: {'Yes ✅' if IS_MACOS else 'No ❌'}")
-    print(f"Metal Available: {'Yes ✅' if HAS_METAL_OPS else 'No ❌'}")
-    print(f"MPS Backend: {'Available ✅' if torch.backends.mps.is_available() else 'Not Available ❌'}")
+    print(f"macOS: {'Yes ' if IS_MACOS else 'No '}")
+    print(f"Metal Available: {'Yes ' if HAS_METAL_OPS else 'No '}")
+    print(f"MPS Backend: {'Available ' if torch.backends.mps.is_available() else 'Not Available '}")
     print("="*70)
     
     if torch.backends.mps.is_available():
-        print("\n📊 Running benchmarks...")
+        print("\n Running benchmarks...")
         benchmark_metal_moe_ops(
             num_tokens=1024,
             hidden_dim=768,
@@ -442,4 +442,4 @@ if __name__ == "__main__":
             runs=100
         )
     else:
-        print("\n⚠️  MPS backend not available - cannot run benchmarks")
+        print("\n  MPS backend not available - cannot run benchmarks")

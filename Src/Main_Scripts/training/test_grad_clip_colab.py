@@ -15,7 +15,7 @@ def test_gradient_clip():
     """Test the fused gradient clipping kernel against PyTorch baseline."""
     
     if not torch.cuda.is_available():
-        print("❌ CUDA not available - cannot test")
+        print(" CUDA not available - cannot test")
         return False
     
     print("=" * 80)
@@ -28,7 +28,7 @@ def test_gradient_clip():
     try:
         from training.cuda_kernels import FusedGradClip
     except ImportError as e:
-        print(f"❌ Failed to import: {e}")
+        print(f" Failed to import: {e}")
         print("   Make sure you're in the Main_Scripts directory")
         return False
     
@@ -36,7 +36,7 @@ def test_gradient_clip():
     print(f"CUDA enabled: {fused_clip.cuda_enabled}")
     
     if not fused_clip.cuda_enabled:
-        print("❌ CUDA kernel not loaded - check compilation")
+        print(" CUDA kernel not loaded - check compilation")
         return False
     
     all_passed = True
@@ -72,9 +72,9 @@ def test_gradient_clip():
     print(f"  CUDA/PyTorch:   {cuda_norm / pytorch_norm:.6f}x")
     
     if abs(cuda_norm - expected_norm) < 0.01:
-        print("  ✅ TEST 1 PASSED")
+        print("   TEST 1 PASSED")
     else:
-        print("  ❌ TEST 1 FAILED - Norm mismatch!")
+        print("   TEST 1 FAILED - Norm mismatch!")
         all_passed = False
     
     # ==========================================================================
@@ -85,7 +85,7 @@ def test_gradient_clip():
     print("-" * 60)
     
     # 10 million elements with value 0.001
-    # Expected norm: sqrt(10^7 * 0.001^2) = sqrt(10) ≈ 3.162
+    # Expected norm: sqrt(10^7 * 0.001^2) = sqrt(10)  3.162
     size = 10_000_000
     param = torch.nn.Parameter(torch.zeros(size, device='cuda'))
     param.grad = torch.full((size,), 0.001, device='cuda')
@@ -105,9 +105,9 @@ def test_gradient_clip():
     print(f"  Relative error: {abs(cuda_norm - expected_norm) / expected_norm * 100:.4f}%")
     
     if abs(cuda_norm - expected_norm) / expected_norm < 0.001:  # < 0.1% error
-        print("  ✅ TEST 2 PASSED")
+        print("   TEST 2 PASSED")
     else:
-        print("  ❌ TEST 2 FAILED - Accumulation error!")
+        print("   TEST 2 FAILED - Accumulation error!")
         all_passed = False
     
     # ==========================================================================
@@ -145,9 +145,9 @@ def test_gradient_clip():
     print(f"  PyTorch norm:   {pytorch_norm:.6f}")
     
     if abs(cuda_norm - expected_norm) / expected_norm < 0.001:
-        print("  ✅ TEST 3 PASSED")
+        print("   TEST 3 PASSED")
     else:
-        print("  ❌ TEST 3 FAILED - Multi-tensor issue!")
+        print("   TEST 3 FAILED - Multi-tensor issue!")
         all_passed = False
     
     # ==========================================================================
@@ -178,9 +178,9 @@ def test_gradient_clip():
     print(f"  Actual value:   {actual_value:.8f}")
     
     if abs(actual_value - expected_value) < 1e-6:
-        print("  ✅ TEST 4 PASSED")
+        print("   TEST 4 PASSED")
     else:
-        print("  ❌ TEST 4 FAILED - Clipping not applied correctly!")
+        print("   TEST 4 FAILED - Clipping not applied correctly!")
         all_passed = False
     
     # ==========================================================================
@@ -188,10 +188,10 @@ def test_gradient_clip():
     # ==========================================================================
     print("\n" + "=" * 80)
     if all_passed:
-        print("🎉 ALL TESTS PASSED! Gradient clipping is working correctly.")
+        print(" ALL TESTS PASSED! Gradient clipping is working correctly.")
         print("   You can now run training with confidence.")
     else:
-        print("❌ SOME TESTS FAILED! Check the debug printf output above.")
+        print(" SOME TESTS FAILED! Check the debug printf output above.")
         print("   Look for 'DEBUG GRAD_CLIP:' lines in the output.")
     print("=" * 80)
     

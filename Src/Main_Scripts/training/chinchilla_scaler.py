@@ -243,7 +243,7 @@ class EnhancedChinchillaScaler:
     
     def _print_initialization(self):
         print("\n" + "="*80)
-        print("🧠 ENHANCED CHINCHILLA SCALER INITIALIZED")
+        print(" ENHANCED CHINCHILLA SCALER INITIALIZED")
         print("="*80)
         
         print(f"\nModel Configuration:")
@@ -269,24 +269,24 @@ class EnhancedChinchillaScaler:
         print(f"  Coverage: {coverage:.1f}%")
         
         if coverage < 50:
-            print(f"  ⚠️  WARNING: Significantly under Chinchilla recommendation")
+            print(f"    WARNING: Significantly under Chinchilla recommendation")
         elif coverage > 150:
-            print(f"  ⚠️  WARNING: Exceeding Chinchilla recommendation")
+            print(f"    WARNING: Exceeding Chinchilla recommendation")
         else:
-            print(f"  ✅ Within reasonable range")
+            print(f"   Within reasonable range")
         
         print(f"\nEnhanced Features:")
-        print(f"  ✅ Loss Landscape Analysis: {self.enable_loss_landscape}")
-        print(f"  ✅ Compute Efficiency Tracking: {self.enable_compute_efficiency}")
-        print(f"  ✅ Adaptive Curriculum: {self.enable_adaptive_curriculum}")
-        print(f"  ✅ Early Stopping: {self.enable_early_stopping}")
+        print(f"   Loss Landscape Analysis: {self.enable_loss_landscape}")
+        print(f"   Compute Efficiency Tracking: {self.enable_compute_efficiency}")
+        print(f"   Adaptive Curriculum: {self.enable_adaptive_curriculum}")
+        print(f"   Early Stopping: {self.enable_early_stopping}")
         
         print("="*80 + "\n")
     
     def update_metrics(self, step: int, epoch: float, loss: float, 
                       grad_norm: float, learning_rate: float, batch_tokens: int):
         
-        # ✅ FIX: Safely convert tensors to floats to avoid NumPy errors
+        #  FIX: Safely convert tensors to floats to avoid NumPy errors
         if isinstance(loss, torch.Tensor): loss = loss.item()
         if isinstance(grad_norm, torch.Tensor): grad_norm = grad_norm.item()
         if isinstance(learning_rate, torch.Tensor): learning_rate = learning_rate.item()
@@ -376,8 +376,8 @@ class EnhancedChinchillaScaler:
         new_optimal = max(self.min_epochs, min(new_optimal, self.max_epochs))
         
         if new_optimal != self.current_optimal_epochs:
-            print(f"\n📊 Epoch Adjustment at step {recent_metrics[-1].step}:")
-            print(f"   {self.current_optimal_epochs} → {new_optimal} epochs")
+            print(f"\n Epoch Adjustment at step {recent_metrics[-1].step}:")
+            print(f"   {self.current_optimal_epochs}  {new_optimal} epochs")
             print(f"   Reasons: {', '.join(reasons)}")
             self.current_optimal_epochs = new_optimal
     
@@ -534,7 +534,7 @@ class EnhancedChinchillaScaler:
         report = self.get_status_report()
         
         print("\n" + "="*80)
-        print("📊 ENHANCED CHINCHILLA SCALING STATUS")
+        print(" ENHANCED CHINCHILLA SCALING STATUS")
         print("="*80)
         
         print(f"\nProgress:")
@@ -570,7 +570,7 @@ class EnhancedChinchillaScaler:
         
         es = report['early_stopping']
         if es['should_stop']:
-            print(f"\n⚠️  EARLY STOPPING RECOMMENDED")
+            print(f"\n  EARLY STOPPING RECOMMENDED")
             print(f"  Reason: {es['reason']}")
         
         print("="*80 + "\n")

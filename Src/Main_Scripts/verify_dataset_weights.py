@@ -52,11 +52,11 @@ def verify_dataset_weights():
             loss_weights = sample.get('loss_weights')
             
             if loss_weights is None:
-                print("✅ PASS: loss_weights is None")
+                print(" PASS: loss_weights is None")
             else:
-                print(f"❌ FAIL: loss_weights is NOT None (Type: {type(loss_weights)})")
+                print(f" FAIL: loss_weights is NOT None (Type: {type(loss_weights)})")
         else:
-            print("⚠️ ADVISORY: Dataset empty, could not verify sample.")
+            print(" ADVISORY: Dataset empty, could not verify sample.")
 
         # 2. Verify FusedLoss selection logic (Simulated)
         print("\n2. simulating FusedLoss behavior...")
@@ -91,21 +91,21 @@ def verify_dataset_weights():
         fused_loss(logits, labels, loss_weights=None)
         
         if called_path == "CUDA":
-             print("✅ PASS: FusedLoss calls CUDA implementation when loss_weights=None")
+             print(" PASS: FusedLoss calls CUDA implementation when loss_weights=None")
         else:
-             print(f"❌ FAIL: FusedLoss called {called_path} instead of CUDA")
+             print(f" FAIL: FusedLoss called {called_path} instead of CUDA")
              
         # Test with Explicit weights (old behavior)
         weights = torch.ones_like(labels).float()
         fused_loss(logits, labels, loss_weights=weights)
         
         if called_path == "PYTORCH":
-             print("✅ PASS: FusedLoss properly falls back to PyTorch when weights ARE present")
+             print(" PASS: FusedLoss properly falls back to PyTorch when weights ARE present")
         else:
-             print(f"❌ FAIL: FusedLoss called {called_path} but expected PYTORCH fallback")
+             print(f" FAIL: FusedLoss called {called_path} but expected PYTORCH fallback")
 
     except Exception as e:
-        print(f"\n❌ FATAL ERROR TEST FAILED: {e}")
+        print(f"\n FATAL ERROR TEST FAILED: {e}")
         import traceback
         traceback.print_exc()
     finally:

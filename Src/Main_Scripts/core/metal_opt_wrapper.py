@@ -28,9 +28,9 @@ if IS_MACOS:
         import Metal
         import MetalPerformanceShaders as MPS
         METAL_OPS_AVAILABLE = True
-        logger.info("✅ Metal framework available")
+        logger.info(" Metal framework available")
     except ImportError:
-        logger.warning("⚠️  Metal framework not available (install PyObjC: pip install pyobjc-framework-Metal)")
+        logger.warning("  Metal framework not available (install PyObjC: pip install pyobjc-framework-Metal)")
         METAL_OPS_AVAILABLE = False
 
 def _get_metal_device():
@@ -245,7 +245,7 @@ def compile_metal_shaders():
         python -c "from metal_opt_wrapper import compile_metal_shaders; compile_metal_shaders()"
     """
     if not IS_MACOS:
-        print("❌ Can only compile Metal shaders on macOS")
+        print(" Can only compile Metal shaders on macOS")
         return False
     
     import subprocess
@@ -260,14 +260,14 @@ def compile_metal_shaders():
     
     for shader_file in shader_files:
         if not shader_file.exists():
-            print(f"❌ Shader not found: {shader_file}")
+            print(f" Shader not found: {shader_file}")
             continue
         
         # Compile to .air
         air_file = shader_file.with_suffix('.air')
         metallib_file = shader_file.with_suffix('.metallib')
         
-        print(f"🔨 Compiling {shader_file.name}...")
+        print(f" Compiling {shader_file.name}...")
         
         try:
             # Compile .metal -> .air
@@ -284,16 +284,16 @@ def compile_metal_shaders():
                 '-o', str(metallib_file)
             ], check=True)
             
-            print(f"✅ Compiled: {metallib_file}")
+            print(f" Compiled: {metallib_file}")
             
             # Cleanup .air file
             air_file.unlink()
             
         except subprocess.CalledProcessError as e:
-            print(f"❌ Compilation failed: {e}")
+            print(f" Compilation failed: {e}")
             return False
     
-    print("\n✅ All Metal shaders compiled successfully!")
+    print("\n All Metal shaders compiled successfully!")
     return True
 
 
@@ -304,7 +304,7 @@ def compile_metal_shaders():
 def benchmark_metal_ops():
     """Benchmark Metal vs PyTorch MPS"""
     if not torch.backends.mps.is_available():
-        print("❌ MPS not available")
+        print(" MPS not available")
         return
     
     import time
@@ -340,7 +340,7 @@ def benchmark_metal_ops():
     print("\n2. RoPE (batch=4, heads=12, seq=128, head_dim=64)")
     rope = MetalRoPE(64).to(device)
     cos, sin = rope(128, device)
-    print(f"   ✅ Cache built: cos={cos.shape}, sin={sin.shape}")
+    print(f"    Cache built: cos={cos.shape}, sin={sin.shape}")
     
     # Test 3: SwiGLU
     print("\n3. SwiGLU (tokens=512, hidden=768, intermediate=3072)")
@@ -370,15 +370,15 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("METAL OPERATIONS WRAPPER")
     print("="*70)
-    print(f"macOS: {'Yes ✅' if IS_MACOS else 'No ❌'}")
-    print(f"Metal Framework: {'Available ✅' if METAL_OPS_AVAILABLE else 'Not Available ❌'}")
-    print(f"MPS Backend: {'Available ✅' if torch.backends.mps.is_available() else 'Not Available ❌'}")
+    print(f"macOS: {'Yes ' if IS_MACOS else 'No '}")
+    print(f"Metal Framework: {'Available ' if METAL_OPS_AVAILABLE else 'Not Available '}")
+    print(f"MPS Backend: {'Available ' if torch.backends.mps.is_available() else 'Not Available '}")
     print("="*70)
     
     if torch.backends.mps.is_available():
-        print("\n📊 Running benchmarks...")
+        print("\n Running benchmarks...")
         benchmark_metal_ops()
     
     if IS_MACOS:
-        print("\n💡 To compile Metal shaders:")
+        print("\n To compile Metal shaders:")
         print("   python metal_opt_wrapper.py --compile")

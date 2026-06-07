@@ -1,22 +1,22 @@
-# 📕 Documentation
+#  Documentation
 
-## 🔗 Table of Contents
+##  Table of Contents
 
-- [📕 Documentation](#-documentation)
-  - [🔗 Table of Contents](#-table-of-contents)
-  - [📝 Overview](#-overview)
-  - [🗺 Module Structure](#-module-structure)
-  - [🧱 Our Documentation System](#-our-documentation-system)
-  - [🎊 Contribution](#-contribution)
-    - [🖊 Adding a New Documentation](#-adding-a-new-documentation)
-    - [🧹 Doc Testing](#-doc-testing)
-    - [💉 Auto Documentation](#-auto-documentation)
+- [ Documentation](#-documentation)
+  - [ Table of Contents](#-table-of-contents)
+  - [ Overview](#-overview)
+  - [ Module Structure](#-module-structure)
+  - [ Our Documentation System](#-our-documentation-system)
+  - [ Contribution](#-contribution)
+    - [ Adding a New Documentation](#-adding-a-new-documentation)
+    - [ Doc Testing](#-doc-testing)
+    - [ Auto Documentation](#-auto-documentation)
 
-## 📝 Overview
+##  Overview
 
 We evaluated various existing solutions for documentation in the community and discussed their advantages and disadvantages in the [issue #2651](https://github.com/hpcaitech/ColossalAI/issues/2651). Therefore, we propose to build a more modern and robust documentation system by integrating the Sphinx [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) function and the [Docusaurus](https://docusaurus.io/) framework.
 
-## 🗺 Module Structure
+##  Module Structure
 
 ```text
 - docs
@@ -33,7 +33,7 @@ The documentation module structure is shown above:
 2. `sidebars.json`: The `sidebars.json` defines the table of content for the tutorials. You need to update this file when a new doc is added/deleted.
 3. `versions.json`: The `versions.json` in the **main branch** in the **latest commit** will be used to control the versions to be displayed on our website
 
-## 🧱 Our Documentation System
+##  Our Documentation System
 
 We believe that the combination of the existing systems can yield several advantages such as simplicity, usability and maintainability:
 1. Support [Markdown](https://www.markdownguide.org/). We believe is a more popular language for writing documentation compared to [RST](https://docutils.sourceforge.io/rst.html).
@@ -44,7 +44,7 @@ We believe that the combination of the existing systems can yield several advant
 
 Therefore, we have built the [ColossalAI-Documentation](https://github.com/hpcaitech/ColossalAI-Documentation) repository to integrate the features above.
 
-## 🎊 Contribution
+##  Contribution
 
 You can contribute to the documentation by directly setting up a Pull Request towards the `docs/source` folder. There are several guidelines for documentation contribution.
 
@@ -53,7 +53,7 @@ You can contribute to the documentation by directly setting up a Pull Request to
 3. You must provide a test command for your documentation, please see [Doc Testing](#-doc-testing) for more details.
 4. You can embed your docstring in your markdown, please see [Auto Documentation](#-auto-documentation) for more details.
 
-### 🖊 Adding a New Documentation
+###  Adding a New Documentation
 
 You can add a Markdown file to the `docs/source` folder`. You need to ensure that multi-language is supported in your PR.
 Let's assume that you want to add a file called `your_doc.md`, your file structure will look like this.
@@ -70,7 +70,7 @@ Let's assume that you want to add a file called `your_doc.md`, your file structu
 
 Meanwhile, you need to ensure the `sidebars.json` is updated such that it contains your documentation file. Our CI will check whether documentation exists for all languages and can be used to build the website successfully.
 
-### 🧹 Doc Testing
+###  Doc Testing
 
 Every documentation is tested to ensure it works well. You need to add the following line to the **bottom of your file** and replace `$command` with the actual command. Do note that the markdown will be converted into a Python file. Assuming you have a `demo.md` file, the test file generated will be `demo.py`. Therefore, you should use `demo.py` in your command, e.g. `python demo.py`.
 
@@ -101,7 +101,7 @@ Lastly, if you want to skip some code, you just need to add the following annota
 If you have any dependency required, please add it to `requirements-doc-test.txt` for pip and `conda-doc-test-deps.yml` for Conda.
 
 
-### 💉 Auto Documentation
+###  Auto Documentation
 
 Lastly, you may want to include the API documentation for a class/function in your documentation for reference.
 We support `autodoc` to extract the docstring and transform it into a Web element for an elegant display.

@@ -465,11 +465,11 @@ Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.c
 
 You may contact us or participate in the following ways:
 
-1. [Leaving a Star ⭐](https://github.com/hpcaitech/ColossalAI/stargazers) to show your like and support. Thanks!
+1. [Leaving a Star ](https://github.com/hpcaitech/ColossalAI/stargazers) to show your like and support. Thanks!
 2. Posting an [issue](https://github.com/hpcaitech/ColossalAI/issues/new/choose), or submitting a PR on GitHub follow the guideline in [Contributing](https://github.com/hpcaitech/ColossalAI/blob/main/CONTRIBUTING.md).
 3. Join the Colossal-AI community on
    [Slack](https://github.com/hpcaitech/public_assets/tree/main/colossalai/contact/slack),
-   and [WeChat(微信)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
+   and [WeChat()](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your ideas.
 4. Send your official proposal to email contact@hpcaitech.com
 
 Thanks so much to all of our amazing contributors!
@@ -504,11 +504,11 @@ Thanks so much to all of our amazing contributors!
 - Increase the capacity of the fine-tuning model by up to 3.7 times on a single GPU
 - Keep in a sufficiently high running speed
 
-|  Model Pair   | Alpaca-7B ⚔ Coati-7B | Coati-7B ⚔ Alpaca-7B |
+|  Model Pair   | Alpaca-7B  Coati-7B | Coati-7B  Alpaca-7B |
 | :-----------: | :------------------: | :------------------: |
-| Better Cases  |     38 ⚔ **41**      |     **45** ⚔ 33      |
-|   Win Rate    |    48% ⚔ **52%**     |    **58%** ⚔ 42%     |
-| Average Score |   7.06 ⚔ **7.13**    |   **7.31** ⚔ 6.82    |
+| Better Cases  |     38  **41**      |     **45**  33      |
+|   Win Rate    |    48%  **52%**     |    **58%**  42%     |
+| Average Score |   7.06  **7.13**    |   **7.31**  6.82    |
 
 - Our Coati-7B model performs better than Alpaca-7B when using GPT-4 to evaluate model performance. The Coati-7B model we evaluate is an old version we trained a few weeks ago and the new version is around the corner.
 

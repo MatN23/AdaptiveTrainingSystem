@@ -45,7 +45,7 @@ class ChineseRetrievalConversation:
         self.memory = ConversationBufferWithSummary(
             llm=self.llm,
             prompt=SUMMARY_PROMPT_ZH,
-            human_prefix="用户",
+            human_prefix="",
             ai_prefix="Assistant",
             max_tokens=2000,
             llm_kwargs={"max_new_tokens": 50, "temperature": 0.6, "do_sample": True},
@@ -85,10 +85,10 @@ class ChineseRetrievalConversation:
         return (
             self.retrieval_chain.run(
                 query=user_input,
-                stop=["</答案>"],
-                doc_prefix="支持文档",
-                rejection_trigger_keywords=["无法回答该问题"],
-                rejection_answer="抱歉，根据提供的信息无法回答该问题。",
+                stop=["</>"],
+                doc_prefix="",
+                rejection_trigger_keywords=[""],
+                rejection_answer="",
             ).split("\n")[0],
             self.memory,
         )

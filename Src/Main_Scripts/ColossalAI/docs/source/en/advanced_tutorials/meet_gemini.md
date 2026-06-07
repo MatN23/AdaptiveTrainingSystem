@@ -31,7 +31,7 @@ Note that Gemini and parallel strategies such as tensor parallelism, data parall
 
 ## Concepts
 
-**OP**(**OP**erator)：operation of a neural network layer, such as linear, LayerNorm, etc. The operator can be a forward propagation calculation or a back-propagation calculation.
+**OP**(**OP**erator)operation of a neural network layer, such as linear, LayerNorm, etc. The operator can be a forward propagation calculation or a back-propagation calculation.
 
 Neural networks must manage two types of training data during training.
 **model data**: consists of parameters, gradients and optimizer states, and its scale is related to the definition of model structure.

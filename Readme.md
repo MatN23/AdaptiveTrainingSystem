@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1tH1z9e7px2G8NGqWUN9gdqxs1CnUC7p1)
 
-[Demo](#demo) • [Architecture](#architecture) • [CUDA Acceleration](#cuda-acceleration) • [Configuration](#configuration) • [API](#api-reference) • [Licensing](#licensing)
+[Demo](#demo)  [Architecture](#architecture)  [CUDA Acceleration](#cuda-acceleration)  [Configuration](#configuration)  [API](#api-reference)  [Licensing](#licensing)
 
 </div>
 
@@ -89,14 +89,14 @@ Standard architecture with LLaMA/GPT-NeoX design patterns:
 - **Pre-normalization:** RMSNorm before attention/FFN (CUDA-accelerated, 3-4x faster)
 - **Grouped Query Attention:** Reduces KV cache via shared KV heads (typical ratio 4:1 or 8:1)
 - **Rotary Position Embeddings:** Length generalization with configurable theta (10000 base, 1000000 extended), CUDA-accelerated RoPE application (2-4x faster)
-- **SwiGLU activation:** Two-path gating in FFN, intermediate_size typically 8/3 × hidden_size, CUDA-accelerated (2-3x faster)
+- **SwiGLU activation:** Two-path gating in FFN, intermediate_size typically 8/3  hidden_size, CUDA-accelerated (2-3x faster)
 - **Optional Flash Attention 2.x:** 2-4x speedup on Ampere+ GPUs with memory-efficient attention
 
 **Parameter calculation:**
-- Embedding: vocab_size × hidden_size
-- Attention per layer: hidden_size² × (1 + num_kv_heads/num_heads)
-- FFN per layer: 2 × hidden_size × intermediate_size
-- Output: vocab_size × hidden_size (optionally tied)
+- Embedding: vocab_size  hidden_size
+- Attention per layer: hidden_size  (1 + num_kv_heads/num_heads)
+- FFN per layer: 2  hidden_size  intermediate_size
+- Output: vocab_size  hidden_size (optionally tied)
 
 ### Mixture of Experts (MoE)
 
@@ -104,13 +104,13 @@ Token-level sparse activation via learned routing to specialized FFN networks wi
 
 **Routing mechanism:**
 - **Top-k gating:** Each token routed to k of N experts (typical: k=2, N=8)
-- **Router:** Linear layer (hidden_size × num_experts) + softmax + TopK selection
+- **Router:** Linear layer (hidden_size  num_experts) + softmax + TopK selection
 - **CUDA optimization:** Warp-based top-k kernel with shuffle reduction (2-4x faster than PyTorch)
 - **Output:** Weighted combination of selected expert outputs
 
 **Load balancing:**
 - **Auxiliary loss:** Penalizes routing imbalance via expert utilization distribution
-- **Capacity factor:** Maximum tokens per expert = (total_tokens/num_experts) × capacity_factor
+- **Capacity factor:** Maximum tokens per expert = (total_tokens/num_experts)  capacity_factor
 - **Typical capacity_factor:** 1.25-1.5 (25-50% overflow buffer)
 - **Load balancing weight:** 0.01 (added to main loss)
 
@@ -126,7 +126,7 @@ Token-level sparse activation via learned routing to specialized FFN networks wi
 - **Memory efficiency:** Batched operations reduce kernel launch overhead by 3-5x
 
 **Efficiency:**
-- 8-expert top-2 MoE: 8× total parameters, 1.25× active parameters per token
+- 8-expert top-2 MoE: 8 total parameters, 1.25 active parameters per token
 - Sparsity: 87.5% (12.5% parameters active)
 - Memory: Scales with total parameters (all experts in memory)
 - Compute: Scales with active parameters only
@@ -185,7 +185,7 @@ Combined token-level (MoE) and layer-level (MoD) sparsity with coordinated CUDA 
 **Sparsity compounding:**
 - Top-2 of 8 experts: 25% expert parameters active
 - 50% layer capacity: 50% tokens use layers
-- Combined: 0.5 × 0.25 = 12.5% active parameters per token
+- Combined: 0.5  0.25 = 12.5% active parameters per token
 - 87.5% total sparsity
 
 **Training considerations:**
@@ -223,7 +223,7 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
   - Eliminated bank conflicts in shared memory
   - Better register allocation (maxrregcount=64)
   - Loop unrolling for common hidden sizes
-- **Performance:** ~3.2ms → ~0.9ms per 1000 tokens (hidden_size=768)
+- **Performance:** ~3.2ms  ~0.9ms per 1000 tokens (hidden_size=768)
 
 **2. Rotary Position Embeddings (2-4x faster)**
 - **Optimized precompute:** Vectorized cos/sin cache generation
@@ -233,7 +233,7 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
   - Use of __ldg() for read-only cache optimization
   - FMA instructions (fmaf) for multiply-add fusion
   - Eliminated per-token position computation
-- **Performance:** ~8.5ms → ~1.3ms per batch (batch=4, seq=128, heads=12)
+- **Performance:** ~8.5ms  ~1.3ms per batch (batch=4, seq=128, heads=12)
 
 **3. SwiGLU Activation (2-3x faster)**
 - **Vectorized computation:** float4 for gate and up projections
@@ -243,18 +243,18 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
   - Register tiling for matrix multiplication
   - Eliminated intermediate memory allocation
   - Vectorized output writes
-- **Performance:** ~5.1ms → ~1.8ms per 1000 tokens (intermediate=3072)
+- **Performance:** ~5.1ms  ~1.8ms per 1000 tokens (intermediate=3072)
 
 **4. MoE Operations (2-4x faster)**
 - **Optimized top-k gating:** Warp-level parallel reduction
 - **Token dispatch:** Coalesced memory access patterns
 - **Expert combination:** Reduced atomic operations
 - **Key optimizations:**
-  - Warp-based top-k (no shared memory for k≤4)
+  - Warp-based top-k (no shared memory for k4)
   - Batched atomic increments per block
   - Vectorized token copies (float4)
   - Local accumulation before global writes
-- **Performance:** ~12ms → ~3.5ms per batch for routing+dispatch+combine
+- **Performance:** ~12ms  ~3.5ms per batch for routing+dispatch+combine
 
 **5. Fused Loss Computation**
 - **Cross-entropy + accuracy:** Single-pass computation
@@ -263,7 +263,7 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
   - Parallel argmax using shared memory
   - Fused gradient computation
   - Eliminated redundant passes
-- **Performance:** ~4.2ms → ~1.1ms per batch (vocab_size=32000)
+- **Performance:** ~4.2ms  ~1.1ms per batch (vocab_size=32000)
 
 **6. Fused Gradient Clipping**
 - **Fully async pipeline:** No CPU-GPU synchronization
@@ -272,12 +272,12 @@ Custom CUDA kernels provide 2-7x speedup over PyTorch implementations for critic
   - Conditional clipping kernel launch
   - Pinned memory for async copy
   - Single synchronization point at end
-- **Performance:** ~8ms → ~1.5ms (including norm computation)
+- **Performance:** ~8ms  ~1.5ms (including norm computation)
 
 ### CUDA Kernel Speedups
 
 ![CUDA Kernel Speedup Overview](assets/cuda_speedup.png)
-*Custom kernels provide 2–7× speedup over vanilla PyTorch operations.*
+*Custom kernels provide 27 speedup over vanilla PyTorch operations.*
 
 ### Compilation and Usage
 
@@ -305,7 +305,7 @@ Framework automatically detects and loads compiled kernels at runtime. Falls bac
 
 **Automatic JIT rebuild for current hardware:**
 - If kernel `.so` files are missing or compiled for the wrong SM target, runtime wrappers trigger a rebuild automatically.
-- Target architecture resolution order: `CUDA_TARGET_SM` → `TORCH_CUDA_ARCH_LIST` → detected GPU compute capability → fallback `sm_75`.
+- Target architecture resolution order: `CUDA_TARGET_SM`  `TORCH_CUDA_ARCH_LIST`  detected GPU compute capability  fallback `sm_75`.
 - Set `CUDA_TARGET_SM` when you need deterministic builds across machines.
 
 **Supported architectures:**
@@ -384,7 +384,7 @@ These presets define untrained model architectures. Training starts from random 
 
 **Customization:**
 
-All presets are starting points. Architecture dimensions can be modified: hidden_size must be divisible by num_heads. Intermediate_size typically 8/3 × hidden_size rounded to nearest 256 for optimal CUDA performance. Max_position_embeddings determines context window. Num_experts and moe_top_k can be adjusted independently. MoD capacity_factor controls compute/quality tradeoff. CUDA kernels automatically adapt to configuration changes.
+All presets are starting points. Architecture dimensions can be modified: hidden_size must be divisible by num_heads. Intermediate_size typically 8/3  hidden_size rounded to nearest 256 for optimal CUDA performance. Max_position_embeddings determines context window. Num_experts and moe_top_k can be adjusted independently. MoD capacity_factor controls compute/quality tradeoff. CUDA kernels automatically adapt to configuration changes.
 
 ---
 
@@ -396,15 +396,15 @@ Numerical formats for parameters, activations, and gradients during training and
 
 **FP32 (Float32) - Full Precision**
 - 32-bit floating point (8-bit exponent, 23-bit mantissa)
-- Range: ±3.4×10^38, precision: ~7 decimal digits
+- Range: 3.410^38, precision: ~7 decimal digits
 - Maximum stability, no special handling required
-- 2× memory vs FP16/BF16, significantly slower on modern hardware
+- 2 memory vs FP16/BF16, significantly slower on modern hardware
 - Use cases: CPU training, numerical debugging, stability issues with reduced precision
 
 **FP16 (Float16) - Half Precision**
 - 16-bit floating point (5-bit exponent, 10-bit mantissa)
-- Range: ±65504, precision: ~3 decimal digits
-- 50% memory reduction, ~2× speedup on supported hardware
+- Range: 65504, precision: ~3 decimal digits
+- 50% memory reduction, ~2 speedup on supported hardware
 - Requires loss scaling to prevent gradient underflow (small gradients round to zero)
 - Dynamic or static loss scaling: multiply loss by 2^N before backward, unscale gradients before update
 - CUDA kernels maintain FP32 accumulation for numerical stability
@@ -412,7 +412,7 @@ Numerical formats for parameters, activations, and gradients during training and
 
 **BF16 (BFloat16) - Brain Float16**
 - 16-bit format (8-bit exponent, 7-bit mantissa)
-- Range: Same as FP32 (±3.4×10^38), reduced precision vs FP32
+- Range: Same as FP32 (3.410^38), reduced precision vs FP32
 - 50% memory reduction, similar speed to FP16
 - No loss scaling required (wide dynamic range like FP32)
 - Better training stability than FP16 with same memory benefits
@@ -457,7 +457,7 @@ The framework detects hardware and selects optimal precision with CUDA kernel co
 **Detection logic:**
 1. Check for CUDA availability and GPU compute capability
 2. Verify CUDA kernel compilation and availability
-3. If Ampere+ (compute capability ≥ 8.0): Select `mixed_bf16` with BF16-optimized kernels
+3. If Ampere+ (compute capability  8.0): Select `mixed_bf16` with BF16-optimized kernels
 4. If Volta/Turing (compute capability 7.0-7.5): Select `mixed_fp16` with FP16-optimized kernels
 5. If Apple Silicon (MPS): Select `fp16` (BF16 not supported, CUDA kernels unavailable)
 6. If CPU: Select `fp32` (reduced precision offers no benefit, CUDA kernels unavailable)
@@ -497,7 +497,7 @@ The framework detects hardware and selects optimal precision with CUDA kernel co
 **CPU (Intel/AMD/ARM):**
 - Recommended: `fp32` (CUDA kernels unavailable, PyTorch fallback)
 - Note: Reduced precision offers minimal benefit on CPU
-- Expect significantly slower training than GPU (10-100× depending on model size)
+- Expect significantly slower training than GPU (10-100 depending on model size)
 - Performance: No CUDA acceleration, relies on BLAS libraries (MKL, OpenBLAS, Accelerate)
 
 ### Precision Configuration Parameters
@@ -543,8 +543,8 @@ Free GPU training demonstration requiring no local setup with CUDA acceleration 
 
 **Observable behaviors:**
 - System diagnostics: Hardware detection, precision selection, CUDA kernel loading
-- Chinchilla scaling: Optimal token calculation (20× parameters), epoch recommendations
-- Training metrics: Loss progression (~2.5 → ~2.0), throughput (~53–55k tok/s with CUDA vs ~30k tok/s without)
+- Chinchilla scaling: Optimal token calculation (20 parameters), epoch recommendations
+- Training metrics: Loss progression (~2.5  ~2.0), throughput (~5355k tok/s with CUDA vs ~30k tok/s without)
 - Orchestrator: Health checks every 100 steps, intervention decisions
 - Expert statistics: Utilization distribution, routing entropy, load balance
 - CUDA performance: Real-time speedup metrics, per-operation timing, memory efficiency
@@ -586,7 +586,7 @@ python Main.py
 ```
 
 **Optional dependencies:**
-- Flash Attention: 2-4× attention speedup, requires manual compilation
+- Flash Attention: 2-4 attention speedup, requires manual compilation
 - DeepSpeed: Multi-GPU optimization, auto-installs but compiles kernels on first use
 - Wandb: Experiment tracking, requires API key
 
@@ -651,7 +651,7 @@ Two-phase training: base corpus then conversational data. Builds general underst
 
 **Configuration:** Separate epoch counts per phase. Optional learning rate warmup between phases to handle distribution shift. CUDA acceleration maintained across phase transitions.
 
-**Use cases:** Domain adaptation (medical literature → clinical QA), continual learning (new data → maintained task performance).
+**Use cases:** Domain adaptation (medical literature  clinical QA), continual learning (new data  maintained task performance).
 
 ### Interleaved Hybrid
 
@@ -740,12 +740,12 @@ State machine monitoring training every N steps (default: 100). Triggers interve
 
 Automatic training duration calculation following compute-optimal scaling laws (Hoffmann et al., 2022) with CUDA-aware compute budgets.
 
-**Formula:** `N_optimal_tokens = multiplier × model_parameters`
+**Formula:** `N_optimal_tokens = multiplier  model_parameters`
 
-**Default multiplier:** 20× (configurable: 10-50×)
+**Default multiplier:** 20 (configurable: 10-50)
 
 **Process:**
-1. Calculate optimal token budget: `N_opt = 20 × total_parameters`
+1. Calculate optimal token budget: `N_opt = 20  total_parameters`
 2. Adjust for CUDA acceleration: `effective_N_opt = N_opt / speedup_factor`
 3. Determine base epochs: `epochs = N_opt / dataset_tokens`
 4. Clamp to min/max epoch constraints (default: 1-50)
@@ -774,14 +774,14 @@ Platform-specific optimizations automatically applied based on detected hardware
 
 **Automatic optimizations:**
 - **Precision:** `mixed_bf16` for Ampere+, `mixed_fp16` for Volta/Turing
-- **Flash Attention:** Enabled on Ampere+ (compute capability ≥ 8.0)
+- **Flash Attention:** Enabled on Ampere+ (compute capability  8.0)
 - **Custom CUDA kernels:** Automatic compilation and loading of optimized operations
 - **Tensor cores:** Automatically utilized for supported operations and precisions
 - **CUDA graphs:** Enabled for static computation graphs (requires compile=True)
 - **Memory management:** Optimized allocation patterns for kernel efficiency
 
 **Configuration parameters:**
-- `use_flash_attention`: Enable Flash Attention 2.x (2-4× attention speedup)
+- `use_flash_attention`: Enable Flash Attention 2.x (2-4 attention speedup)
 - `use_fused_rmsnorm`: Enable fused RMSNorm kernel (default profile: `false`)
 - `use_fused_rope`: Enable fused RoPE kernel (default profile: `true`)
 - `use_fused_swiglu`: Enable fused SwiGLU kernel (default profile: `true`)
@@ -798,9 +798,9 @@ Platform-specific optimizations automatically applied based on detected hardware
 
 **DeepSpeed ZeRO stages:**
 - **Stage 0:** Disabled (standard DDP with CUDA acceleration)
-- **Stage 1:** Partition optimizer states (~4× memory reduction)
-- **Stage 2:** Partition optimizer + gradients (~8× reduction)
-- **Stage 3:** Partition optimizer + gradients + parameters (~N× reduction where N = num_GPUs)
+- **Stage 1:** Partition optimizer states (~4 memory reduction)
+- **Stage 2:** Partition optimizer + gradients (~8 reduction)
+- **Stage 3:** Partition optimizer + gradients + parameters (~N reduction where N = num_GPUs)
 
 **Memory optimization:**
 - **CPU offload:** Move optimizer states to CPU memory (slower updates, massive memory savings)
@@ -862,8 +862,8 @@ cd Src/Main_Scripts/core
 - **Vectorization:** Automatic SIMD instruction usage
 
 **Expectations:**
-- 10-100× slower than GPU depending on model size
-- 30-150× slower than CUDA-accelerated GPU training
+- 10-100 slower than GPU depending on model size
+- 30-150 slower than CUDA-accelerated GPU training
 - Suitable for debugging, not production training
 - Memory constraints less severe (can use system RAM)
 
@@ -931,7 +931,7 @@ Comprehensive metrics tracked during training with real-time logging, experiment
 - **Routing entropy:** Distribution concentration, higher = more balanced
 - **Load balance loss:** Auxiliary loss magnitude
 - **Tokens dropped:** Count exceeding capacity
-- **Expert efficiency:** Compute per expert, utilization × quality contribution
+- **Expert efficiency:** Compute per expert, utilization  quality contribution
 - **CUDA routing performance:** Top-k timing, dispatch efficiency, combination speedup
 
 **MoD-specific metrics:**
@@ -994,109 +994,109 @@ Throughput measurements on reference hardware configurations with and without CU
 
 **Google Colab T4 (15.8GB, Turing, sm_75):**
 - **debug (14M total, 2M active):**
-  - With CUDA: ~53,000–55,000 tokens/second, batch_size=30, grad_steps=8
+  - With CUDA: ~53,00055,000 tokens/second, batch_size=30, grad_steps=8
   - Without CUDA (PyTorch): ~30,000 tokens/second, batch_size=30, grad_steps=8
-  - Speedup: ~1.8×
+  - Speedup: ~1.8
 - Memory efficiency: High utilization with optimized kernels
 
 **NVIDIA RTX 3090 (24GB, Ampere, sm_80):**
 - **b1 (1B active):**
   - With CUDA: ~1400 tokens/second, batch_size=16
   - Without CUDA: ~450 tokens/second, batch_size=16
-  - Speedup: 3.1×
+  - Speedup: 3.1
 - **b7 (7B active):**
   - With CUDA: ~270 tokens/second, batch_size=4, requires ZeRO-2
   - Without CUDA: ~75 tokens/second, batch_size=4
-  - Speedup: 3.6×
+  - Speedup: 3.6
 - Memory efficiency: 85-90% utilization at optimal batch size
 
 **NVIDIA A100 40GB (Ampere, sm_80):**
 - **b1 (1B active):**
   - With CUDA: ~1600 tokens/second, batch_size=32
   - Without CUDA: ~480 tokens/second, batch_size=32
-  - Speedup: 3.3×
+  - Speedup: 3.3
 - **b7 (7B active):**
   - With CUDA: ~680 tokens/second, batch_size=16
   - Without CUDA: ~195 tokens/second, batch_size=16
-  - Speedup: 3.5×
+  - Speedup: 3.5
 - **b14 (14B active):**
   - With CUDA: ~210 tokens/second, batch_size=4, requires ZeRO-2
   - Without CUDA: ~55 tokens/second, batch_size=4
-  - Speedup: 3.8×
+  - Speedup: 3.8
 - Memory efficiency: 90-95% utilization
 
 **NVIDIA A100 80GB (Ampere, sm_80):**
 - **b7 (7B active):**
   - With CUDA: ~750 tokens/second, batch_size=24
   - Without CUDA: ~210 tokens/second, batch_size=24
-  - Speedup: 3.6×
+  - Speedup: 3.6
 - **b14 (14B active):**
   - With CUDA: ~340 tokens/second, batch_size=12
   - Without CUDA: ~90 tokens/second, batch_size=12
-  - Speedup: 3.8×
+  - Speedup: 3.8
 - **b30 (30B active):**
   - With CUDA: ~68 tokens/second, batch_size=2, requires ZeRO-3
   - Without CUDA: ~16 tokens/second, batch_size=2
-  - Speedup: 4.3×
+  - Speedup: 4.3
 - Memory efficiency: 85-92% utilization
 
 **NVIDIA H100 80GB (Hopper, sm_90):**
 - **b14 (14B active):**
   - With CUDA: ~550 tokens/second, batch_size=16
   - Without CUDA: ~125 tokens/second, batch_size=16
-  - Speedup: 4.4×
+  - Speedup: 4.4
 - **b30 (30B active):**
   - With CUDA: ~160 tokens/second, batch_size=8
   - Without CUDA: ~35 tokens/second, batch_size=8
-  - Speedup: 4.6×
+  - Speedup: 4.6
 - **b50 (50B active):**
   - With CUDA: ~68 tokens/second, batch_size=4, requires ZeRO-3
   - Without CUDA: ~14 tokens/second, batch_size=4
-  - Speedup: 4.9×
-- FP8 support: Additional 1.5-2× speedup with FP8 training
+  - Speedup: 4.9
+- FP8 support: Additional 1.5-2 speedup with FP8 training
 
 **Apple M1 Max (32GB unified, MPS):**
 - b1 (1B active): ~300 tokens/second, batch_size=8 (PyTorch only, no CUDA)
 - Memory: Unified architecture shares with system, effective 20-24GB for training
-- Note: 4-5× slower than equivalent CUDA GPU with acceleration
+- Note: 4-5 slower than equivalent CUDA GPU with acceleration
 
 **Apple M2 Ultra (128GB unified, MPS):**
 - b1 (1B active): ~400 tokens/second, batch_size=16 (PyTorch only, no CUDA)
 - b7 (7B active): ~80 tokens/second, batch_size=4 (PyTorch only, no CUDA)
 - Memory: Up to 96GB available for training after system overhead
-- Note: 3-4× slower than A100 with CUDA acceleration
+- Note: 3-4 slower than A100 with CUDA acceleration
 
 ### Multi-GPU Scaling
 
-**4× A100 80GB (DeepSpeed ZeRO-2 + CUDA):**
+**4 A100 80GB (DeepSpeed ZeRO-2 + CUDA):**
 - **b30 (30B active):**
-  - With CUDA: ~480 tokens/second (3.5× single GPU)
-  - Without CUDA: ~110 tokens/second (3.4× single GPU)
-  - Speedup: 4.4× (CUDA over PyTorch)
+  - With CUDA: ~480 tokens/second (3.5 single GPU)
+  - Without CUDA: ~110 tokens/second (3.4 single GPU)
+  - Speedup: 4.4 (CUDA over PyTorch)
 - Scaling efficiency: 87%
 - Communication overhead: ~13%
 
-**8× A100 80GB (DeepSpeed ZeRO-3 + CUDA):**
+**8 A100 80GB (DeepSpeed ZeRO-3 + CUDA):**
 - **b50 (50B active):**
   - With CUDA: ~440 tokens/second
   - Without CUDA: ~95 tokens/second
-  - Speedup: 4.6×
+  - Speedup: 4.6
 - **b100 (100B active):**
   - With CUDA: ~245 tokens/second
   - Without CUDA: ~52 tokens/second
-  - Speedup: 4.7×
+  - Speedup: 4.7
 - Scaling efficiency: 70-75%
 - Communication overhead: 25-30%
 
-**16× H100 80GB (DeepSpeed ZeRO-3 + expert parallelism + CUDA):**
+**16 H100 80GB (DeepSpeed ZeRO-3 + expert parallelism + CUDA):**
 - **b100 (100B active):**
   - With CUDA: ~820 tokens/second
   - Without CUDA: ~165 tokens/second
-  - Speedup: 5.0×
+  - Speedup: 5.0
 - **b200 (200B active):**
   - With CUDA: ~380 tokens/second
   - Without CUDA: ~73 tokens/second
-  - Speedup: 5.2×
+  - Speedup: 5.2
 - Scaling efficiency: 60-65%
 - Expert parallelism improves MoE scaling
 
@@ -1109,20 +1109,20 @@ Throughput measurements on reference hardware configurations with and without CU
 
 ### Optimization Impact
 
-**CUDA Custom Kernels (3-5× overall):**
-- RMSNorm: 3-4× speedup over PyTorch
-- RoPE: 5-7× speedup over PyTorch
-- SwiGLU: 2-3× speedup over PyTorch
-- MoE operations: 2-4× speedup over PyTorch
-- Fused loss: 3-4× speedup over separate operations
-- Combined impact: 3.2-4.8× depending on model configuration
+**CUDA Custom Kernels (3-5 overall):**
+- RMSNorm: 3-4 speedup over PyTorch
+- RoPE: 5-7 speedup over PyTorch
+- SwiGLU: 2-3 speedup over PyTorch
+- MoE operations: 2-4 speedup over PyTorch
+- Fused loss: 3-4 speedup over separate operations
+- Combined impact: 3.2-4.8 depending on model configuration
 
 **Flash Attention (Ampere+):**
-- Attention speedup: 2-4× depending on sequence length
-- Longer sequences benefit more (4× at 4096 length vs 2× at 512)
+- Attention speedup: 2-4 depending on sequence length
+- Longer sequences benefit more (4 at 4096 length vs 2 at 512)
 - Memory reduction: 30-50% for attention computation
 - Quality: Numerically equivalent to standard attention
-- Compatible with CUDA kernels: Combined 4-8× total speedup
+- Compatible with CUDA kernels: Combined 4-8 total speedup
 
 **PyTorch Compilation (torch.compile):**
 - Speedup: 5-30% depending on model architecture
@@ -1138,9 +1138,9 @@ Throughput measurements on reference hardware configurations with and without CU
 - CUDA kernels: Maintain acceleration during recomputation
 
 **Mixed Precision:**
-- FP32 → mixed_bf16: ~2× speedup, 50% memory reduction
-- FP32 → mixed_fp16: ~2× speedup, 50% memory, may need loss scaling tuning
-- BF16 → FP8: ~1.5-2× speedup (H100 only), quality impacts under investigation
+- FP32  mixed_bf16: ~2 speedup, 50% memory reduction
+- FP32  mixed_fp16: ~2 speedup, 50% memory, may need loss scaling tuning
+- BF16  FP8: ~1.5-2 speedup (H100 only), quality impacts under investigation
 - CUDA kernels: Optimized for each precision, maintain speedup ratios
 
 ### CUDA Kernel Profiling
@@ -1149,17 +1149,17 @@ Throughput measurements on reference hardware configurations with and without CU
 ```
 Operation          | PyTorch | CUDA  | Speedup | % Time
 -------------------|---------|-------|---------|--------
-RMSNorm            | 45ms    | 12ms  | 3.8×    | 18%
-RoPE               | 38ms    | 6ms   | 6.3×    | 9%
-SwiGLU             | 62ms    | 24ms  | 2.6×    | 22%
-MoE Routing        | 28ms    | 9ms   | 3.1×    | 11%
-MoE Dispatch       | 42ms    | 14ms  | 3.0×    | 15%
-MoE Combine        | 35ms    | 11ms  | 3.2×    | 13%
-Loss Computation   | 18ms    | 5ms   | 3.6×    | 6%
-Other Operations   | 52ms    | 48ms  | 1.1×    | 6%
+RMSNorm            | 45ms    | 12ms  | 3.8    | 18%
+RoPE               | 38ms    | 6ms   | 6.3    | 9%
+SwiGLU             | 62ms    | 24ms  | 2.6    | 22%
+MoE Routing        | 28ms    | 9ms   | 3.1    | 11%
+MoE Dispatch       | 42ms    | 14ms  | 3.0    | 15%
+MoE Combine        | 35ms    | 11ms  | 3.2    | 13%
+Loss Computation   | 18ms    | 5ms   | 3.6    | 6%
+Other Operations   | 52ms    | 48ms  | 1.1    | 6%
 -------------------|---------|-------|---------|--------
-Total per batch    | 320ms   | 129ms | 2.5×    | 100%
-Effective tokens/s | 195     | 680   | 3.5×    |
+Total per batch    | 320ms   | 129ms | 2.5    | 100%
+Effective tokens/s | 195     | 680   | 3.5    |
 ```
 
 Note: Effective speedup higher than per-operation average due to reduced overhead and better GPU utilization.
@@ -1243,7 +1243,7 @@ Note: Effective speedup higher than per-operation average due to reduced overhea
 `emergency_lr_reduction(reduction_factor: float) -> None`
 - Reduces learning rate by specified factor
 - Triggered by gradient explosion (norm > threshold)
-- Typical reduction: 5-10×
+- Typical reduction: 5-10
 - Logs emergency action with reasoning
 
 `rollback_steps(num_steps: int) -> None`
@@ -1295,7 +1295,7 @@ Note: Effective speedup higher than per-operation average due to reduced overhea
 - `num_layers`: Transformer layer count (2-120)
 - `num_heads`: Attention head count (2-160)
 - `num_kv_heads`: KV cache heads for GQA (2-40, typically num_heads/4)
-- `intermediate_size`: FFN intermediate dimension (typically 8/3 × hidden_size, round to 256 for CUDA)
+- `intermediate_size`: FFN intermediate dimension (typically 8/3  hidden_size, round to 256 for CUDA)
 - `max_position_embeddings`: Maximum sequence length (128-32768)
 - `vocab_size`: Tokenizer vocabulary size (typically 32000-100000)
 
@@ -1355,7 +1355,7 @@ Note: Effective speedup higher than per-operation average due to reduced overhea
 - `finetuning_eval_paths`: Fine-tuning validation files
 - `base_ratio`: Mixing ratio for interleaved mode (0.0-1.0)
 - `mask_user_tokens`: Mask user messages in loss (boolean)
-- `pin_memory`: Pinned host memory for faster CPU→GPU transfer (boolean, default `true` on CUDA)
+- `pin_memory`: Pinned host memory for faster CPUGPU transfer (boolean, default `true` on CUDA)
 - `prefetch_factor`: DataLoader prefetch depth when `num_workers > 0` (int, default `4`)
 
 **Orchestrator parameters:**
@@ -1397,29 +1397,29 @@ Orchestrator detects OOM exceptions, reduces batch size by 50%, recreates datalo
 - Reduce `batch_size`: Start with 1-2 for very large models
 - Increase `gradient_accumulation_steps`: Maintains effective batch size with less memory
 - Enable `gradient_checkpointing`: Trades compute for memory (recompute activations)
-- Increase `zero_stage`: 1→2→3 for progressively more memory optimization
+- Increase `zero_stage`: 123 for progressively more memory optimization
 - Enable `cpu_offload`: Moves optimizer states to CPU (slower but massive memory savings)
 - Reduce `max_position_embeddings`: Shorter sequences use less memory
 - Lower model size: Try smaller preset configuration
 - Check CUDA kernel memory: Temporarily disable fused CUDA ops (`use_fused_* = false`) or set `use_cuda=false`
 
 **Memory estimation:**
-Model memory (FP16) ≈ 2 bytes × total_parameters
-Optimizer memory (Adam) ≈ 8 bytes × parameters
-Gradient memory ≈ 2 bytes × parameters
-Activation memory ≈ 2 × batch_size × sequence_length × num_layers × hidden_size
-CUDA kernel buffers ≈ 100-500 MB (temporary buffers)
-Total ≈ 12-16 bytes per parameter + activation memory + kernel overhead
+Model memory (FP16)  2 bytes  total_parameters
+Optimizer memory (Adam)  8 bytes  parameters
+Gradient memory  2 bytes  parameters
+Activation memory  2  batch_size  sequence_length  num_layers  hidden_size
+CUDA kernel buffers  100-500 MB (temporary buffers)
+Total  12-16 bytes per parameter + activation memory + kernel overhead
 
 ### Training Instabilities
 
 **Gradient explosion:**
 Symptoms: Loss becomes NaN, gradient norm > 100, rapid loss increase
 
-Automatic recovery: Orchestrator detects high gradient norm, triggers emergency LR reduction (10×), rolls back to previous checkpoint, resumes with lower LR. CUDA fused gradient clipping prevents most explosions.
+Automatic recovery: Orchestrator detects high gradient norm, triggers emergency LR reduction (10), rolls back to previous checkpoint, resumes with lower LR. CUDA fused gradient clipping prevents most explosions.
 
 Manual fixes:
-- Lower `learning_rate`: Try 10× reduction
+- Lower `learning_rate`: Try 10 reduction
 - Increase `gradient_clip_val`: Clip at lower threshold (0.5 instead of 1.0)
 - Use mixed precision: BF16 more stable than FP16
 - Enable gradient checkpointing: Can improve numerical stability
@@ -1432,7 +1432,7 @@ Symptoms: Loss increases consistently, validation loss >> training loss, sudden 
 Automatic recovery: Orchestrator detects divergence pattern, rolls back N steps, adjusts learning rate, may modify architecture parameters.
 
 Manual fixes:
-- Reduce `learning_rate`: Start 3-5× lower
+- Reduce `learning_rate`: Start 3-5 lower
 - Increase `weight_decay`: Stronger regularization (0.1 instead of 0.01)
 - Check data quality: Remove outliers, validate preprocessing
 - Reduce model capacity: Overparameterized models may not converge on small datasets
@@ -1460,8 +1460,8 @@ Orchestrator monitors throughput, detects degradation, suggests optimizations (e
 - Enable `compile`: PyTorch 2.0 compilation (5-30% speedup)
 - Enable fused CUDA ops: `use_fused_rope`, `use_fused_swiglu`, `use_fused_moe`, `use_fused_loss`, `use_fused_grad_clip`
 - Keep `use_fused_rmsnorm=false` unless profiling shows a gain on your workload/GPU
-- Enable `use_flash_attention`: 2-4× attention speedup on Ampere+
-- Use `mixed_bf16` or `mixed_fp16`: 2× speedup over FP32
+- Enable `use_flash_attention`: 2-4 attention speedup on Ampere+
+- Use `mixed_bf16` or `mixed_fp16`: 2 speedup over FP32
 - Increase `num_workers`: Parallelize data loading (typically 4-8)
 - Ensure `pin_memory=true` and tune `prefetch_factor` (typically 2-8)
 - Increase `batch_size`: Better GPU utilization (if memory allows)
@@ -1493,14 +1493,14 @@ Orchestrator monitors throughput, detects degradation, suggests optimizations (e
 - Monitor Activity Monitor: Check memory pressure, GPU usage
 - Update PyTorch: MPS backend rapidly improving, use latest version
 - Fall back to CPU: If MPS unreliable, CPU training is alternative (slower but stable)
-- Expect slower training: 4-5× slower than CUDA-enabled GPU
+- Expect slower training: 4-5 slower than CUDA-enabled GPU
 
 ### Checkpoint Issues
 
 **Corruption:**
 Symptoms: Checkpoint fails to load, missing keys, size mismatch
 
-Recovery: System automatically tries previous checkpoints (latest → latest-1 → best validation). If all corrupt, restart from initialization.
+Recovery: System automatically tries previous checkpoints (latest  latest-1  best validation). If all corrupt, restart from initialization.
 
 Prevention: Enable `save_total_limit > 3`, save to reliable storage, validate checksums. CUDA kernel state saved separately for recovery.
 
@@ -1603,7 +1603,7 @@ Standard PyTorch state dict compatible with transformers library. Can export to 
 - CUDA stream management: Overlap computation and data transfer
 
 **KV cache management:**
-- Cache quantization: INT8 KV cache (2× memory reduction)
+- Cache quantization: INT8 KV cache (2 memory reduction)
 - Cache eviction: Drop old tokens for long conversations
 - Paged attention: Efficient memory allocation (vLLM)
 - CUDA-optimized caching: Custom kernels for cache operations
@@ -1671,7 +1671,7 @@ The demo notebook and local installation are provided for testing purposes. All 
 
 **MoE/MoD Tutorial:** `docs/cuda_acceleration.md`
 - These kernels replace high-frequency transformer primitives that dominate runtime in dense and MoE models.
-- These kernels implement the full MoE routing pipeline entirely on GPU:routing → dispatch → expert compute → recombination.
+- These kernels implement the full MoE routing pipeline entirely on GPU:routing  dispatch  expert compute  recombination.
 - These kernels eliminate synchronization points by collapsing multi-step training operations into single GPU passes.
 - Mixed precision, streams, and overlap strategies
 
@@ -1707,6 +1707,6 @@ The demo notebook and local installation are provided for testing purposes. All 
 
 *Production transformer training for ML engineers*
 
-[GitHub](https://github.com/matn23/AdaptiveTrainingSystem) • [Demo](https://colab.research.google.com/drive/1tH1z9e7px2G8NGqWUN9gdqxs1CnUC7p1) • [License](LICENSE)
+[GitHub](https://github.com/matn23/AdaptiveTrainingSystem)  [Demo](https://colab.research.google.com/drive/1tH1z9e7px2G8NGqWUN9gdqxs1CnUC7p1)  [License](LICENSE)
 
 </div>

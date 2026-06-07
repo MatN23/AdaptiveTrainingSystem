@@ -1,6 +1,6 @@
 # Finetune BERT on GLUE
 
-## 🚀 Quick Start
+##  Quick Start
 
 This example provides a training script, which provides an example of finetuning BERT on GLUE dataset.
 

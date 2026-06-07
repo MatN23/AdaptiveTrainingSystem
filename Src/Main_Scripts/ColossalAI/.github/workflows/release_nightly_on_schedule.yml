@@ -8,7 +8,7 @@ on:
 jobs:
   publish:
     if: github.repository == 'hpcaitech/ColossalAI'
-    name: Build and publish Python 🐍 distributions 📦 to PyPI
+    name: Build and publish Python  distributions  to PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:

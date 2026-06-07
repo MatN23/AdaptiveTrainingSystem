@@ -45,10 +45,10 @@ try:
     from utils.environment import validate_environment, estimate_training_time, get_system_info
     from utils.reporting import create_data_summary_report, create_training_report
     UTILS_AVAILABLE = True
-    print("✓ Utils modules loaded successfully")
+    print(" Utils modules loaded successfully")
 except ImportError as e:
     UTILS_AVAILABLE = False
-    print(f"⚠ Utils modules not available: {e}")
+    print(f" Utils modules not available: {e}")
 
 try:
     from backend.backend_deepspeed import create_deepspeed_backend
@@ -68,18 +68,18 @@ except ImportError:
 try:
     from deepspeed_integration import integrate_with_trainer
     DEEPSPEED_REMAKE_AVAILABLE = True
-    print("✓ DeepSpeed remake available")
+    print(" DeepSpeed remake available")
 except ImportError:
     DEEPSPEED_REMAKE_AVAILABLE = False
-    print("⚠ DeepSpeed remake not available")
+    print(" DeepSpeed remake not available")
 
 try:
     from training.chinchilla_scaler import EnhancedChinchillaScaler
     CHINCHILLA_SCALER_AVAILABLE = True
-    print("✓ Chinchilla scaler available")
+    print(" Chinchilla scaler available")
 except ImportError:
     CHINCHILLA_SCALER_AVAILABLE = False
-    print("⚠ Chinchilla scaler not available")
+    print(" Chinchilla scaler not available")
 
 # DeepSpeed imports
 try:
@@ -93,7 +93,7 @@ except ImportError:
 try:
     # Direct import from config.config_manager
     from config.config_manager import Config, ConfigPresets
-    print("✓ Config loaded from config.config_manager")
+    print(" Config loaded from config.config_manager")
 except ImportError as e:
     print(f"Failed to import from config.config_manager: {e}")
     try:
@@ -104,7 +104,7 @@ except ImportError as e:
         if str(config_dir) not in sys.path:
             sys.path.insert(0, str(config_dir))
         from config_manager import Config, ConfigPresets
-        print("✓ Config loaded from config_manager (direct)")
+        print(" Config loaded from config_manager (direct)")
     except ImportError as e2:
         print("ERROR: Could not import config classes")
         print(f"  Primary error: {e}")
@@ -137,7 +137,7 @@ try:
     from core.tokenizer import ConversationTokenizer
     from core.model import DeepSeekTransformer, DeepSeekConfig, HAS_CUDA_OPS, HAS_TRANSFORMER_CUDA, BACKEND
     from core.dataset import ConversationDataset, create_dataloader
-    print("✓ Core modules loaded")
+    print(" Core modules loaded")
 except ImportError as e:
     print(f"ERROR: Could not import core modules: {e}")
     sys.exit(1)
@@ -149,16 +149,16 @@ try:
     from training.trainer import EnhancedConversationTrainer
     from training.checkpoint import CheckpointManager
     TRAINING_INFRASTRUCTURE_AVAILABLE = True
-    print("✓ Advanced training infrastructure available (Orchestrator + Trainer + Checkpoint)")
+    print(" Advanced training infrastructure available (Orchestrator + Trainer + Checkpoint)")
 except ImportError:
     try:
         from orchestrator import AdaptiveTrainingOrchestrator
         from trainer import EnhancedConversationTrainer
         from checkpoint import CheckpointManager
         TRAINING_INFRASTRUCTURE_AVAILABLE = True
-        print("✓ Advanced training infrastructure available (Orchestrator + Trainer + Checkpoint)")
+        print(" Advanced training infrastructure available (Orchestrator + Trainer + Checkpoint)")
     except ImportError:
-        print("⚠ Advanced training infrastructure not available - will use fallback")
+        print(" Advanced training infrastructure not available - will use fallback")
 
 os.environ['HF_DATASETS_DISABLE_PROGRESS_BARS'] = '1'
 os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = '1'
@@ -189,15 +189,15 @@ def validate_data_paths(data_params: dict) -> bool:
                 
                 # Check if it's a directory (ERROR)
                 if path.is_dir():
-                    print(f"  ✗ [{i}] {path_str} - ERROR: This is a directory, not a file!")
+                    print(f"   [{i}] {path_str} - ERROR: This is a directory, not a file!")
                     all_valid = False
                 # Check if file exists
                 elif path.exists() and path.is_file():
                     size = path.stat().st_size / (1024*1024)
-                    print(f"  ✓ [{i}] {path_str} ({size:.2f} MB)")
+                    print(f"   [{i}] {path_str} ({size:.2f} MB)")
                     checked_paths.append(str(path))
                 else:
-                    print(f"  ✗ [{i}] {path_str} - File not found!")
+                    print(f"   [{i}] {path_str} - File not found!")
                     all_valid = False
     
     # Check fine-tuning paths
@@ -210,18 +210,18 @@ def validate_data_paths(data_params: dict) -> bool:
                 
                 # Check if it's a directory (ERROR)
                 if path.is_dir():
-                    print(f"  ✗ [{i}] {path_str} - ERROR: This is a directory, not a file!")
+                    print(f"   [{i}] {path_str} - ERROR: This is a directory, not a file!")
                     all_valid = False
                 # Check if file exists
                 elif path.exists() and path.is_file():
                     size = path.stat().st_size / (1024*1024)
-                    print(f"  ✓ [{i}] {path_str} ({size:.2f} MB)")
+                    print(f"   [{i}] {path_str} ({size:.2f} MB)")
                     checked_paths.append(str(path))
                 else:
-                    print(f"  ✗ [{i}] {path_str} - File not found!")
+                    print(f"   [{i}] {path_str} - File not found!")
                     all_valid = False
         else:
-            print("\n✗ No fine-tuning paths specified for finetuning_only mode!")
+            print("\n No fine-tuning paths specified for finetuning_only mode!")
             all_valid = False
     
     # Check eval paths
@@ -237,22 +237,22 @@ def validate_data_paths(data_params: dict) -> bool:
             path = Path(path_str)
             
             if path.is_dir():
-                print(f"  ✗ [{i}] {path_str} - ERROR: This is a directory, not a file!")
+                print(f"   [{i}] {path_str} - ERROR: This is a directory, not a file!")
                 all_valid = False
             elif path.exists() and path.is_file():
                 size = path.stat().st_size / (1024*1024)
-                print(f"  ✓ [{i}] {path_str} ({size:.2f} MB)")
+                print(f"   [{i}] {path_str} ({size:.2f} MB)")
             else:
-                print(f"  ⚠️ [{i}] {path_str} - File not found (will use training data)")
+                print(f"   [{i}] {path_str} - File not found (will use training data)")
     
     # Summary
     print("\n" + "="*80)
     if all_valid and checked_paths:
-        print(f"✓ VALIDATION PASSED - All {len(checked_paths)} file(s) are valid")
+        print(f" VALIDATION PASSED - All {len(checked_paths)} file(s) are valid")
         print("="*80 + "\n")
         return True
     else:
-        print("✗ VALIDATION FAILED - Please fix the issues above")
+        print(" VALIDATION FAILED - Please fix the issues above")
         print("="*80 + "\n")
         return False
 
@@ -276,7 +276,7 @@ def setup_router_finetuning(orchestrator, router_params):
             param.requires_grad = True  # Enable gradients
             router_params_list.append(param)
     
-    print(f"✓ Found {len(router_params_list)} router parameters")
+    print(f" Found {len(router_params_list)} router parameters")
     print(f"  Total router params: {sum(p.numel() for p in router_params_list):,}")
     
     # Create separate optimizer for router (lower LR)
@@ -290,7 +290,7 @@ def setup_router_finetuning(orchestrator, router_params):
     # Store in orchestrator
     orchestrator.router_optimizer = router_optimizer
     
-    print(f"✓ Router optimizer created (LR: {router_params.get('router_learning_rate', 1e-5):.2e})")
+    print(f" Router optimizer created (LR: {router_params.get('router_learning_rate', 1e-5):.2e})")
     print("  Router will be fine-tuned during training")
     print("="*80 + "\n")
     
@@ -308,24 +308,24 @@ def load_pretrained_router(model, router_checkpoint_path: str):
     checkpoint_path = Path(router_checkpoint_path)
     
     if not checkpoint_path.exists():
-        print(f"❌ Router checkpoint not found: {checkpoint_path}")
+        print(f" Router checkpoint not found: {checkpoint_path}")
         print("   Continuing with standard gates...")
         return model
     
-    print(f"📁 Loading router from: {checkpoint_path}")
+    print(f" Loading router from: {checkpoint_path}")
     
     try:
         # Load checkpoint to verify
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         
-        print(f"\n✅ Router checkpoint loaded successfully")
+        print(f"\n Router checkpoint loaded successfully")
         print(f"  Training epoch: {checkpoint.get('epoch', 'unknown')}")
         print(f"  Validation accuracy: {checkpoint.get('metrics', {}).get('top1_acc', 'unknown')}")
         
         # Import adapter
         from router_training_system import RouterGateAdapter
         
-        print(f"\n🔄 Replacing gates with trained router...")
+        print(f"\n Replacing gates with trained router...")
         num_replaced = 0
         
         device = next(model.parameters()).device
@@ -334,7 +334,7 @@ def load_pretrained_router(model, router_checkpoint_path: str):
             if hasattr(module, 'gate'):
                 # Check if this is an MoE layer
                 if 'moe' in name.lower() or 'expert' in name.lower():
-                    # ✅ FIX: Create NEW adapter instance for each layer
+                    #  FIX: Create NEW adapter instance for each layer
                     adapter = RouterGateAdapter(
                         router_checkpoint_path=str(checkpoint_path),
                         device=str(device)
@@ -347,16 +347,16 @@ def load_pretrained_router(model, router_checkpoint_path: str):
                     
                     num_replaced += 1
                     
-                    print(f"  ✅ Replaced gate in layer: {name}")
+                    print(f"   Replaced gate in layer: {name}")
                     print(f"    Old gate params: {old_gate_params:,}")
                     print(f"    New router params: {new_gate_params:,}")
         
         if num_replaced == 0:
-            print(f"\n⚠️  WARNING: No gates found to replace!")
+            print(f"\n  WARNING: No gates found to replace!")
             print(f"     Model might not have MoE layers or gates not accessible")
             return model
         
-        print(f"\n✅ ROUTER INTEGRATION COMPLETE")
+        print(f"\n ROUTER INTEGRATION COMPLETE")
         print(f"   Replaced {num_replaced} gate(s) with trained router")
         print(f"   Model now uses learned routing decisions")
         print("="*80 + "\n")
@@ -364,9 +364,9 @@ def load_pretrained_router(model, router_checkpoint_path: str):
         return model
         
     except Exception as e:
-        print(f"\n❌ Error loading router: {e}")
+        print(f"\n Error loading router: {e}")
         traceback.print_exc()
-        print("\n⚠️  Continuing with standard gates...")
+        print("\n  Continuing with standard gates...")
         return model
     
 def validate_mps_compatibility(config) -> Tuple[bool, List[str]]:
@@ -448,18 +448,18 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
 
             # Verify scheduler
             print("\n" + "="*80)
-            print("🔍 SCHEDULER VERIFICATION")
+            print(" SCHEDULER VERIFICATION")
             print("="*80)
 
             if hasattr(orchestrator.trainer, 'scheduler'):
                 if orchestrator.trainer.scheduler is not None:
                     scheduler_type = type(orchestrator.trainer.scheduler).__name__
-                    print(f"✅ Scheduler found: {scheduler_type}")
+                    print(f" Scheduler found: {scheduler_type}")
 
                     try:
                         # DeepSpeed schedulers work differently
                         if hasattr(orchestrator.trainer, 'use_deepspeed') and orchestrator.trainer.use_deepspeed:
-                            print(f"✅ Using DeepSpeed scheduler (managed internally)")
+                            print(f" Using DeepSpeed scheduler (managed internally)")
                             print(f"   Initial LR: {orchestrator.config.learning_rate:.2e}")
                             print(f"   Scheduler type: WarmupLR")
                             print(f"   Warmup steps: ~{int(getattr(orchestrator, 'steps_per_epoch', 100) * 0.05)}")
@@ -467,30 +467,30 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
                             # Standard PyTorch scheduler verification
                             initial_lr = orchestrator.trainer.scheduler.get_last_lr()[0]
                             base_lrs = orchestrator.trainer.scheduler.base_lrs
-                            print(f"✅ Initial LR: {initial_lr:.2e}")
-                            print(f"✅ Base LRs: {[f'{lr:.2e}' for lr in base_lrs]}")
-                            print(f"✅ Config LR: {orchestrator.config.learning_rate:.2e}")
+                            print(f" Initial LR: {initial_lr:.2e}")
+                            print(f" Base LRs: {[f'{lr:.2e}' for lr in base_lrs]}")
+                            print(f" Config LR: {orchestrator.config.learning_rate:.2e}")
 
                             # Verify they match
                             if abs(initial_lr - orchestrator.config.learning_rate) > 1e-9:
-                                print(f"⚠️ WARNING: Scheduler LR doesn't match config LR!")
+                                print(f" WARNING: Scheduler LR doesn't match config LR!")
                             else:
-                                print(f"✅ Scheduler LR matches config")
+                                print(f" Scheduler LR matches config")
 
                     except AttributeError as e:
-                        print(f"ℹ️ Scheduler state not fully accessible (normal for DeepSpeed): {e}")
+                        print(f" Scheduler state not fully accessible (normal for DeepSpeed): {e}")
                     except Exception as e:
-                        print(f"⚠️ Could not fully verify scheduler: {e}")
+                        print(f" Could not fully verify scheduler: {e}")
                 else:
-                    print("⚠️ Scheduler is None")
+                    print(" Scheduler is None")
                     print(f"   use_lr_scheduler: {getattr(orchestrator.config, 'use_lr_scheduler', 'not set')}")
                     print(f"   LR will remain constant at: {orchestrator.config.learning_rate:.2e}")
             else:
-                print("❌ Trainer has no scheduler attribute!")
+                print(" Trainer has no scheduler attribute!")
 
             print("="*80 + "\n")
             
-            # ✅ FIX: Training completed successfully without OOM, exit the retry loop
+            #  FIX: Training completed successfully without OOM, exit the retry loop
             break
             
         except RuntimeError as e:
@@ -499,22 +499,22 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
             
             if is_oom:
                 print(f"\n{'='*80}")
-                print(f"⚠ OOM ERROR DETECTED IN ORCHESTRATOR (Attempt {attempt})")
+                print(f" OOM ERROR DETECTED IN ORCHESTRATOR (Attempt {attempt})")
                 print(f"{'='*80}")
                 print(f"Error message: {str(e)[:300]}")
                 
                 # Clear cache
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                    print("✓ Cleared CUDA cache")
+                    print(" Cleared CUDA cache")
                 elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                     torch.mps.empty_cache()
-                    print("✓ Cleared MPS cache")
+                    print(" Cleared MPS cache")
                 
                 # Force garbage collection
                 import gc
                 gc.collect()
-                print("✓ Ran garbage collection")
+                print(" Ran garbage collection")
                 
                 # Adaptive strategy for batch size reduction
                 current_batch = orchestrator.config.batch_size
@@ -535,7 +535,7 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
                 # Strategy 3: Can't reduce further
                 else:
                     print(f"\n{'='*80}")
-                    print(f"✗ CANNOT REDUCE BATCH SIZE FURTHER")
+                    print(f" CANNOT REDUCE BATCH SIZE FURTHER")
                     print(f"{'='*80}")
                     print(f"Current batch size: {current_batch}")
                     print(f"Current gradient accumulation: {current_grad_accum}")
@@ -556,7 +556,7 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
                 print(f"  Previous batch size: {current_batch}")
                 print(f"  Previous gradient accumulation: {current_grad_accum}")
                 print(f"  Previous effective batch: {current_batch * current_grad_accum}")
-                print(f"  →")
+                print(f"  ")
                 print(f"  New batch size: {new_batch_size}")
                 print(f"  New gradient accumulation: {new_grad_accum}")
                 print(f"  New effective batch: {new_batch_size * new_grad_accum}")
@@ -571,18 +571,18 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
                     # Import here to avoid circular dependency
                     from training.orchestrator import AdaptiveTrainingOrchestrator
                     orchestrator = AdaptiveTrainingOrchestrator(orchestrator.config)
-                    print(f"✓ Orchestrator recreated successfully")
+                    print(f" Orchestrator recreated successfully")
                 except ImportError:
                     from orchestrator import AdaptiveTrainingOrchestrator
                     orchestrator = AdaptiveTrainingOrchestrator(orchestrator.config)
-                    print(f"✓ Orchestrator recreated successfully")
+                    print(f" Orchestrator recreated successfully")
                 
                 print(f"\nPreparing to retry training (attempt {attempt + 1}/{max_attempts})...")
                 
             else:
                 # Not an OOM error, re-raise
                 print(f"\n{'='*80}")
-                print(f"✗ NON-OOM ERROR DETECTED")
+                print(f" NON-OOM ERROR DETECTED")
                 print(f"{'='*80}")
                 print(f"Error type: {type(e).__name__}")
                 print(f"Error message: {str(e)[:500]}")
@@ -596,7 +596,7 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
         
         except Exception as e:
             print(f"\n{'='*80}")
-            print(f"✗ UNEXPECTED ERROR")
+            print(f" UNEXPECTED ERROR")
             print(f"{'='*80}")
             print(f"Error type: {type(e).__name__}")
             print(f"Error message: {str(e)[:500]}")
@@ -605,7 +605,7 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
     # Check if we exhausted attempts
     if attempt >= max_attempts:
         print(f"\n{'='*80}")
-        print(f"✗ MAXIMUM ATTEMPTS REACHED")
+        print(f" MAXIMUM ATTEMPTS REACHED")
         print(f"{'='*80}")
         print(f"Training failed after {max_attempts} attempts")
         raise RuntimeError(f"Could not complete training after {max_attempts} OOM recovery attempts")
@@ -618,10 +618,10 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
         print(f"\n{'='*80}")
         print(f"TRAINING COMPLETED WITH ADJUSTED CONFIGURATION")
         print(f"{'='*80}")
-        print(f"Original → Final:")
-        print(f"  Batch size: {original_batch_size} → {final_batch}")
-        print(f"  Gradient accumulation: {original_grad_accum} → {final_grad_accum}")
-        print(f"  Effective batch size: {original_batch_size * original_grad_accum} → {final_batch * final_grad_accum}")
+        print(f"Original  Final:")
+        print(f"  Batch size: {original_batch_size}  {final_batch}")
+        print(f"  Gradient accumulation: {original_grad_accum}  {final_grad_accum}")
+        print(f"  Effective batch size: {original_batch_size * original_grad_accum}  {final_batch * final_grad_accum}")
         
         # Save optimal configuration
         try:
@@ -638,10 +638,10 @@ def wrap_orchestrator_with_oom_protection(orchestrator, train_dataset, eval_data
             optimal_path = Path("optimal_batch_config.json")
             with open(optimal_path, 'w') as f:
                 json.dump(optimal_config, f, indent=2)
-            print(f"\n✓ Saved optimal configuration to {optimal_path}")
+            print(f"\n Saved optimal configuration to {optimal_path}")
             print(f"  Use these settings for future runs to avoid OOM errors")
         except Exception as e:
-            print(f"⚠ Could not save optimal configuration: {e}")
+            print(f" Could not save optimal configuration: {e}")
     
     return orchestrator
 
@@ -807,13 +807,13 @@ def print_system_diagnostics():
             
             # MPS capabilities and limitations
             print(f"  MPS Capabilities:")
-            print(f"    - FP32 Training: ✓ Supported")
-            print(f"    - FP16 Training: ✓ Supported")
-            print(f"    - BF16 Training: ✗ Limited Support (use FP16 instead)")
-            print(f"    - Flash Attention: ✗ Not Supported (CUDA only)")
-            print(f"    - DeepSpeed: ✗ Not Supported (CUDA only)")
-            print(f"    - Gradient Checkpointing: ✓ Supported")
-            print(f"    - Mixed Precision: ✓ Supported (FP16)")
+            print(f"    - FP32 Training:  Supported")
+            print(f"    - FP16 Training:  Supported")
+            print(f"    - BF16 Training:  Limited Support (use FP16 instead)")
+            print(f"    - Flash Attention:  Not Supported (CUDA only)")
+            print(f"    - DeepSpeed:  Not Supported (CUDA only)")
+            print(f"    - Gradient Checkpointing:  Supported")
+            print(f"    - Mixed Precision:  Supported (FP16)")
         
         print_section("System Resources")
         if system_info.get('system_memory_gb'):
@@ -830,7 +830,7 @@ def print_system_diagnostics():
                 print(f"  Note: MPS uses unified memory (shared with system)")
                 recommended_mem = 16.0  # GB
                 if total_mem < recommended_mem:
-                    print(f"  ⚠️ Warning: {recommended_mem:.0f}GB+ recommended for MPS training")
+                    print(f"   Warning: {recommended_mem:.0f}GB+ recommended for MPS training")
         
         if system_info.get('cpu_count'):
             print(f"  CPU Cores: {system_info.get('cpu_count', 0)}")
@@ -863,16 +863,16 @@ def print_system_diagnostics():
             for i, issue in enumerate(issues, 1):
                 # Color code issues
                 if "MPS" in issue or "Apple Silicon" in issue:
-                    symbol = "ℹ️ "
+                    symbol = " "
                 elif "insufficient" in issue.lower() or "low" in issue.lower():
-                    symbol = "⚠️ "
+                    symbol = " "
                 elif "slow" in issue.lower() or "not available" in issue.lower():
-                    symbol = "⚠️ "
+                    symbol = " "
                 else:
                     symbol = "   "
                 print(f"    {symbol}{i}. {issue}")
         else:
-            print("  ✓ All environment checks passed successfully")
+            print("   All environment checks passed successfully")
         
         # Check for required libraries
         print_section("Library Availability")
@@ -889,11 +889,11 @@ def print_system_diagnostics():
         
         for lib, available in libraries.items():
             status = "Available" if available else "Not Available"
-            symbol = "✓" if available else "✗"
+            symbol = "" if available else ""
             
             # Special handling for expected unavailability on MPS
             if system_info.get('mps_available') and 'CUDA only' in lib:
-                symbol = "ℹ️ "
+                symbol = " "
                 status = "Not Available (Expected on MPS)"
             
             print(f"  {symbol} {lib}: {status}")
@@ -972,20 +972,20 @@ def print_system_diagnostics():
         if system_info.get('mps_available'):
             total_mem = system_info.get('system_memory_gb', 0)
             if total_mem >= 32:
-                print("  ✓ Excellent memory (32GB+) for MPS training")
+                print("   Excellent memory (32GB+) for MPS training")
             elif total_mem >= 16:
-                print("  ✓ Good memory (16GB+) for MPS training")
+                print("   Good memory (16GB+) for MPS training")
             elif total_mem >= 8:
-                print("  ⚠️ Limited memory (8GB) - use small models only")
+                print("   Limited memory (8GB) - use small models only")
             else:
-                print("  ⚠️ Insufficient memory (<8GB) - not recommended")
+                print("   Insufficient memory (<8GB) - not recommended")
         elif system_info.get('cuda_available'):
             gpu_mem = system_info.get('gpu_memory_gb', 0)
             sys_mem = system_info.get('system_memory_gb', 0)
             print(f"  GPU Memory: {gpu_mem:.1f}GB")
             print(f"  System Memory: {sys_mem:.1f}GB")
             if sys_mem < 16:
-                print("  ⚠️ Consider 16GB+ system RAM for optimal performance")
+                print("   Consider 16GB+ system RAM for optimal performance")
         
     else:
         print("  Utils not available - showing basic diagnostics only")
@@ -1183,10 +1183,10 @@ def estimate_and_display_training_time(config, dataset_size: int):
         print(f"    Memory Utilization: {estimates['memory_utilization']:.1%}")
         
         if estimates.get('memory_warning'):
-            print(f"    ⚠️ WARNING: High memory utilization expected!")
+            print(f"     WARNING: High memory utilization expected!")
             print(f"       Consider reducing batch size or enabling gradient checkpointing")
         else:
-            print(f"    ✓ Memory utilization within safe limits")
+            print(f"     Memory utilization within safe limits")
         
         # Model info
         print(f"\n  Model Information:")
@@ -1223,7 +1223,7 @@ def estimate_and_display_training_time(config, dataset_size: int):
             print(f"      - Reduce dataset size for initial experiments")
         
         if estimates['estimated_hours'] < 1:
-            print(f"    ✓ Training time is reasonable")
+            print(f"     Training time is reasonable")
         elif estimates['estimated_hours'] < 12:
             print(f"    Training time is moderate")
         else:
@@ -1408,52 +1408,52 @@ def load_checkpoint_for_continuation(checkpoint_path: str, orchestrator) -> Dict
     
     try:
         # Try with weights_only=False for older checkpoints
-        print("🔄 Attempting to load with weights_only=False...")
+        print(" Attempting to load with weights_only=False...")
         checkpoint = torch.load(checkpoint_file, map_location='cpu', weights_only=False)
-        print("✅ Loaded checkpoint with weights_only=False")
+        print(" Loaded checkpoint with weights_only=False")
     except Exception as e:
-        print(f"⚠️  Could not load checkpoint with weights_only=False: {e}")
-        print("🔄 Attempting to load with safe globals...")
+        print(f"  Could not load checkpoint with weights_only=False: {e}")
+        print(" Attempting to load with safe globals...")
         try:
             # Try with safe globals
             import torch.serialization
             torch.serialization.add_safe_globals(['config.config_manager.Config'])
             checkpoint = torch.load(checkpoint_file, map_location='cpu')
-            print("✅ Loaded checkpoint with safe globals")
+            print(" Loaded checkpoint with safe globals")
         except Exception as e2:
-            print(f"❌ Could not load checkpoint: {e2}")
+            print(f" Could not load checkpoint: {e2}")
             print("Starting training from scratch...")
             raise
     
     # CRITICAL FIX: Direct state restoration
-    print("\n🔄 RESTORING TRAINING STATE:")
+    print("\n RESTORING TRAINING STATE:")
     
     # Restore model state
     if 'model_state_dict' in checkpoint:
         orchestrator.model.load_state_dict(checkpoint['model_state_dict'])
-        print("✅ Model state restored")
+        print(" Model state restored")
     else:
-        print("❌ No model_state_dict found in checkpoint")
+        print(" No model_state_dict found in checkpoint")
     
     # Restore optimizer state
     if 'optimizer_state_dict' in checkpoint and hasattr(orchestrator, 'trainer'):
         if orchestrator.trainer and hasattr(orchestrator.trainer, 'optimizer'):
             orchestrator.trainer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            print("✅ Optimizer state restored")
+            print(" Optimizer state restored")
         else:
-            print("⚠️  Optimizer found but trainer not ready")
+            print("  Optimizer found but trainer not ready")
     else:
-        print("⚠️  No optimizer_state_dict found in checkpoint")
+        print("  No optimizer_state_dict found in checkpoint")
     
     # Restore scheduler state
     if 'scheduler_state_dict' in checkpoint and hasattr(orchestrator, 'trainer'):
         if orchestrator.trainer and hasattr(orchestrator.trainer, 'scheduler') and orchestrator.trainer.scheduler:
             orchestrator.trainer.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-            print("✅ Scheduler state restored")
+            print(" Scheduler state restored")
         else:
-            print("⚠️  Scheduler found but trainer scheduler not ready")
+            print("  Scheduler found but trainer scheduler not ready")
     else:
-        print("⚠️  No scheduler_state_dict found in checkpoint")
+        print("  No scheduler_state_dict found in checkpoint")
     
     # Restore training progress
     info = {
@@ -1468,8 +1468,8 @@ def load_checkpoint_for_continuation(checkpoint_path: str, orchestrator) -> Dict
     orchestrator.global_step = info['global_step']
     orchestrator.best_loss = info['best_loss']
     
-    print(f"\n✅ CHECKPOINT LOADED SUCCESSFULLY:")
-    print(f"  Epoch: {checkpoint.get('epoch', 0)} → Continuing from epoch {info['start_epoch']}")
+    print(f"\n CHECKPOINT LOADED SUCCESSFULLY:")
+    print(f"  Epoch: {checkpoint.get('epoch', 0)}  Continuing from epoch {info['start_epoch']}")
     print(f"  Global Step: {info['global_step']}")
     print(f"  Best Loss: {info['best_loss']:.4f}")
     print("="*80)
@@ -1498,7 +1498,7 @@ def setup_multi_dataset_training(config, data_params):
         if validation_stats.get('validation_errors'):
             print("Validation errors found:")
             for error in validation_stats['validation_errors']:
-                print(f"  ✗ {error}")
+                print(f"   {error}")
         
         print(f"\nTraining datasets: {len(validation_stats.get('train_datasets', []))}")
         for ds in validation_stats.get('train_datasets', []):
@@ -1535,7 +1535,7 @@ def auto_adjust_epochs_chinchilla(config, model, dataset):
     """
     Chinchilla-style automatic epoch adjustment based on dataset size and model parameters.
     
-    Formula: N_opt ≈ 20 * P (where P = model parameters in billions)
+    Formula: N_opt  20 * P (where P = model parameters in billions)
     
     Args:
         config: Training configuration object
@@ -1546,16 +1546,16 @@ def auto_adjust_epochs_chinchilla(config, model, dataset):
         Updated config with adjusted num_epochs
     """
     print("\n" + "="*80)
-    print("🧠 CHINCHILLA-STYLE EPOCH SCALING")
+    print(" CHINCHILLA-STYLE EPOCH SCALING")
     print("="*80)
     
     # Get model parameter count
     try:
         P = sum(p.numel() for p in model.parameters())
         P_billions = P / 1e9
-        print(f"📊 Model Parameters: {P:,} ({P_billions:.2f}B)")
+        print(f" Model Parameters: {P:,} ({P_billions:.2f}B)")
     except Exception as e:
-        print(f"⚠️ Could not count model parameters: {e}")
+        print(f" Could not count model parameters: {e}")
         print("   Skipping auto-epoch scaling")
         return config
     
@@ -1570,23 +1570,23 @@ def auto_adjust_epochs_chinchilla(config, model, dataset):
             seq_length = getattr(config, 'seq_length', 2048)
             dataset_tokens = num_samples * seq_length
         else:
-            print("⚠️ Could not estimate dataset size")
+            print(" Could not estimate dataset size")
             print("   Skipping auto-epoch scaling")
             return config
         
-        print(f"📚 Dataset Tokens: {dataset_tokens:,} ({dataset_tokens/1e9:.2f}B)")
+        print(f" Dataset Tokens: {dataset_tokens:,} ({dataset_tokens/1e9:.2f}B)")
     except Exception as e:
-        print(f"⚠️ Could not estimate dataset tokens: {e}")
+        print(f" Could not estimate dataset tokens: {e}")
         print("   Skipping auto-epoch scaling")
         return config
     
-    # Chinchilla scaling: N_opt ≈ 20 * P (20 tokens per parameter)
+    # Chinchilla scaling: N_opt  20 * P (20 tokens per parameter)
     N_opt = int(20 * P)  # Optimal total tokens to see
     print(f"Chinchilla Optimal Tokens: {N_opt:,} ({N_opt/1e9:.2f}B)")
     
     # Calculate needed epochs
     if dataset_tokens <= 0:
-        print("⚠️ Invalid dataset token count")
+        print(" Invalid dataset token count")
         return config
     
     tokens_per_epoch = dataset_tokens
@@ -1600,30 +1600,30 @@ def auto_adjust_epochs_chinchilla(config, model, dataset):
     max_epochs = getattr(config, 'max_auto_epochs', 50)
     final_epochs = max(min_epochs, min(optimal_epochs, max_epochs))
     
-    print(f"\n📈 Epoch Calculation:")
+    print(f"\n Epoch Calculation:")
     print(f"   Tokens per epoch: {tokens_per_epoch:,}")
     print(f"   Optimal epochs (unconstrained): {optimal_epochs}")
     print(f"   Epoch constraints: {min_epochs} - {max_epochs}")
     print(f"   Original config: {old_epochs} epochs")
-    print(f"   ➡️ Adjusted to: {final_epochs} epochs")
+    print(f"    Adjusted to: {final_epochs} epochs")
     
     # Calculate total training tokens
     total_tokens = tokens_per_epoch * final_epochs
     chinchilla_ratio = (total_tokens / N_opt) * 100
     
-    print(f"\n📢 Training Token Budget:")
+    print(f"\n Training Token Budget:")
     print(f"   Total tokens (new): {total_tokens:,} ({total_tokens/1e9:.2f}B)")
     print(f"   Chinchilla target: {N_opt:,} ({N_opt/1e9:.2f}B)")
     print(f"   Coverage: {chinchilla_ratio:.1f}% of optimal")
     
     if chinchilla_ratio < 50:
-        print(f"   ⚠️ WARNING: Significantly under Chinchilla recommendation")
+        print(f"    WARNING: Significantly under Chinchilla recommendation")
         print(f"      Consider increasing max_auto_epochs or dataset size")
     elif chinchilla_ratio > 150:
-        print(f"   ⚠️ WARNING: Exceeding Chinchilla recommendation")
+        print(f"    WARNING: Exceeding Chinchilla recommendation")
         print(f"      May lead to overfitting - consider early stopping")
     else:
-        print(f"   ✓ Within reasonable range of Chinchilla scaling")
+        print(f"    Within reasonable range of Chinchilla scaling")
     
     # Update config
     config.num_epochs = final_epochs
@@ -1648,7 +1648,7 @@ def main():
         import psutil
         total_mem_gb = psutil.virtual_memory().total / (1024**3)
         if total_mem_gb < 9.0 and config_choice == 'debug':
-            print(f"  ⚠️  LOW MEMORY DETECTED: {total_mem_gb:.1f}GB RAM")
+            print(f"    LOW MEMORY DETECTED: {total_mem_gb:.1f}GB RAM")
             print(f"  Automatically switching to 'lean_8gb' preset for stability")
             config_choice = 'lean_8gb'
     except:
@@ -1658,7 +1658,7 @@ def main():
     use_adaptive_training = TRAINING_INFRASTRUCTURE_AVAILABLE  # Orchestrator with AI-driven optimization
 
     # ========================================================================
-    # 📊 STANDARD TRAINING PARAMETERS
+    #  STANDARD TRAINING PARAMETERS
     # ========================================================================
     training_params = {
         'use_moe': True,
@@ -1769,7 +1769,7 @@ def main():
     }
     
     # ========================================================================
-    # ⚡ 5. HARDWARE-AWARE OPTIMIZATION PARAMETERS
+    #  5. HARDWARE-AWARE OPTIMIZATION PARAMETERS
     # ========================================================================
     hardware_aware_optimization_params = {
         # GPU architecture specific
@@ -1922,7 +1922,7 @@ def main():
     }
     
     # ========================================================================
-    # 💾 12. CHECKPOINT PARAMETERS
+    #  12. CHECKPOINT PARAMETERS
     # ========================================================================
     checkpoint_params = {
         'resume_from_checkpoint': None,  # Set to 'checkpoint_final_597.pt' to resume
@@ -1936,12 +1936,12 @@ def main():
     if checkpoint_file:
         checkpoint_path = Path(checkpoint_file)
         if checkpoint_params['resume_training'] and not checkpoint_path.exists():
-            print(f"⚠️ WARNING: Checkpoint not found: {checkpoint_path}")
+            print(f" WARNING: Checkpoint not found: {checkpoint_path}")
             print("   Starting training from scratch instead")
             checkpoint_params['resume_training'] = False
     elif checkpoint_params['resume_training']:
         # resume_training is True but no checkpoint specified
-        print(f"⚠️ WARNING: resume_training=True but no checkpoint specified")
+        print(f" WARNING: resume_training=True but no checkpoint specified")
         print("   Starting training from scratch instead")
         checkpoint_params['resume_training'] = False
     
@@ -2064,7 +2064,7 @@ def main():
     # 18. PRE-TRAINED ROUTER PARAMETERS
     # ========================================================================
     pretrained_router_params = {
-        'use_pretrained_router': False,  # ← Set to True!
+        'use_pretrained_router': False,  #  Set to True!
         'router_checkpoint_path': 'router_training/best_router_model.pt',
         
         # Optional fine-tuning
@@ -2077,7 +2077,7 @@ def main():
 
     # Validate data paths FIRST
     if not validate_data_paths(data_params):
-        print("\n✗ Data path validation failed. Cannot continue.")
+        print("\n Data path validation failed. Cannot continue.")
         print("Please check your file paths in the data_params configuration.\n")
         return 1
     
@@ -2107,14 +2107,14 @@ def main():
     print(f"Mode: {'Adaptive AI-Driven' if use_adaptive_training else 'Standard'} Training")
     print("")
     print("ENHANCED FEATURES ENABLED:")
-    print("  ✓ Adaptive Intelligence")
-    print("  ✓ Dynamic Architecture")
-    print("  ✓ Predictive Optimization")
-    print("  ✓ Quality-Aware Training")
-    print("  ✓ Hardware-Aware Optimization")
-    print("  ✓ Data Intelligence")
-    print("  ✓ Safety & Robustness")
-    print("  ✓ Multi-Objective Optimization")
+    print("   Adaptive Intelligence")
+    print("   Dynamic Architecture")
+    print("   Predictive Optimization")
+    print("   Quality-Aware Training")
+    print("   Hardware-Aware Optimization")
+    print("   Data Intelligence")
+    print("   Safety & Robustness")
+    print("   Multi-Objective Optimization")
     print("")
     print(f"System Status:")
     print(f"  Training Infrastructure: {'Available' if TRAINING_INFRASTRUCTURE_AVAILABLE else 'Not Available'}")
@@ -2194,7 +2194,7 @@ def main():
             for key, value in params.items():
                 setattr(config, key, value)
                 configured_count += 1
-            print(f"  ✓ Configured {configured_count} parameters")
+            print(f"   Configured {configured_count} parameters")
         
         # Apply remaining parameters silently
         override_count = 0
@@ -2205,8 +2205,8 @@ def main():
                 if old_value is not None and old_value != value and key not in ['raw_oasst_path']:
                     override_count += 1
         
-        print(f"\n✓ Applied {override_count} additional configuration overrides")
-        print(f"✓ Total enhanced parameters: {len(all_params)}")
+        print(f"\n Applied {override_count} additional configuration overrides")
+        print(f" Total enhanced parameters: {len(all_params)}")
 
         use_cuda_setting = getattr(config, 'use_cuda', 'auto')
         cuda_actually_available = torch.cuda.is_available()
@@ -2231,13 +2231,13 @@ def main():
             for flag in fused_flags:
                 if getattr(config, flag, False):
                     setattr(config, flag, False)
-                    print(f"    ✗ {flag} → False")
+                    print(f"     {flag}  False")
 
-            # 2. Force compile mode to 'default' — never 'reduce-overhead'.
+            # 2. Force compile mode to 'default'  never 'reduce-overhead'.
             #    'reduce-overhead' activates CUDAGraphs which crash without CUDA
             #    and also cause "tensor overwritten by subsequent run" errors.
             if getattr(config, 'compile_mode', 'default') != 'default':
-                print(f"    ✗ compile_mode: '{config.compile_mode}' → 'default'")
+                print(f"     compile_mode: '{config.compile_mode}'  'default'")
                 config.compile_mode = 'default'
             else:
                 # Ensure the attribute exists so trainer can read it safely
@@ -2247,7 +2247,7 @@ def main():
             #    Inductor can still require nvcc/ptxas even for CPU targets.
             if not cuda_actually_available:
                 if getattr(config, 'compile', True):
-                    print(f"    ✗ compile: True → False  (no CUDA device present)")
+                    print(f"     compile: True  False  (no CUDA device present)")
                     config.compile = False
 
             print(f"  Device will be: {'CPU' if not cuda_actually_available else 'CPU (use_cuda=False)'}")
@@ -2255,25 +2255,25 @@ def main():
 
         elif use_cuda_setting == 'auto':
             if not cuda_actually_available:
-                print("\nCUDA MASTER SWITCH: AUTO → no GPU detected, using CPU/MPS fallback")
+                print("\nCUDA MASTER SWITCH: AUTO  no GPU detected, using CPU/MPS fallback")
                 if getattr(config, 'compile_mode', 'default') == 'reduce-overhead':
                     config.compile_mode = 'default'
-                    print("  compile_mode: 'reduce-overhead' → 'default' (no CUDA)")
+                    print("  compile_mode: 'reduce-overhead'  'default' (no CUDA)")
                 else:
                     config.compile_mode = getattr(config, 'compile_mode', 'default')
             else:
-                print(f"\nCUDA MASTER SWITCH: AUTO → CUDA detected ({torch.cuda.get_device_name(0)})")
+                print(f"\nCUDA MASTER SWITCH: AUTO  CUDA detected ({torch.cuda.get_device_name(0)})")
                 # Always enforce 'default' to avoid CUDAGraph buffer-overwrite errors
                 if getattr(config, 'compile_mode', 'default') == 'reduce-overhead':
                     config.compile_mode = 'default'
-                    print("  compile_mode: 'reduce-overhead' → 'default' (CUDAGraph safety fix)")
+                    print("  compile_mode: 'reduce-overhead'  'default' (CUDAGraph safety fix)")
                 else:
                     config.compile_mode = getattr(config, 'compile_mode', 'default')
 
-        else:  # use_cuda=True — keep individual flags but still fix compile mode
+        else:  # use_cuda=True  keep individual flags but still fix compile mode
             if getattr(config, 'compile_mode', 'default') == 'reduce-overhead':
                 config.compile_mode = 'default'
-                print("\n  compile_mode: 'reduce-overhead' → 'default' (CUDAGraph overwrite safety fix)")
+                print("\n  compile_mode: 'reduce-overhead'  'default' (CUDAGraph overwrite safety fix)")
             else:
                 config.compile_mode = getattr(config, 'compile_mode', 'default')
 
@@ -2298,7 +2298,7 @@ def main():
                     for issue in remaining_issues:
                         print(f" {issue}")
             else:
-                print("✓ Configuration is MPS compatible")
+                print(" Configuration is MPS compatible")
         
         # Step 3: Validate precision support
         print_banner("STEP 3: VALIDATING PRECISION SUPPORT")
@@ -2318,7 +2318,7 @@ def main():
             print(f"\nTraining cannot continue with unsupported precision.")
             return 1
         else:
-            print(f"✓ Training precision validated successfully")
+            print(f" Training precision validated successfully")
         
         # Validate inference precision
         is_supported, error_msg = validate_precision_support(inference_precision, device)
@@ -2328,13 +2328,13 @@ def main():
             print(f"  Using training precision for inference instead")
             config.inference_precision = training_precision
         else:
-            print(f"✓ Inference precision validated successfully")
+            print(f" Inference precision validated successfully")
         
         # Step 4: Validate configuration
         print_banner("STEP 4: VALIDATING ENHANCED CONFIGURATION")
         try:
             config.validate()
-            print("✓ Configuration validation passed")
+            print(" Configuration validation passed")
             print(f"  Batch size: {config.batch_size}")
             print(f"  Sequence length: {config.seq_length}")
             print(f"  Learning rate: {config.learning_rate}")
@@ -2342,14 +2342,14 @@ def main():
             print(f"  Risk Tolerance: {config.adaptive_risk_tolerance}")
             print(f"  Hardware Optimization: {config.hardware_optimization_level}")
         except Exception as e:
-            print(f"✗ Configuration validation failed: {e}")
+            print(f" Configuration validation failed: {e}")
             return 1
         
         # Step 5: Initialize tokenizer
         print_banner("STEP 5: INITIALIZING TOKENIZER")
         tokenizer = ConversationTokenizer()
         config.vocab_size = tokenizer.vocab_size
-        print(f"✓ Tokenizer initialized successfully")
+        print(f" Tokenizer initialized successfully")
         print(f"  Vocabulary size: {config.vocab_size:,}")
         print(f"  Special tokens: {len(tokenizer.special_tokens) if hasattr(tokenizer, 'special_tokens') else 'N/A'}")
         
@@ -2388,7 +2388,7 @@ def main():
         try:
             train_dataset, eval_dataset = setup_datasets(config, tokenizer)
 
-            print(f"\n✓ Datasets loaded successfully!")
+            print(f"\n Datasets loaded successfully!")
             print(f"  Training dataset: {len(train_dataset):,} samples")
             if eval_dataset != train_dataset:
                 print(f"  Evaluation dataset: {len(eval_dataset):,} samples")
@@ -2396,7 +2396,7 @@ def main():
                 print(f"  Using training data for evaluation")
 
         except Exception as e:
-            print(f"\n✗ Dataset loading failed: {e}")
+            print(f"\n Dataset loading failed: {e}")
             traceback.print_exc()
             return 1
 
@@ -2438,19 +2438,19 @@ def main():
                 module.weight.data.fill_(1.0)
 
         base_model.apply(init_weights_for_fp16)
-        print("✓ Applied FP16-safe weight initialization")
+        print(" Applied FP16-safe weight initialization")
 
         # Apply Triton FP8 Emulation (Optional)
         # FORCE DISABLE per user request
         config.use_triton_fp8 = False
-        print("🚫 Triton FP8 Emulation: DISABLED (User Request)")
+        print(" Triton FP8 Emulation: DISABLED (User Request)")
         
         # Verify Standard CUDA Backend
         if HAS_TRANSFORMER_CUDA:
-            print(f"✅ Standard CUDA Backend: ACTIVE ({BACKEND.upper()})")
+            print(f" Standard CUDA Backend: ACTIVE ({BACKEND.upper()})")
             print("   (Using optimized RMSNorm, RoPE, SwiGLU kernels)")
         else:
-            print("⚠️  Standard CUDA Backend: INACTIVE (Using PyTorch fallback)")
+            print("  Standard CUDA Backend: INACTIVE (Using PyTorch fallback)")
 
         if getattr(config, 'use_triton_fp8', False):
             print_section("Applying Triton FP8 Emulation")
@@ -2460,9 +2460,9 @@ def main():
                 # nn.Embedding is not nn.Linear. Output head probably is.
                 # For now, replace all.
                 replace_linear_with_fp8(base_model)
-                print("✓ Replaced Linear layers with TritonFP8Linear")
+                print(" Replaced Linear layers with TritonFP8Linear")
             else:
-                print("⚠️ Triton not available - skipping FP8 emulation")
+                print(" Triton not available - skipping FP8 emulation")
 
         # Determine backend and wrap model
         backend_choice = backend_params.get('backend', 'pytorch')
@@ -2477,7 +2477,7 @@ def main():
         # Prevent deepspeed params from accidentally affecting FSDP runs and vice-versa.
         if backend_choice == 'fsdp' or use_fsdp:
             if getattr(config, 'use_deepspeed', False):
-                logging.warning("Config sets use_deepspeed=True but backend_choice is FSDP — disabling use_deepspeed to avoid conflicts")
+                logging.warning("Config sets use_deepspeed=True but backend_choice is FSDP  disabling use_deepspeed to avoid conflicts")
                 config.use_deepspeed = False
             # also clear DeepSpeed-specific attrs that some code may check
             for attr in ['zero_stage', 'cpu_offload', 'nvme_path']:
@@ -2555,7 +2555,7 @@ def main():
                 deepspeed_integration_needed = True
                 
             except Exception as e:
-                print(f"✗ DeepSpeed Remake initialization failed: {e}")
+                print(f" DeepSpeed Remake initialization failed: {e}")
                 traceback.print_exc()
                 print("Falling back to PyTorch backend...")
                 model = base_model
@@ -2570,7 +2570,7 @@ def main():
             print("\n" + "="*80)
             print("INITIALIZING FSDP BACKEND")
             print("="*80)
-            print("\n⚠️  FSDP requires distributed environment (multi-GPU)")
+            print("\n  FSDP requires distributed environment (multi-GPU)")
             print("   Single GPU detected - falling back to PyTorch backend")
             backend_choice = 'pytorch'
             use_fsdp = False
@@ -2583,7 +2583,7 @@ def main():
             try:
                 model = create_fsdp_backend(base_model, config)
                 
-                print("✓ FSDP backend initialized successfully")
+                print(" FSDP backend initialized successfully")
                 print(f"\nFSDP Configuration:")
                 print(f"  Backend: {model.backend_name}")
                 print(f"  Sharding Strategy: {getattr(config, 'fsdp_sharding_strategy', 'FULL_SHARD')}")
@@ -2603,7 +2603,7 @@ def main():
                 using_backend = "FSDP"
                 
             except Exception as e:
-                print(f"✗ FSDP initialization failed: {e}")
+                print(f" FSDP initialization failed: {e}")
                 print("Falling back to PyTorch backend...")
                 model = base_model
                 device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if is_mps else 'cpu'))
@@ -2617,9 +2617,9 @@ def main():
             try:
                 model = create_colossalai_backend(base_model, config)
                 using_backend = "Colossal-AI"
-                print("✓ Colossal-AI backend initialized successfully")
+                print(" Colossal-AI backend initialized successfully")
             except Exception as e:
-                print(f"✗ Colossal-AI initialization failed: {e}")
+                print(f" Colossal-AI initialization failed: {e}")
                 print("Falling back to PyTorch backend...")
                 model = base_model
                 device = torch.device('cuda' if torch.cuda.is_available() else 
@@ -2640,7 +2640,7 @@ def main():
             try:
                 model = create_deepspeed_backend(base_model, config)
                 
-                print("✓ DeepSpeed backend initialized successfully")
+                print(" DeepSpeed backend initialized successfully")
                 print(f"\nDeepSpeed Configuration:")
                 print(f"  Backend: {model.backend_name}")
                 print(f"  ZeRO Stage: {getattr(config, 'zero_stage', 2)}")
@@ -2653,7 +2653,7 @@ def main():
                 using_backend = "DeepSpeed"
                 
             except Exception as e:
-                print(f"✗ DeepSpeed initialization failed: {e}")
+                print(f" DeepSpeed initialization failed: {e}")
                 print("Falling back to PyTorch backend...")
                 model = base_model
                 device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if is_mps else 'cpu'))
@@ -2669,7 +2669,7 @@ def main():
             device = torch.device('cuda' if torch.cuda.is_available() else ('mps' if is_mps else 'cpu'))
             model = model.to(device)
             
-            print(f"✓ Model moved to device: {device}")
+            print(f" Model moved to device: {device}")
             using_backend = "PyTorch"
 
         # Model compilation (only for PyTorch backend, not for FSDP/DeepSpeed)
@@ -2682,9 +2682,9 @@ def main():
                     mode=compile_mode,
                     dynamic=False
                 )
-                print("✓ Model compiled successfully")
+                print(" Model compiled successfully")
             except Exception as e:
-                print(f"⚠️ Model compilation failed: {e}")
+                print(f" Model compilation failed: {e}")
                 print("Continuing without compilation...")
 
         # Calculate and display model statistics
@@ -2748,7 +2748,7 @@ def main():
             if CHINCHILLA_SCALER_AVAILABLE:
                 print_banner("STEP 9.5: CHINCHILLA EPOCH SCALING")               
             else:
-                print("⚠️ Chinchilla scaler not available, skipping auto-scaling")
+                print(" Chinchilla scaler not available, skipping auto-scaling")
 
         # ============================================================
         # Step 9.6 - TRAIN Router Model (BEFORE loading pretrained)
@@ -2796,13 +2796,13 @@ def main():
                     output_dir="router_training"
                 )
                 
-                print("\n✅ Router training complete!")
+                print("\n Router training complete!")
                 print(f"   Best model saved to: router_training/best_router_model.pt")
                 print(f"   You can now use this router by setting:")
                 print(f"     pretrained_router_params['use_pretrained_router'] = True")
                 
             except Exception as e:
-                print(f"\n❌ Router training failed: {e}")
+                print(f"\n Router training failed: {e}")
                 traceback.print_exc()
                 print("Continuing with standard gates...")
 
@@ -2819,7 +2819,7 @@ def main():
             # Optional: Verify it loaded correctly
             from pathlib import Path
             if Path(pretrained_router_params['router_checkpoint_path']).exists():
-                print("\n✓ Router model integration complete")
+                print("\n Router model integration complete")
                 print("  Model will use learned routing decisions during training")
 
         # Step 10: Initialize enhanced training system
@@ -2830,20 +2830,20 @@ def main():
         if use_adaptive_training and TRAINING_INFRASTRUCTURE_AVAILABLE:
             print("Initializing Enhanced Adaptive Training Orchestrator")
             print("\nENHANCED FEATURES ACTIVE:")
-            print("  ✓ AI-driven hyperparameter optimization")
-            print("  ✓ Adaptive intelligence with meta-learning")
-            print("  ✓ Real-time performance monitoring")
-            print("  ✓ Dynamic architecture optimization")
-            print("  ✓ Predictive resource management")
-            print("  ✓ Quality-aware training guards")
-            print("  ✓ Hardware-specific optimizations")
-            print("  ✓ Intelligent data sampling")
-            print("  ✓ Multi-objective optimization")
-            print("  ✓ Advanced safety & robustness")
-            print("  ✓ Automatic recovery from failures")
-            print("  ✓ Performance profiling and analysis")
+            print("   AI-driven hyperparameter optimization")
+            print("   Adaptive intelligence with meta-learning")
+            print("   Real-time performance monitoring")
+            print("   Dynamic architecture optimization")
+            print("   Predictive resource management")
+            print("   Quality-aware training guards")
+            print("   Hardware-specific optimizations")
+            print("   Intelligent data sampling")
+            print("   Multi-objective optimization")
+            print("   Advanced safety & robustness")
+            print("   Automatic recovery from failures")
+            print("   Performance profiling and analysis")
             
-            # ✅ OPTIMIZATION: Free the duplicate base model from GPU before creating Orchestrator
+            #  OPTIMIZATION: Free the duplicate base model from GPU before creating Orchestrator
             if 'model' in locals():
                 del model
                 if torch.cuda.is_available():
@@ -2860,7 +2860,7 @@ def main():
                 orchestrator.initialize_training()
 
                 # INLINE TEST - Cannot be skipped
-                print("\n🔍 INLINE ADAPTIVE TEST")
+                print("\n INLINE ADAPTIVE TEST")
                 print(f"Trainer type: {type(orchestrator.trainer).__name__}")
                 print(f"Has adjust_learning_rate: {hasattr(orchestrator.trainer, 'adjust_learning_rate')}")
                 print(f"Has get_current_metrics: {hasattr(orchestrator.trainer, 'get_current_metrics')}")
@@ -2871,9 +2871,9 @@ def main():
                 
                 print("\n" + "="*80)
                 print("STEP 10.9: TESTING ADAPTIVE PIPELINE".center(80))
-                print("\n✓ Orchestrator initialized successfully")
+                print("\n Orchestrator initialized successfully")
                 print("\n" + "="*80)
-                print("🔍 TRAINER VERIFICATION")
+                print(" TRAINER VERIFICATION")
                 print("="*80)
 
                 # STEP 10.9: TEST ADAPTIVE PIPELINE
@@ -2884,10 +2884,10 @@ def main():
                 # Test 1: get_current_metrics()
                 try:
                     test_metrics = orchestrator.trainer.get_current_metrics()
-                    logging.info(f"✅ Test 1 PASSED: get_current_metrics() works")
+                    logging.info(f" Test 1 PASSED: get_current_metrics() works")
                     logging.info(f"   Returned: {type(test_metrics).__name__}")
                 except Exception as e:
-                    logging.error(f"❌ Test 1 FAILED: get_current_metrics() error: {e}")
+                    logging.error(f" Test 1 FAILED: get_current_metrics() error: {e}")
                 
                 # Test 2: adjust_learning_rate()
                 try:
@@ -2896,25 +2896,25 @@ def main():
                     new_lr = orchestrator.trainer.optimizer.param_groups[0]['lr']
                     
                     if abs(new_lr - 1e-5) < 1e-9:
-                        logging.info(f"✅ Test 2 PASSED: adjust_learning_rate() works")
-                        logging.info(f"   LR changed: {original_lr:.2e} → {new_lr:.2e}")
+                        logging.info(f" Test 2 PASSED: adjust_learning_rate() works")
+                        logging.info(f"   LR changed: {original_lr:.2e}  {new_lr:.2e}")
                         # Restore original LR
                         orchestrator.trainer.adjust_learning_rate(original_lr, grace_period=0)
                     else:
-                        logging.error(f"❌ Test 2 FAILED: LR not changed correctly")
+                        logging.error(f" Test 2 FAILED: LR not changed correctly")
                         logging.error(f"   Expected: 1e-5, Got: {new_lr:.2e}")
                 except Exception as e:
-                    logging.error(f"❌ Test 2 FAILED: adjust_learning_rate() error: {e}")
+                    logging.error(f" Test 2 FAILED: adjust_learning_rate() error: {e}")
                 
                 # Test 3: Monitoring queue
                 try:
                     has_queue = hasattr(orchestrator.trainer, '_monitoring_queue')
                     if has_queue:
-                        logging.info(f"✅ Test 3 PASSED: Trainer has monitoring queue")
+                        logging.info(f" Test 3 PASSED: Trainer has monitoring queue")
                     else:
-                        logging.error(f"❌ Test 3 FAILED: Trainer missing _monitoring_queue")
+                        logging.error(f" Test 3 FAILED: Trainer missing _monitoring_queue")
                 except Exception as e:
-                    logging.error(f"❌ Test 3 FAILED: Queue check error: {e}")
+                    logging.error(f" Test 3 FAILED: Queue check error: {e}")
                 
                 logging.info("\n" + "="*80)
                 logging.info("ADAPTIVE PIPELINE TEST COMPLETE")
@@ -2925,22 +2925,22 @@ def main():
                 print(f"Trainer type: {trainer_type}")
 
                 if trainer_type == 'AdaptiveTrainer':
-                    print("✗ CRITICAL ERROR: Using fallback trainer!")
+                    print(" CRITICAL ERROR: Using fallback trainer!")
                     print("   Real EnhancedConversationTrainer failed to load")
                     print("   Training will NOT work!")
                     sys.exit(1)
 
                 # Verify train method exists and is callable
                 if not hasattr(orchestrator.trainer, 'train'):
-                    print("✗ CRITICAL ERROR: Trainer has no train method!")
+                    print(" CRITICAL ERROR: Trainer has no train method!")
                     sys.exit(1)
 
                 if not callable(orchestrator.trainer.train):
-                    print("✗ CRITICAL ERROR: Trainer.train is not callable!")
+                    print(" CRITICAL ERROR: Trainer.train is not callable!")
                     sys.exit(1)
 
-                print("✓ Trainer verification passed")
-                print(f"✓ Trainer class: {orchestrator.trainer.__class__.__module__}.{trainer_type}")
+                print(" Trainer verification passed")
+                print(f" Trainer class: {orchestrator.trainer.__class__.__module__}.{trainer_type}")
                 print("="*80 + "\n")
 
                 # Integrate Chinchilla scaler if enabled
@@ -2949,15 +2949,15 @@ def main():
                     scaler = EnhancedChinchillaScaler(config, model, train_dataset)
                     config.num_epochs = scaler.get_optimal_epochs()
                     orchestrator.trainer.chinchilla_scaler = scaler
-                    print(f"✓ Chinchilla scaler attached to trainer")
-                    print(f"✓ Optimal epochs: {config.num_epochs}")
+                    print(f" Chinchilla scaler attached to trainer")
+                    print(f" Optimal epochs: {config.num_epochs}")
                     print("="*80 + "\n")
                 if deepspeed_integration_needed and DEEPSPEED_REMAKE_AVAILABLE:
                     print_banner("INTEGRATING DEEPSPEED REMAKE WITH TRAINER")
                     
                     try:
                         deepspeed_integration = integrate_with_trainer(
-                            trainer=orchestrator.trainer,  # ✅ The actual trainer object
+                            trainer=orchestrator.trainer,  #  The actual trainer object
                             config=config,
                             model=model,
                             expert_registry=expert_registry if config.use_moe else None
@@ -2965,7 +2965,7 @@ def main():
                         
                         orchestrator.deepspeed_integration = deepspeed_integration
                         
-                        print("✓ DeepSpeed Remake integration complete")
+                        print(" DeepSpeed Remake integration complete")
                         print(f"  Optimizer type: {type(orchestrator.trainer.optimizer).__name__}")
                         print(f"  Scheduler type: {type(orchestrator.trainer.scheduler).__name__ if orchestrator.trainer.scheduler else 'None'}")
                         print(f"  ZeRO Stage: {config.zero_stage}")
@@ -2975,7 +2975,7 @@ def main():
                         using_backend = "DeepSpeed Remake (Integrated)"
                         
                     except Exception as e:
-                        print(f"✗ DeepSpeed Remake integration failed: {e}")
+                        print(f" DeepSpeed Remake integration failed: {e}")
                         traceback.print_exc()
                         print("Continuing with standard optimizer...")
             except Exception as e:
@@ -3010,12 +3010,12 @@ def main():
 
         if checkpoint_params.get('resume_training', False) and checkpoint_params.get('resume_from_checkpoint'):
             checkpoint_path = checkpoint_params['resume_from_checkpoint']
-            print(f"📄 Loading checkpoint: {checkpoint_path}")
+            print(f" Loading checkpoint: {checkpoint_path}")
 
             try:
                 checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
 
-                print("✓ Checkpoint loaded successfully!")
+                print(" Checkpoint loaded successfully!")
                 print(f"Checkpoint info:")
                 print(f"   - Epoch: {checkpoint.get('epoch', 'unknown')}")
                 print(f"   - Global step: {checkpoint.get('global_step', 'unknown')}")
@@ -3024,19 +3024,19 @@ def main():
                 # Load model state
                 if 'model_state_dict' in checkpoint:
                     model.load_state_dict(checkpoint['model_state_dict'])
-                    print("✓ Model weights loaded")
+                    print(" Model weights loaded")
 
                 # Load optimizer state if available and not reset
                 if not checkpoint_params.get('reset_optimizer', False) and 'optimizer_state_dict' in checkpoint:
                     if hasattr(orchestrator.trainer, 'optimizer'):
                         orchestrator.trainer.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                        print("✓ Optimizer state loaded")
+                        print(" Optimizer state loaded")
 
                 # Load scheduler state if available and not reset
                 if not checkpoint_params.get('reset_scheduler', False) and 'scheduler_state_dict' in checkpoint:
                     if hasattr(orchestrator.trainer, 'scheduler') and orchestrator.trainer.scheduler:
                         orchestrator.trainer.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-                        print("✓ Scheduler state loaded")
+                        print(" Scheduler state loaded")
 
                 # Set training state
                 start_epoch = checkpoint.get('epoch', 0) + 1
@@ -3054,12 +3054,12 @@ def main():
                 print(f"   - Best loss: {best_loss:.4f}")
 
             except Exception as e:
-                print(f"✗ Error loading checkpoint: {e}")
+                print(f" Error loading checkpoint: {e}")
                 print("Starting training from scratch...")
                 checkpoint_params['resume_training'] = False
         else:
             print("Starting fresh training session")
-            print("✓ No checkpoint to resume from")
+            print(" No checkpoint to resume from")
 
         # Verify scheduler
         print("\n" + "="*80)
@@ -3069,20 +3069,20 @@ def main():
         if hasattr(orchestrator.trainer, 'scheduler'):
             if orchestrator.trainer.scheduler is not None:
                 scheduler_type = type(orchestrator.trainer.scheduler).__name__
-                print(f"✓ Scheduler found: {scheduler_type}")
+                print(f" Scheduler found: {scheduler_type}")
 
                 try:
                     initial_lr = orchestrator.trainer.scheduler.get_last_lr()[0]
                     base_lrs = orchestrator.trainer.scheduler.base_lrs
-                    print(f"✓ Initial LR: {initial_lr:.2e}")
-                    print(f"✓ Base LRs: {[f'{lr:.2e}' for lr in base_lrs]}")
-                    print(f"✓ Config LR: {orchestrator.config.learning_rate:.2e}")
+                    print(f" Initial LR: {initial_lr:.2e}")
+                    print(f" Base LRs: {[f'{lr:.2e}' for lr in base_lrs]}")
+                    print(f" Config LR: {orchestrator.config.learning_rate:.2e}")
 
                     # Verify they match
                     if abs(initial_lr - orchestrator.config.learning_rate) > 1e-9:
                         print(f"WARNING: Scheduler LR doesn't match config LR!")
                     else:
-                        print(f"✓ Scheduler LR matches config")
+                        print(f" Scheduler LR matches config")
 
                 except Exception as e:
                     print(f"Could not read scheduler state: {e}")
@@ -3091,11 +3091,11 @@ def main():
                 print(f"   use_lr_scheduler: {getattr(orchestrator.config, 'use_lr_scheduler', 'not set')}")
                 print(f"   LR will remain constant at: {orchestrator.config.learning_rate:.2e}")
         else:
-            print("✗ Trainer has no scheduler attribute!")
+            print(" Trainer has no scheduler attribute!")
 
         print("="*80 + "\n")
 
-        # 🔥 FIX: Setup scheduler NOW with dataset info
+        #  FIX: Setup scheduler NOW with dataset info
         print("\n" + "="*80)
         print("STEP 10.8: SETTING UP LEARNING RATE SCHEDULER".center(80))
         print("="*80)
@@ -3119,14 +3119,14 @@ def main():
             
             # Verify it worked
             if orchestrator.trainer.scheduler is not None:
-                print(f"✅ Scheduler created: {type(orchestrator.trainer.scheduler).__name__}")
+                print(f" Scheduler created: {type(orchestrator.trainer.scheduler).__name__}")
                 try:
                     initial_lr = orchestrator.trainer.scheduler.get_last_lr()[0]
-                    print(f"✅ Initial LR: {initial_lr:.2e}")
+                    print(f" Initial LR: {initial_lr:.2e}")
                 except:
-                    print(f"✅ Scheduler ready (LR: {config.learning_rate:.2e})")
+                    print(f" Scheduler ready (LR: {config.learning_rate:.2e})")
             else:
-                print(f"❌ WARNING: Scheduler is still None!")
+                print(f" WARNING: Scheduler is still None!")
                 print(f"   Adaptive training will work but scheduler won't!")
         else:
             print("Skipping scheduler setup (DeepSpeed handles it)")
@@ -3136,7 +3136,7 @@ def main():
         # Step 11: Setup signal handlers
         print_banner("STEP 11: SETTING UP SIGNAL HANDLERS")
         setup_signal_handlers(orchestrator)
-        print("✓ Signal handlers configured for graceful shutdown")
+        print(" Signal handlers configured for graceful shutdown")
         print("  SIGINT (Ctrl+C): Save state and exit")
         print("  SIGTERM: Save state and exit")
         
@@ -3159,7 +3159,7 @@ def main():
         }
         with open(enhanced_params_path, 'w') as f:
             json.dump(enhanced_summary, f, indent=2)
-        print(f"✓ Enhanced parameters saved: {enhanced_params_path}")
+        print(f" Enhanced parameters saved: {enhanced_params_path}")
         
         save_experiment_metadata(experiment_dir, config, model, datasets_info)
         
@@ -3276,35 +3276,35 @@ def main():
         
         # Check monitoring thread
         monitoring_active = orchestrator.monitoring_thread and orchestrator.monitoring_thread.is_alive()
-        print(f"Monitoring thread: {'✅ Active' if monitoring_active else '❌ Not running'}")
+        print(f"Monitoring thread: {' Active' if monitoring_active else ' Not running'}")
         
         # Check monitoring queue
         queue_exists = orchestrator.monitoring_queue is not None
-        print(f"Monitoring queue: {'✅ Connected' if queue_exists else '❌ Missing'}")
+        print(f"Monitoring queue: {' Connected' if queue_exists else ' Missing'}")
         if queue_exists:
             print(f"  Queue size: {orchestrator.monitoring_queue.qsize()}/{orchestrator.monitoring_queue.maxsize}")
         
         # Check trainer enhancements
         has_queue = hasattr(orchestrator.trainer, '_monitoring_queue')
         has_metrics = hasattr(orchestrator.trainer, 'get_current_metrics')
-        print(f"Trainer monitoring injection: {'✅ Complete' if has_queue and has_metrics else '❌ Incomplete'}")
+        print(f"Trainer monitoring injection: {' Complete' if has_queue and has_metrics else ' Incomplete'}")
         
         # Test the pipeline
-        print("\n🧪 Testing metric collection pipeline...")
+        print("\n Testing metric collection pipeline...")
         try:
             test_metric = orchestrator.trainer.get_current_metrics()
-            print(f"  ✅ get_current_metrics() → {type(test_metric).__name__}")
+            print(f"   get_current_metrics()  {type(test_metric).__name__}")
             
             orchestrator.monitoring_queue.put(test_metric, block=False)
-            print(f"  ✅ Queue.put() → Success")
+            print(f"   Queue.put()  Success")
             
             retrieved = orchestrator.monitoring_queue.get(timeout=0.1)
-            print(f"  ✅ Queue.get() → {type(retrieved).__name__}")
-            print(f"\n✅ PIPELINE TEST PASSED - Adaptive monitoring is functional!")
+            print(f"   Queue.get()  {type(retrieved).__name__}")
+            print(f"\n PIPELINE TEST PASSED - Adaptive monitoring is functional!")
             
         except Exception as e:
-            print(f"  ❌ PIPELINE TEST FAILED: {e}")
-            print(f"  ⚠️  Adaptive features will be limited!")
+            print(f"   PIPELINE TEST FAILED: {e}")
+            print(f"    Adaptive features will be limited!")
             traceback.print_exc()
         
         print("="*80 + "\n")
@@ -3370,7 +3370,7 @@ def main():
                 router_model_path="router_training/best_router_model.pt"
             )
             
-            print("✓ Router model trained and integrated!")
+            print(" Router model trained and integrated!")
             print("  Model now uses learned routing instead of simple gates")
         
         # Step 15: Training completion summary
@@ -3400,7 +3400,7 @@ def main():
             print_banner("STEP 16: GENERATING TRAINING REPORTS")
             try:
                 create_training_report(str(experiment_dir))
-                print(f"✓ Training report generated: {experiment_dir}/training_report.html")
+                print(f" Training report generated: {experiment_dir}/training_report.html")
             except Exception as e:
                 print(f"Could not generate training report: {e}")
         
@@ -3454,25 +3454,25 @@ def main():
         summary_path = experiment_dir / "training_summary.json"
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
-        print(f"✓ Training summary saved: {summary_path}")
+        print(f" Training summary saved: {summary_path}")
         
         # Final success message
-        print_banner("✨ ALL OPERATIONS COMPLETED SUCCESSFULLY ✨")
+        print_banner(" ALL OPERATIONS COMPLETED SUCCESSFULLY ")
         print(f"Experiment directory: {experiment_dir}")
         print(f"Total execution time: {(time.time() - training_start_time)/3600:.2f} hours")
         print("")
-        print("🚀 Enhanced DeepSeek MoE Training System V2.0")
+        print(" Enhanced DeepSeek MoE Training System V2.0")
         print("   With Advanced AI-Driven Optimization")
         print("")
         print("Enhanced features utilized:")
-        print("  ✓ Adaptive Intelligence")
-        print("  ✓ Dynamic Architecture")
-        print("  ✓ Predictive Optimization")
-        print("  ✓ Quality-Aware Training")
-        print("  ✓ Hardware-Aware Optimization")
-        print("  ✓ Data Intelligence")
-        print("  ✓ Safety & Robustness")
-        print("  ✓ Multi-Objective Optimization")
+        print("   Adaptive Intelligence")
+        print("   Dynamic Architecture")
+        print("   Predictive Optimization")
+        print("   Quality-Aware Training")
+        print("   Hardware-Aware Optimization")
+        print("   Data Intelligence")
+        print("   Safety & Robustness")
+        print("   Multi-Objective Optimization")
         print("="*80)
         
         return 0
@@ -3486,7 +3486,7 @@ def main():
         if 'orchestrator' in locals() and orchestrator:
             try:
                 orchestrator._save_meta_learning_state()
-                print("✓ Meta-learning state saved successfully")
+                print(" Meta-learning state saved successfully")
             except Exception as e:
                 print(f"Error saving state: {e}")
         
@@ -3514,7 +3514,7 @@ def main():
             try:
                 print("Cleaning up orchestrator...")
                 orchestrator.cleanup()
-                print("✓ Orchestrator cleanup complete")
+                print(" Orchestrator cleanup complete")
             except Exception as e:
                 print(f"Orchestrator cleanup error: {e}")
         
@@ -3546,7 +3546,7 @@ def main():
             except:
                 pass
         
-        print("✓ Cleanup complete")
+        print(" Cleanup complete")
         print("="*80)
 
 

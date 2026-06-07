@@ -4,7 +4,7 @@ This document covers the custom CUDA kernels powering high-performance
 Mixture-of-Experts (MoE/MoD) transformer training.
 
 These kernels replace critical PyTorch ops with hand-optimized GPU code,
-delivering **2–7× speedups** while preserving full autograd compatibility,
+delivering **27 speedups** while preserving full autograd compatibility,
 numerical stability, and drop-in usability.
 
 ### Who this is for
@@ -71,14 +71,14 @@ The Adaptive Training System includes custom CUDA kernels optimized for transfor
 
 ```
 Adaptive Training System/
-├── Src/Main_Scripts/training/
-│   ├── transformer_ops.cu          # RMSNorm, RoPE, SwiGLU
-│   ├── moe_cuda_ops.cu             # MoE routing and dispatch
-│   ├── fused_loss.cu               # Cross-entropy + accuracy
-│   ├── fused_grad_clip.cu          # Gradient norm + clipping
-│   ├── cuda_opt_wrapper.py         # Python wrappers with autograd
-│   ├── moe_cuda_wrapper.py         # MoE Python interface
-│   └── compile_all_kernels.sh     # Compilation script
+ Src/Main_Scripts/training/
+    transformer_ops.cu          # RMSNorm, RoPE, SwiGLU
+    moe_cuda_ops.cu             # MoE routing and dispatch
+    fused_loss.cu               # Cross-entropy + accuracy
+    fused_grad_clip.cu          # Gradient norm + clipping
+    cuda_opt_wrapper.py         # Python wrappers with autograd
+    moe_cuda_wrapper.py         # MoE Python interface
+    compile_all_kernels.sh     # Compilation script
 ```
 
 ### Optimization Techniques
@@ -212,7 +212,7 @@ benchmark_moe_cuda()    # Shows performance metrics
 
 **Algorithm:**
 ```
-variance = mean(x²)
+variance = mean(x)
 output = x / sqrt(variance + eps) * weight
 ```
 
@@ -349,7 +349,7 @@ void rope_apply_launcher(
 - **Apply threads:** min(256, max(32, head_dim/4))
 
 **Numerical properties:**
-- Preserves norm: ||q_rot|| ≈ ||q||
+- Preserves norm: ||q_rot||  ||q||
 - Exact trigonometric functions (no approximation)
 - Gradient flow maintained through rotation
 
@@ -420,10 +420,10 @@ void swiglu_launcher(
 
 **Backward pass:**
 ```
-∂L/∂gate = ∂L/∂out * SiLU(up)
-∂L/∂up = ∂L/∂out * gate * ∂SiLU/∂up
+L/gate = L/out * SiLU(up)
+L/up = L/out * gate * SiLU/up
 
-where ∂SiLU/∂x = sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x))
+where SiLU/x = sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x))
 ```
 
 ---
@@ -442,7 +442,7 @@ where ∂SiLU/∂x = sigmoid(x) + x * sigmoid(x) * (1 - sigmoid(x))
 ```
 
 **Optimizations:**
-- **Warp-based top-k:** No shared memory for k ≤ 4
+- **Warp-based top-k:** No shared memory for k  4
 - **Shuffle reduction:** Warp-level parallel max finding
 - **Specialized k=2:** Optimized code path for common case
 - **In-place softmax:** Compute normalization without extra memory
@@ -571,7 +571,7 @@ __global__ void dispatch_tokens_kernel_optimized(
 **Capacity handling:**
 - Tokens exceeding capacity are dropped
 - Orchestrator monitors drop rate and adjusts capacity
-- Alternative: increase capacity_factor (1.25 → 1.5)
+- Alternative: increase capacity_factor (1.25  1.5)
 
 ---
 
@@ -719,7 +719,7 @@ void fused_cross_entropy_accuracy_launcher(
 
 **Algorithm:**
 ```
-1. Compute norm² for all parameter gradients (parallel)
+1. Compute norm for all parameter gradients (parallel)
 2. Take sqrt of sum (on GPU)
 3. If norm > max_norm:
    - Compute clip_coef = max_norm / norm
@@ -731,7 +731,7 @@ void fused_cross_entropy_accuracy_launcher(
 - **Fully async:** No CPU-GPU synchronization until final return
 - **GPU-side sqrt:** Eliminate D2H transfer for intermediate value
 - **Conditional clipping:** Skip scaling if norm < threshold
-- **Warp reductions:** Fast parallel norm² computation
+- **Warp reductions:** Fast parallel norm computation
 - **Pinned memory:** Async D2H transfer for final norm
 
 **Performance:**
@@ -758,17 +758,17 @@ global_norm = clip_gradients(
 **Kernel signatures:**
 
 ```cpp
-// Compute norm² for all gradients
+// Compute norm for all gradients
 __global__ void compute_grad_norm_squared_kernel(
     float** __restrict__ grad_ptrs,      // Pointers to gradient tensors
     const int* __restrict__ grad_sizes,  // Size of each gradient
-    float* __restrict__ global_norm_sq,  // Output: accumulated norm²
+    float* __restrict__ global_norm_sq,  // Output: accumulated norm
     int num_tensors
 );
 
 // Take sqrt on GPU
 __global__ void sqrt_kernel(
-    float* norm_sq,                      // Input: norm²
+    float* norm_sq,                      // Input: norm
     float* norm                          // Output: norm
 );
 
@@ -783,12 +783,12 @@ __global__ void clip_gradients_kernel(
 ```
 
 **Configuration:**
-- **Norm² kernel:** One block per tensor, 256 threads
+- **Norm kernel:** One block per tensor, 256 threads
 - **Sqrt kernel:** Single thread
 - **Clip kernel:** One block per tensor, 256 threads
 
 **Async pipeline:**
-1. Launch norm² computation (async)
+1. Launch norm computation (async)
 2. Launch sqrt computation (async)
 3. Launch clip computation (async)
 4. Queue async D2H transfer for norm
@@ -1201,7 +1201,7 @@ def test_my_operation():
     loss.backward()
     assert torch.allclose(x.grad, torch.ones_like(x) * 2.0, rtol=1e-5)
     
-    print("✅ MyOperation tests passed")
+    print(" MyOperation tests passed")
 ```
 
 ### Optimization Checklist
@@ -1342,13 +1342,13 @@ Ensure backward pass implemented:
 class MyFunction(Function):
     @staticmethod
     def forward(ctx, x):
-        ctx.save_for_backward(x)  # ← Must save tensors
+        ctx.save_for_backward(x)  #  Must save tensors
         return output
     
     @staticmethod
     def backward(ctx, grad_output):
         x, = ctx.saved_tensors
-        return grad_output * some_gradient  # ← Must return gradient
+        return grad_output * some_gradient  #  Must return gradient
 ```
 
 ### Performance Issues
@@ -1556,7 +1556,7 @@ def test_training_with_cuda():
     speedup = cuda_stats['estimated_speedup']
     assert speedup > 2.0, f"Insufficient speedup: {speedup}x"
     
-    print(f"✅ Training with CUDA: {speedup:.1f}x speedup")
+    print(f" Training with CUDA: {speedup:.1f}x speedup")
 ```
 
 ### Continuous Benchmarking
@@ -1603,13 +1603,13 @@ def run_benchmark_suite():
 
 | GPU Family | Architecture | Compute | Supported | Recommended |
 |------------|--------------|---------|-----------|-------------|
-| Tesla T4   | Turing       | sm_75   | ✅        | Development |
-| RTX 2080   | Turing       | sm_75   | ✅        | Development |
-| RTX 3090   | Ampere       | sm_86   | ✅        | Production  |
-| A100       | Ampere       | sm_80   | ✅        | Production  |
-| RTX 4090   | Ada          | sm_89   | ✅        | Production  |
-| H100       | Hopper       | sm_90   | ✅        | Production  |
-| H200       | Hopper       | sm_90   | ✅        | Production  |
+| Tesla T4   | Turing       | sm_75   |         | Development |
+| RTX 2080   | Turing       | sm_75   |         | Development |
+| RTX 3090   | Ampere       | sm_86   |         | Production  |
+| A100       | Ampere       | sm_80   |         | Production  |
+| RTX 4090   | Ada          | sm_89   |         | Production  |
+| H100       | Hopper       | sm_90   |         | Production  |
+| H200       | Hopper       | sm_90   |         | Production  |
 
 ### Version History
 
@@ -1661,4 +1661,4 @@ def run_benchmark_suite():
 
 ---
 
-*Copyright © 2025 MatN23. All rights reserved.*
+*Copyright  2025 MatN23. All rights reserved.*

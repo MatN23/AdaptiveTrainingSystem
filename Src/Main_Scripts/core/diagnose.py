@@ -14,14 +14,14 @@ try:
     HAS_MOE = True
 except ImportError:
     try:
-        print("⚠️  Direct import failed, trying wrapper...")
+        print("  Direct import failed, trying wrapper...")
         from moe_cuda_wrapper import moe_cuda_ops
         HAS_MOE = True if moe_cuda_ops is not None else False
         if HAS_MOE:
-            print("✅ Loaded via wrapper")
+            print(" Loaded via wrapper")
     except Exception as e:
         HAS_MOE = False
-        print(f"❌ MoE ops not available: {e}")
+        print(f" MoE ops not available: {e}")
 
 def benchmark_op(func, *args, name="Operation", warmup=10, iters=100):
     """Benchmark a single operation"""
@@ -123,7 +123,7 @@ def profile_individual_ops():
             cuda_time = benchmark_op(moe_cuda_ops.topk_gating, gate_logits, k, 1.0)
             print(f"    CUDA:     {cuda_time:.3f}ms")
             speedup = pytorch_time / cuda_time
-            print(f"    Speedup:  {speedup:.2f}x {'✅' if speedup > 1 else '❌'}")
+            print(f"    Speedup:  {speedup:.2f}x {'' if speedup > 1 else ''}")
         
         # Get top-k results for next ops
         top_k_indices, top_k_weights = pytorch_topk_gating(gate_logits, k)
@@ -139,7 +139,7 @@ def profile_individual_ops():
                                     top_k_indices, num_experts, capacity)
             print(f"    CUDA:     {cuda_time:.3f}ms")
             speedup = pytorch_time / cuda_time
-            print(f"    Speedup:  {speedup:.2f}x {'✅' if speedup > 1 else '❌'}")
+            print(f"    Speedup:  {speedup:.2f}x {'' if speedup > 1 else ''}")
         
         # Get dispatch results
         expert_inputs, token_map = pytorch_dispatch(tokens, top_k_indices, 
@@ -160,7 +160,7 @@ def profile_individual_ops():
                                     num_tokens, k)
             print(f"    CUDA:     {cuda_time:.3f}ms")
             speedup = pytorch_time / cuda_time
-            print(f"    Speedup:  {speedup:.2f}x {'✅' if speedup > 1 else '❌'}")
+            print(f"    Speedup:  {speedup:.2f}x {'' if speedup > 1 else ''}")
 
 def analyze_memory_bandwidth():
     """Check if we're memory or compute bound"""
@@ -224,7 +224,7 @@ def check_correctness():
     print("="*80)
     
     if not HAS_MOE:
-        print("❌ CUDA ops not available")
+        print(" CUDA ops not available")
         return
     
     num_tokens = 4096
@@ -246,23 +246,23 @@ def check_correctness():
     cuda_set = set(cuda_indices.cpu().numpy().flatten())
     
     if pt_set == cuda_set:
-        print("    ✅ Same experts selected")
+        print("     Same experts selected")
     else:
-        print(f"    ❌ Different experts! PT: {len(pt_set)}, CUDA: {len(cuda_set)}")
+        print(f"     Different experts! PT: {len(pt_set)}, CUDA: {len(cuda_set)}")
     
     # Check weights sum to 1
     pt_sum = pt_weights.sum(dim=1)
     cuda_sum = cuda_weights.sum(dim=1)
     if torch.allclose(pt_sum, torch.ones_like(pt_sum), atol=1e-5):
-        print(f"    ✅ PyTorch weights normalized")
+        print(f"     PyTorch weights normalized")
     if torch.allclose(cuda_sum, torch.ones_like(cuda_sum), atol=1e-5):
-        print(f"    ✅ CUDA weights normalized")
+        print(f"     CUDA weights normalized")
     
     print("\n  Testing Dispatch...")
     pt_inputs, pt_map = pytorch_dispatch(tokens, pt_indices, num_experts, capacity)
     cuda_inputs, cuda_map = moe_cuda_ops.dispatch_tokens(tokens, cuda_indices, 
                                                          num_experts, capacity)
-    print("    ✅ Dispatch completed")
+    print("     Dispatch completed")
     
     print("\n  Testing Combine...")
     expert_outputs = cuda_inputs.clone()
@@ -275,15 +275,15 @@ def check_correctness():
     
     diff = (combined - pt_combined_ref).abs().max().item()
     if torch.allclose(combined, pt_combined_ref, atol=1e-4):
-         print(f"    ✅ Combine matched PyTorch (diff: {diff:.6f})")
+         print(f"     Combine matched PyTorch (diff: {diff:.6f})")
     else:
-         print(f"    ❌ Combine mismatch! Max diff: {diff:.6f}")
+         print(f"     Combine mismatch! Max diff: {diff:.6f}")
 
 if __name__ == "__main__":
     print("PyTorch CUDA Profiler")
     
     if not torch.cuda.is_available():
-        print("⚠️  CUDA is not available - skipping profiling")
+        print("  CUDA is not available - skipping profiling")
         print("This script requires a CUDA-enabled GPU to run.")
         exit(0)
     

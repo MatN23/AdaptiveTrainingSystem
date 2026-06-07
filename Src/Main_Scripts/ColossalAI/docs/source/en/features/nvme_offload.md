@@ -51,7 +51,7 @@ optimizer = HybridAdam(model.parameters(), lr=1e-3, nvme_offload_fraction=1.0, n
 
 It's compatible with all parallel methods in ColossalAI.
 
-> ⚠ It only offloads optimizer states on CPU. This means it only affects CPU training or Zero/Gemini with offloading.
+>  It only offloads optimizer states on CPU. This means it only affects CPU training or Zero/Gemini with offloading.
 
 ## Examples
 

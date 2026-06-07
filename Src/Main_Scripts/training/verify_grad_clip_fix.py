@@ -6,7 +6,7 @@ from training.cuda_kernels import FusedGradClip
 def test_norm_and_clip():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if device.type != 'cuda':
-        print("❌ Skip: CUDA not available")
+        print(" Skip: CUDA not available")
         return
 
     print("="*80)
@@ -34,9 +34,9 @@ def test_norm_and_clip():
     print(f"   Difference:    {diff:.8e}")
     
     if diff < 1e-4:
-        print("   ✅ Test 1 Passed!")
+        print("    Test 1 Passed!")
     else:
-        print("   ❌ Test 1 Failed (Precision issue)")
+        print("    Test 1 Failed (Precision issue)")
 
     # Test 2: Alignment Handling
     print("\n[Test 2] Alignment handling (Offset pointers)...")
@@ -56,11 +56,11 @@ def test_norm_and_clip():
         print(f"   Expected Norm: {expected_norm_unaligned:.6f}")
         print(f"   Actual Norm:   {actual_norm_unaligned:.6f}")
         if abs(actual_norm_unaligned - expected_norm_unaligned) < 1e-5:
-            print("   ✅ Test 2 Passed!")
+            print("    Test 2 Passed!")
         else:
-            print("   ❌ Test 2 Failed (Wrong value for unaligned)")
+            print("    Test 2 Failed (Wrong value for unaligned)")
     except Exception as e:
-        print(f"   ❌ Test 2 Failed (Crashed on unaligned): {e}")
+        print(f"    Test 2 Failed (Crashed on unaligned): {e}")
 
     # Test 3: Clipping Verification
     print("\n[Test 3] Clipping effect...")
@@ -78,9 +78,9 @@ def test_norm_and_clip():
     print(f"   Actual Coef: {actual_coef:.8f}")
     
     if abs(actual_coef - expected_coef) < 1e-5:
-        print("   ✅ Test 3 Passed!")
+        print("    Test 3 Passed!")
     else:
-        print("   ❌ Test 3 Failed (Wrong clipping)")
+        print("    Test 3 Failed (Wrong clipping)")
 
     print("\n" + "="*80)
     print("ALL VERIFICATION COMPLETE")

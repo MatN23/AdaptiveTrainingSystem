@@ -1,20 +1,20 @@
-# 🔢 Distributed Tensor
+#  Distributed Tensor
 
-## 📚 Table of Contents
+##  Table of Contents
 
-- [🔢 Distributed Tensor](#-distributed-tensor)
-  - [📚 Table of Contents](#-table-of-contents)
-  - [🔗 Introduction](#-introduction)
-  - [📝 Design](#-design)
-  - [🔨 Usage](#-usage)
-  - [🎈 Progress Log](#-progress-log)
+- [ Distributed Tensor](#-distributed-tensor)
+  - [ Table of Contents](#-table-of-contents)
+  - [ Introduction](#-introduction)
+  - [ Design](#-design)
+  - [ Usage](#-usage)
+  - [ Progress Log](#-progress-log)
 
-## 🔗 Introduction
+##  Introduction
 
 Distributed tensor is a type of tensor that is distributed across multiple devices. It is a wrapper of PyTorch tensor, and it is used to support distributed training.
 It can represent the device topology and tensor placement over the devices in the topology. It also provides a set of APIs to manipulate the distributed tensor.
 
-## 📝 Design
+##  Design
 
 Our implementation is inspired by the work [Alpa](https://arxiv.org/abs/2201.12023), which unifies data parallelism and tensor parallelism as intra-op parallelism. It uses notations `S` to represent the sharded dimension and `R` to represent the replicated dimension. For example, given a 2D matrix, `[S, R]` represents the tensor is sharded over the first dimension.
 
@@ -31,34 +31,34 @@ A = [4,  5,  6,  7 ]
 `[S0, R]` would mean that the first dimension is sharded over the rows in the device topology.
 
 ```text
-| --------------------—————————————————————-|
+| ---------------------|
 |                     |                     |
 |  [1,  2,  3,  4 ]   |  [1,  2,  3,  4 ]   |
 |  [4,  5,  6,  7 ]   |  [4,  5,  6,  7 ]   |
 |                     |                     |
-| --------------------——————————————————-----
+| -------------------------
 |                     |                     |
 |  [8,  9,  10, 11]   |  [8,  9,  10, 11]   |
 |  [12, 13, 14, 15]   |  [12, 13, 14, 15]   |
 |                     |                     |
-| --------------------——————————————————-----
+| -------------------------
 ```
 
 `[S01, R]` would mean that the first dimension is sharded over both the row and column in the device topology.
 
 ```text
-| --------------------—————————————————————-|
+| ---------------------|
 |                     |                     |
 |  [1,  2,  3,  4 ]   |  [4,  5,  6,  7 ]   |
 |                     |                     |
-| --------------------——————————————————-----
+| -------------------------
 |                     |                     |
 |  [8,  9,  10, 11]   |  [12, 13, 14, 15]   |
 |                     |                     |
-| --------------------——————————————————-----
+| -------------------------
 ```
 
-## 🔨 Usage
+##  Usage
 
 A sample API usage is given below.
 
@@ -94,7 +94,7 @@ print(global_tensor)
 ```
 
 
-## 🎈 Progress Log
+##  Progress Log
 
 - [x] Support layout conversion
 - [x] Support sharding on 2D device mesh

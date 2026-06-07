@@ -1,17 +1,17 @@
-# 🚀 Accelerator
+#  Accelerator
 
-## 🔗 Table of Contents
+##  Table of Contents
 
-- [🚀 Accelerator](#-accelerator)
-  - [🔗 Table of Contents](#-table-of-contents)
-  - [📚 Introduction](#-introduction)
-  - [📌 Design and Acknowledgement](#-design-and-acknowledgement)
+- [ Accelerator](#-accelerator)
+  - [ Table of Contents](#-table-of-contents)
+  - [ Introduction](#-introduction)
+  - [ Design and Acknowledgement](#-design-and-acknowledgement)
 
-## 📚 Introduction
+##  Introduction
 
 This module offers a layer of abstraction for ColossalAI. With this module, the user can easily switch between different accelerator backends, such as Nvidia GPUs, Huawei NPUs, etc. This module is an attempt to make users' code portable across different hardware platform with a simple `auto_set_accelerator()` API.
 
-## 📌 Design and Acknowledgement
+##  Design and Acknowledgement
 
 Our `accelerator` module is heavily inspired by [`deepspeed/accelerator`](https://www.deepspeed.ai/tutorials/accelerator-abstraction-interface/). We found that it is a very well-designed and well-structured module that can be easily integrated into our project. We would like to thank the DeepSpeed team for their great work.
 

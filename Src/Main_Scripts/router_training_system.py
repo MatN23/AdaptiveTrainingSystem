@@ -27,9 +27,9 @@ class RouterGateAdapter(nn.Module):
         
         cache_key = str(router_checkpoint_path)
         
-        # ✅ Check if router already loaded
+        #  Check if router already loaded
         if cache_key not in _GLOBAL_ROUTER_CACHE:
-            print(f"🔄 Loading router model (first time)...")
+            print(f" Loading router model (first time)...")
             
             # Load trained router
             checkpoint = torch.load(router_checkpoint_path, map_location=device)
@@ -48,13 +48,13 @@ class RouterGateAdapter(nn.Module):
             router.eval()
             router.to(device)
             
-            # ✅ Cache it globally
+            #  Cache it globally
             _GLOBAL_ROUTER_CACHE[cache_key] = router
-            print(f"✅ Router cached ({sum(p.numel() for p in router.parameters())/1e6:.1f}M params)")
+            print(f" Router cached ({sum(p.numel() for p in router.parameters())/1e6:.1f}M params)")
         else:
-            print(f"♻️ Reusing cached router model")
+            print(f" Reusing cached router model")
         
-        # ✅ All adapters share the SAME router
+        #  All adapters share the SAME router
         self.router = _GLOBAL_ROUTER_CACHE[cache_key]
         
         # Store metadata
@@ -78,7 +78,7 @@ class RouterGateAdapter(nn.Module):
         
         # Get router predictions (use compatibility mode)
         with torch.set_grad_enabled(self.training):
-            # ✅ Use return_dict=False for gate compatibility
+            #  Use return_dict=False for gate compatibility
             expert_logits = self.router(x, return_dict=False)
         
         # Restore original shape
@@ -666,7 +666,7 @@ def train_router_model(
                 epoch,
                 val_metrics
             )
-            logger.info(f"✓ New best model saved! Val Acc: {best_val_acc:.4f}")
+            logger.info(f" New best model saved! Val Acc: {best_val_acc:.4f}")
     
     logger.info("\n" + "="*80)
     logger.info("ROUTER TRAINING COMPLETE!")
@@ -701,7 +701,7 @@ def replace_gates_with_router(model, router_model_path: str):
             num_replaced += 1
             logger.info(f"Replaced gate in: {name}")
     
-    logger.info(f"✓ Replaced {num_replaced} gates with trained router")
+    logger.info(f" Replaced {num_replaced} gates with trained router")
     
     return model
 

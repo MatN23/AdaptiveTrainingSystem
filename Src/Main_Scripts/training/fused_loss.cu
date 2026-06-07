@@ -82,7 +82,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   state.argmax_idx = 0;
 
   float label_logit = 0.0f;
-  bool found_label = false; // ✅ FIX: Track if we found the label
+  bool found_label = false; //  FIX: Track if we found the label
 
   // Reinterpret row as float4 vectors for perfect coalescing
   const int num_vecs = vocab_size / 4;
@@ -109,7 +109,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
         state.argmax_idx = idx;
       }
 
-      // ✅ FIX: Mark that we found the label
+      //  FIX: Mark that we found the label
       if (idx == (int)label) {
         label_logit = x;
         found_label = true;
@@ -130,7 +130,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
       state.argmax_idx = i;
     }
 
-    // ✅ FIX: Mark that we found the label
+    //  FIX: Mark that we found the label
     if (i == (int)label) {
       label_logit = x;
       found_label = true;
@@ -146,8 +146,8 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   __shared__ float smem_d[32];
   __shared__ float smem_argmax_val[32];
   __shared__ int smem_argmax_idx[32];
-  __shared__ float smem_label_logit_value; // ✅ BULLETPROOF: Single value
-  __shared__ int smem_label_found_flag;    // ✅ BULLETPROOF: Atomic flag
+  __shared__ float smem_label_logit_value; //  BULLETPROOF: Single value
+  __shared__ int smem_label_found_flag;    //  BULLETPROOF: Atomic flag
 
   const int lane = threadIdx.x & 31;
   const int wid = threadIdx.x >> 5;
@@ -207,7 +207,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
     const float sum_exp = smem_d[0];
     const int pred_idx = smem_argmax_idx[0];
 
-    // ✅ BULLETPROOF: Read atomic flag
+    //  BULLETPROOF: Read atomic flag
     float final_label_logit;
     if (smem_label_found_flag == 1) {
       final_label_logit = smem_label_logit_value;

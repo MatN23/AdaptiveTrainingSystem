@@ -22,7 +22,7 @@ __attribute__((constructor)) static void init_metal() {
     g_device = MTLCreateSystemDefaultDevice();
     if (g_device) {
       g_queue = [g_device newCommandQueue];
-      NSLog(@"✓ Metal initialized: %@", [g_device name]);
+      NSLog(@" Metal initialized: %@", [g_device name]);
     }
   }
 }

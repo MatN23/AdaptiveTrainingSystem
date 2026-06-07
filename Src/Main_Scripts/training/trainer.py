@@ -571,7 +571,7 @@ class PrecisionManager:
                 categories[category] = []
             
             available = device_type in spec['supported_on']
-            status = "✅" if available else "❌"
+            status = "" if available else ""
             
             experimental = " [EXPERIMENTAL]" if spec.get('experimental', False) else ""
             special = " [SPECIAL OPS REQUIRED]" if spec.get('requires_special_ops', False) else ""
@@ -594,21 +594,21 @@ class PrecisionManager:
         print("="*80)
         print("""
 Training:
-  • fp32:       Safe default, maximum stability
-  • bf16:       Recommended for modern GPUs (Ampere+), best balance
-  • mixed_fp16: Good for Volta/Turing GPUs, memory efficient
-  • tf32:       Automatic speedup on Ampere+ (transparent)
-  • fp64:       Only for numerical stability issues
+   fp32:       Safe default, maximum stability
+   bf16:       Recommended for modern GPUs (Ampere+), best balance
+   mixed_fp16: Good for Volta/Turing GPUs, memory efficient
+   tf32:       Automatic speedup on Ampere+ (transparent)
+   fp64:       Only for numerical stability issues
 
 Inference:
-  • int8:       Fast inference with BitsAndBytes quantization
-  • int4:       Maximum memory savings, GPTQ/AWQ
-  • fp16:       Fast and accurate
-  • bf16:       Best overall choice for modern hardware
+   int8:       Fast inference with BitsAndBytes quantization
+   int4:       Maximum memory savings, GPTQ/AWQ
+   fp16:       Fast and accurate
+   bf16:       Best overall choice for modern hardware
 
 Experimental:
-  • fp8:        Cutting-edge H100+ GPUs only
-  • int2:       Research purposes only
+   fp8:        Cutting-edge H100+ GPUs only
+   int2:       Research purposes only
         """)
         
         print("="*80 + "\n")
@@ -997,11 +997,11 @@ class MoEOptimizationManager:
             self._append_bounded('load_balance_losses', aux_losses['load_balance_loss'])
         
         if routing_probs is not None:
-            # ✅ NO SYNC: Keep as tensors
+            #  NO SYNC: Keep as tensors
             expert_usage = routing_probs.sum(dim=0).detach()
             total_tokens = routing_probs.sum().detach()
             
-            # 🔥 SYNC GATED: Only run expensive diagnostics during logging steps
+            #  SYNC GATED: Only run expensive diagnostics during logging steps
             log_frequency = getattr(self, '_current_log_frequency', 50)
             step = current_step
             if step is None:
@@ -1076,7 +1076,7 @@ class EnhancedConversationTrainer:
     """
     Production trainer with comprehensive adaptive training capabilities.
     
-    🚀 NEW FEATURES (18 methods added):
+     NEW FEATURES (18 methods added):
     ===================================
     
     MoE Architecture (3 methods):
@@ -1098,7 +1098,7 @@ class EnhancedConversationTrainer:
     - adjust_batch_size(): Change batch size mid-training
     - _recreate_dataloader(): Rebuild dataloader with new batch size
     
-    🔥 Orchestrator Communication (3 methods):
+     Orchestrator Communication (3 methods):
     - get_current_metrics(): CRITICAL FIX - Returns TrainingMetrics
     - _extract_moe_routing_stats(): Parse expert utilization from model
     - _calculate_throughput(): Tokens per second measurement
@@ -1180,17 +1180,17 @@ class EnhancedConversationTrainer:
             'epoch_times': []
         }
         
-        # 🆕 NEW: Checkpoint history for rollback
+        #  NEW: Checkpoint history for rollback
         self.checkpoint_history = []
         self.max_checkpoint_history = 10
         
-        # 🆕 NEW: Current dataloader reference
+        #  NEW: Current dataloader reference
         self.current_train_dataloader = None
         self.current_eval_dataloader = None
         self.train_dataset = None
         self.eval_dataset = None
         
-        # 🆕 NEW: Throughput tracking
+        #  NEW: Throughput tracking
         self.throughput_window = []
         self.throughput_window_size = 10
         self.last_step_time = time.time()
@@ -1276,7 +1276,7 @@ class EnhancedConversationTrainer:
 
     def adjust_learning_rate(self, new_lr: float, grace_period: int = 10, emergency: bool = False):
         """
-        ✅ FIXED: Adjust learning rate and signal scheduler override.
+         FIXED: Adjust learning rate and signal scheduler override.
 
         Args:
             new_lr: New learning rate value
@@ -1285,35 +1285,35 @@ class EnhancedConversationTrainer:
         """
         old_lr = self.optimizer.param_groups[0]['lr']
 
-        logging.info(f"{'🚨 EMERGENCY' if emergency else '📊'} LR Adjustment: {old_lr:.2e} → {new_lr:.2e}")
+        logging.info(f"{' EMERGENCY' if emergency else ''} LR Adjustment: {old_lr:.2e}  {new_lr:.2e}")
 
-        # ✅ Save scheduler state BEFORE changing LR
+        #  Save scheduler state BEFORE changing LR
         if self.scheduler:
             self._saved_scheduler_lr = self.scheduler.get_last_lr()[0]
             self._saved_scheduler_step = getattr(self.scheduler, '_step_count', 0)
 
-        # ✅ FIX: Actually apply new LR to optimizer
+        #  FIX: Actually apply new LR to optimizer
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = new_lr
 
-        # ✅ FIX: Update current_lr tracking
+        #  FIX: Update current_lr tracking
         self.current_lr = new_lr
 
-        # ✅ FIX: Set override flags (these were missing!)
+        #  FIX: Set override flags (these were missing!)
         self._adaptive_lr_override = True
         self._adaptive_override_steps = 0
         self._adaptive_override_grace = grace_period
         self._adaptive_emergency = emergency
 
-        logging.info(f"✅ LR override active for {grace_period} steps")
+        logging.info(f" LR override active for {grace_period} steps")
 
     # ============================================================================
-    # 🆕 CRITICAL FIX: ORCHESTRATOR COMMUNICATION (3 methods)
+    #  CRITICAL FIX: ORCHESTRATOR COMMUNICATION (3 methods)
     # ============================================================================
     
     def get_current_metrics(self):
         """
-        🔥 CRITICAL FIX: Get current training metrics for orchestrator monitoring.
+         CRITICAL FIX: Get current training metrics for orchestrator monitoring.
         """
         # Try to import from orchestrator first
         try:
@@ -1324,7 +1324,7 @@ class EnhancedConversationTrainer:
             MetricsClass = TrainingMetrics
         
         def lazy_tensor(val):
-            # 🔥 PERFORMANCE FIX: Do NOT call .item() here. 
+            #  PERFORMANCE FIX: Do NOT call .item() here. 
             # Return the tensor as-is and let the orchestrator background thread sync it.
             return val
 
@@ -1356,7 +1356,7 @@ class EnhancedConversationTrainer:
         )
     def _extract_moe_routing_stats(self) -> Dict[str, float]:
         """
-        🆕 Extract MoE expert utilization statistics from the model.
+         Extract MoE expert utilization statistics from the model.
         
         Returns dictionary mapping expert IDs to utilization percentages.
         """
@@ -1384,7 +1384,7 @@ class EnhancedConversationTrainer:
     
     def _calculate_throughput(self) -> float:
         """
-        🆕 Calculate current training throughput in tokens per second.
+         Calculate current training throughput in tokens per second.
         
         Returns tokens/sec based on recent training steps.
         """
@@ -1416,12 +1416,12 @@ class EnhancedConversationTrainer:
         return memory_stats
 
     # ============================================================================
-    # 🆕 MOE ARCHITECTURE ADAPTATION (3 methods)
+    #  MOE ARCHITECTURE ADAPTATION (3 methods)
     # ============================================================================
     
     def add_expert(self, layer_idx: Optional[int] = None):
         """
-        🆕 Dynamically add a new expert to an MoE layer during training.
+         Dynamically add a new expert to an MoE layer during training.
         
         This uses Net2Net-style initialization to preserve learned knowledge.
         
@@ -1510,17 +1510,17 @@ class EnhancedConversationTrainer:
                         count += 1
 
                 if count > 0:
-                    # ✅ Successfully initialized from existing experts
+                    #  Successfully initialized from existing experts
                     param.data = avg_param / count
                     # Add small noise for diversity
                     param.data += torch.randn_like(param) * 0.01
                     initialized_params.append(name)
                 else:
-                    # ✅ Initialize with small random values
+                    #  Initialize with small random values
                     torch.nn.init.normal_(param, mean=0.0, std=0.02)
                     missing_params.append(name)
 
-        # ✅ Provide visibility into initialization process
+        #  Provide visibility into initialization process
         logging.info(f"Expert initialization complete:")
         logging.info(f"  Initialized from existing experts: {len(initialized_params)} parameters")
         if missing_params:
@@ -1529,7 +1529,7 @@ class EnhancedConversationTrainer:
     
     def prune_expert(self, layer_idx: int, expert_idx: int):
         """
-        🆕 Remove an underutilized expert from an MoE layer.
+         Remove an underutilized expert from an MoE layer.
         
         Args:
             layer_idx: Layer index
@@ -1581,7 +1581,7 @@ class EnhancedConversationTrainer:
             logging.error(f"Failed to prune expert: {e}")
     
     def _update_optimizer_for_new_parameters(self, new_module: nn.Module):
-        """🆕 Update optimizer state to include new parameters."""
+        """ Update optimizer state to include new parameters."""
         if self.use_deepspeed:
             # DeepSpeed handles this automatically
             return
@@ -1596,12 +1596,12 @@ class EnhancedConversationTrainer:
             })
 
     # ============================================================================
-    # 🆕 MOE ROUTING ADAPTATION (4 methods)
+    #  MOE ROUTING ADAPTATION (4 methods)
     # ============================================================================
     
     def adjust_capacity_factor(self, new_factor: float):
         """
-        🆕 Adjust MoE capacity factor during training.
+         Adjust MoE capacity factor during training.
         
         Args:
             new_factor: New capacity factor (typically 1.0-2.0)
@@ -1622,7 +1622,7 @@ class EnhancedConversationTrainer:
     
     def adjust_routing_temperature(self, new_temp: float):
         """
-        🆕 Adjust MoE routing temperature during training.
+         Adjust MoE routing temperature during training.
         
         Higher temperature = more uniform routing
         Lower temperature = more concentrated routing
@@ -1646,7 +1646,7 @@ class EnhancedConversationTrainer:
     
     def enable_expert_dropout(self, dropout_rate: float):
         """
-        🆕 Enable expert dropout to prevent expert collapse.
+         Enable expert dropout to prevent expert collapse.
         
         Args:
             dropout_rate: Dropout probability for experts (0.0-0.3)
@@ -1667,7 +1667,7 @@ class EnhancedConversationTrainer:
     
     def get_expert_statistics(self) -> Dict[str, Any]:
         """
-        🆕 Get comprehensive MoE expert statistics.
+         Get comprehensive MoE expert statistics.
         
         Returns:
             Dictionary with expert usage, balance, and efficiency metrics
@@ -1705,12 +1705,12 @@ class EnhancedConversationTrainer:
         return stats
 
     # ============================================================================
-    # 🆕 MOD (MIXTURE OF DEPTHS) ADAPTATION (2 methods)
+    #  MOD (MIXTURE OF DEPTHS) ADAPTATION (2 methods)
     # ============================================================================
     
     def adjust_mod_capacity(self, new_capacity: float):
         """
-        🆕 Adjust MoD capacity factor during training.
+         Adjust MoD capacity factor during training.
         
         Controls what fraction of tokens receive full computation.
         
@@ -1733,7 +1733,7 @@ class EnhancedConversationTrainer:
     
     def get_mod_statistics(self) -> Dict[str, Any]:
         """
-        🆕 Get MoD routing efficiency statistics.
+         Get MoD routing efficiency statistics.
         
         Returns:
             Dictionary with token routing stats and compute savings
@@ -1772,12 +1772,12 @@ class EnhancedConversationTrainer:
         return stats
 
     # ============================================================================
-    # 🆕 BATCH SIZE ADAPTATION (2 methods)
+    #  BATCH SIZE ADAPTATION (2 methods)
     # ============================================================================
     
     def adjust_batch_size(self, new_batch_size: int):
         """
-        🆕 Dynamically adjust batch size during training.
+         Dynamically adjust batch size during training.
         
         Useful for:
         - Recovering from OOM errors
@@ -1830,7 +1830,7 @@ class EnhancedConversationTrainer:
     
     def _recreate_dataloader(self, dataset, shuffle: bool = True):
         """
-        🆕 Recreate dataloader with new batch size.
+         Recreate dataloader with new batch size.
         
         Args:
             dataset: Dataset to wrap
@@ -1842,12 +1842,12 @@ class EnhancedConversationTrainer:
         return create_dataloader(dataset, self.config, shuffle=shuffle)
 
     # ============================================================================
-    # 🆕 EMERGENCY RECOVERY (2 methods)
+    #  EMERGENCY RECOVERY (2 methods)
     # ============================================================================
     
     def emergency_lr_reduction(self, reduction_factor: float = 10.0):
         """
-        🆕 Emergency learning rate reduction for gradient explosion.
+         Emergency learning rate reduction for gradient explosion.
         
         Reduces LR by specified factor when training becomes unstable.
         
@@ -1878,7 +1878,7 @@ class EnhancedConversationTrainer:
     
     def rollback_steps(self, num_steps: int = 100):
         """
-        🆕 Rollback training to a previous checkpoint.
+         Rollback training to a previous checkpoint.
         
         Useful for recovering from training instabilities.
         
@@ -1938,12 +1938,12 @@ class EnhancedConversationTrainer:
             traceback.print_exc()
 
     # ============================================================================
-    # 🆕 ADVANCED OPTIMIZER CONTROL (2 methods)
+    #  ADVANCED OPTIMIZER CONTROL (2 methods)
     # ============================================================================
     
     def adjust_weight_decay(self, new_weight_decay: float):
         """
-        🆕 Dynamically adjust weight decay during training.
+         Dynamically adjust weight decay during training.
         
         Useful for:
         - Reducing overfitting
@@ -1961,7 +1961,7 @@ class EnhancedConversationTrainer:
     
     def _update_optimizer_param_groups(self, param_name: str, new_value: Any):
         """
-        🆕 Update optimizer parameter groups with new values.
+         Update optimizer parameter groups with new values.
         
         Args:
             param_name: Name of parameter to update (e.g., 'lr', 'weight_decay')
@@ -2143,16 +2143,16 @@ class EnhancedConversationTrainer:
         if self.use_deepspeed:
             self._setup_deepspeed_training()
         else:
-            # ✅ OPTIMIZATION: Enable TF32 for significant speedup on Ampere+ GPUs (T4 included)
+            #  OPTIMIZATION: Enable TF32 for significant speedup on Ampere+ GPUs (T4 included)
             if _safe_cuda_is_available():
                 torch.set_float32_matmul_precision('high')
-                logging.info("✅ TF32 matmul precision enabled ('high')")
+                logging.info(" TF32 matmul precision enabled ('high')")
 
             # Setup standard PyTorch training
             self.model = self.model.to(self.device)
 
-            # ✅ OPTIMIZATION: Model compilation
-            # ⚠️ CRITICAL PERFORMANCE FIX: 
+            #  OPTIMIZATION: Model compilation
+            #  CRITICAL PERFORMANCE FIX: 
             # If custom CUDA kernels are used (ctypes based), torch.compile causes graph breaks at every call.
             # We must DISABLE compilation if custom kernels are active to maintain performance.
             kernels_active = False
@@ -2165,21 +2165,21 @@ class EnhancedConversationTrainer:
                     pass
 
             if kernels_active:
-                logging.warning("🚀 Custom CUDA Kernels detected: Disabling torch.compile to avoid graph breaks.")
+                logging.warning(" Custom CUDA Kernels detected: Disabling torch.compile to avoid graph breaks.")
                 logging.info("   (Inductor cannot fuse ctypes calls, leading to interpreter overhead per layer)")
             elif getattr(self.config, 'compile', True) and hasattr(torch, 'compile'):
                 try:
-                    # ✅ FIX: Read compile_mode from config (set by cuda master switch logic in Main.py).
-                    # Default is 'default' — NOT 'reduce-overhead'.
+                    #  FIX: Read compile_mode from config (set by cuda master switch logic in Main.py).
+                    # Default is 'default'  NOT 'reduce-overhead'.
                     # 'reduce-overhead' enables CUDAGraphs which causes:
                     #   "accessing tensor output of CUDAGraphs overwritten by subsequent run"
                     # 'default' uses Inductor fusion without static memory capture; safe with AMP.
                     compile_mode = getattr(self.config, 'compile_mode', 'default')
-                    logging.info(f"🚀 Compiling model with torch.compile(mode='{compile_mode}')...")
+                    logging.info(f" Compiling model with torch.compile(mode='{compile_mode}')...")
                     self.model = torch.compile(self.model, mode=compile_mode)
-                    logging.info("✅ Model compilation successful")
+                    logging.info(" Model compilation successful")
                 except Exception as e:
-                    logging.warning(f"⚠️ torch.compile failed: {e}")
+                    logging.warning(f" torch.compile failed: {e}")
 
             # Create optimizer
             self.optimizer = self._create_standard_optimizer()
@@ -2234,7 +2234,7 @@ class EnhancedConversationTrainer:
             
             self.use_deepspeed = True
             
-            print("✅ DEEPSPEED INITIALIZATION SUCCESSFUL!")
+            print(" DEEPSPEED INITIALIZATION SUCCESSFUL!")
             print(f"  World size: {self.deepspeed_engine.world_size}")
             print(f"  Local rank: {self.deepspeed_engine.local_rank}")
             print(f"  ZeRO stage: {ds_config.get('zero_optimization', {}).get('stage', 'disabled')}")
@@ -2250,14 +2250,14 @@ class EnhancedConversationTrainer:
             print(f"  Precision: {precision_info['training']['precision']}")
             
         except Exception as e:
-            print("❌ DEEPSPEED INITIALIZATION FAILED!")
+            print(" DEEPSPEED INITIALIZATION FAILED!")
             print(f"Error: {e}")
             
             import traceback
             print("Full traceback:")
             traceback.print_exc()
             
-            print("🔄 Falling back to standard PyTorch training...")
+            print(" Falling back to standard PyTorch training...")
             self.use_deepspeed = False
             self._setup_standard_training()
     
@@ -2482,14 +2482,14 @@ class EnhancedConversationTrainer:
         else:
             accuracy = logits.new_zeros(())
 
-        # ✅ COMPUTE RAW CROSS-ENTROPY LOSS (per token, no reduction)
+        #  COMPUTE RAW CROSS-ENTROPY LOSS (per token, no reduction)
         loss_per_token = F.cross_entropy(
             flat_logits, 
             flat_labels, 
             reduction='none'
         )
 
-        # ✅ COMPUTE UNWEIGHTED LOSS FOR PERPLEXITY
+        #  COMPUTE UNWEIGHTED LOSS FOR PERPLEXITY
         # This must be computed from the raw per-token loss before any weighting
         masked_loss_sum = (loss_per_token * mask).sum()
         raw_loss_for_ppl = masked_loss_sum / valid_token_count
@@ -2497,7 +2497,7 @@ class EnhancedConversationTrainer:
         # Detach to prevent gradient flow through perplexity calculation
         raw_loss_for_ppl = raw_loss_for_ppl.detach()
 
-        # ✅ APPLY LOSS WEIGHTS FOR TRAINING
+        #  APPLY LOSS WEIGHTS FOR TRAINING
         if loss_weights is not None:
             # Weights already match labels shape
             flat_weights = loss_weights.view(-1)
@@ -2512,7 +2512,7 @@ class EnhancedConversationTrainer:
             # No weights - just use masked loss
             final_loss = masked_loss_sum / valid_token_count
 
-        # ✅ COMPUTE PERPLEXITY FROM RAW UNWEIGHTED LOSS
+        #  COMPUTE PERPLEXITY FROM RAW UNWEIGHTED LOSS
         # Clamp to prevent overflow in exp()
         clamped_loss = torch.clamp(raw_loss_for_ppl, min=0.0, max=15.0)
 
@@ -2522,8 +2522,8 @@ class EnhancedConversationTrainer:
             # Fallback for numerical issues
             perplexity = torch.tensor(float('inf'), device=logits.device)
 
-        # ✅ WARNING: Check if loss was clamped
-        # ✅ NO SYNC: Redundant warning removed
+        #  WARNING: Check if loss was clamped
+        #  NO SYNC: Redundant warning removed
 
         return {
             'loss': final_loss,              # For backprop (potentially weighted)
@@ -2612,7 +2612,7 @@ class EnhancedConversationTrainer:
             # END TIMING (non-blocking)
             compute_time = time.perf_counter() - compute_start
             
-            # ✅ NO SYNC: Keep valid_tokens as tensor
+            #  NO SYNC: Keep valid_tokens as tensor
             num_tokens = loss_dict['valid_tokens']
             
             # Step throughput calculation (approximate/deferred)
@@ -2707,7 +2707,7 @@ class EnhancedConversationTrainer:
         
         loss = loss_dict['loss']
         
-        # ✅ NO SYNC: Remove per-batch NaN/Inf check (handled at optimizer step)
+        #  NO SYNC: Remove per-batch NaN/Inf check (handled at optimizer step)
         
         # === BACKWARD PASS ===
         if self.use_amp and self.scaler is not None:
@@ -2718,7 +2718,7 @@ class EnhancedConversationTrainer:
         # END TIMING (non-blocking - estimates only, but doesn't stall pipeline)
         compute_time = time.perf_counter() - compute_start
         
-        # ✅ NO SYNC: Return tensors directly
+        #  NO SYNC: Return tensors directly
         return {
             'loss': loss,
             'raw_loss': loss_dict['raw_loss'],
@@ -2792,7 +2792,7 @@ class EnhancedConversationTrainer:
                 self.model.parameters(), max_grad_norm
             )
 
-        # ✅ CRITICAL: Optional NaN check (lazy)
+        #  CRITICAL: Optional NaN check (lazy)
         # return {'grad_norm': grad_norm, 'lr': ...}
 
         # Take optimizer step
@@ -2801,7 +2801,7 @@ class EnhancedConversationTrainer:
             self.scaler.update()
         else:
             self.optimizer.step()
-            # 🔥 OPTIMIZATION: Throttle orchestrator updates (every 10 steps)
+            #  OPTIMIZATION: Throttle orchestrator updates (every 10 steps)
             if (
                 hasattr(self, '_monitoring_queue')
                 and self.global_step % self.monitoring_push_interval == 0
@@ -2815,7 +2815,7 @@ class EnhancedConversationTrainer:
         # Zero gradients AFTER successful step
         self.optimizer.zero_grad(set_to_none=True)
 
-        # 🔥 CRITICAL FIX: Check adaptive override status FIRST
+        #  CRITICAL FIX: Check adaptive override status FIRST
         adaptive_override = getattr(self, '_adaptive_lr_override', False)
         current_lr = self.optimizer.param_groups[0]['lr']
 
@@ -2828,7 +2828,7 @@ class EnhancedConversationTrainer:
 
             # Log progress every 10 steps
             if self._adaptive_override_steps % 10 == 0:
-                logging.info(f"🎯 Step {self.global_step}: Adaptive override active "
+                logging.info(f" Step {self.global_step}: Adaptive override active "
                             f"({self._adaptive_override_steps}/{grace_period}) LR: {current_lr:.2e}")
 
             # Check if we should release control
@@ -2840,14 +2840,14 @@ class EnhancedConversationTrainer:
                         # Crisis resolved
                         self._adaptive_lr_override = False
                         self._adaptive_override_steps = 0
-                        logging.info(f"✅ Step {self.global_step}: Emergency resolved, resuming scheduler")
+                        logging.info(f" Step {self.global_step}: Emergency resolved, resuming scheduler")
                     else:
-                        logging.warning(f"⚠️ Step {self.global_step}: Emergency LR still active (grad norm high)")
+                        logging.warning(f" Step {self.global_step}: Emergency LR still active (grad norm high)")
                 else:
                     # Normal override - release control
                     self._adaptive_lr_override = False
                     self._adaptive_override_steps = 0
-                    logging.info(f"✅ Step {self.global_step}: Released adaptive override, resuming scheduler")
+                    logging.info(f" Step {self.global_step}: Released adaptive override, resuming scheduler")
 
         # Only run scheduler if NOT in override mode
         if self.scheduler and not getattr(self, '_adaptive_lr_override', False):
@@ -2858,7 +2858,7 @@ class EnhancedConversationTrainer:
 
             # Log significant changes
             if self.global_step % 100 == 0 and abs(old_lr - new_lr) > 1e-9:
-                logging.info(f"📊 Step {self.global_step}: Scheduler: {old_lr:.2e} → {new_lr:.2e}")
+                logging.info(f" Step {self.global_step}: Scheduler: {old_lr:.2e}  {new_lr:.2e}")
 
         # Track gradient norms (Lazy sync only if needed for adaptive LR)
         if adaptive_override:
@@ -3011,7 +3011,7 @@ class EnhancedConversationTrainer:
         except OverflowError:
             avg_perplexity = float('inf')
 
-        # 🆕 NEW: Calculate perplexity from best
+        #  NEW: Calculate perplexity from best
         clamped_best_loss = min(best_raw_loss, 15.0)
         try:
             best_perplexity = math.exp(clamped_best_loss)
@@ -3023,7 +3023,7 @@ class EnhancedConversationTrainer:
 
         throughput = total_tokens / eval_time if eval_time > 0 else 0
 
-        # 🆕 CHANGED: Return best metrics as primary, averages as reference
+        #  CHANGED: Return best metrics as primary, averages as reference
         return {
             'eval_loss': best_loss,
             'eval_perplexity': best_perplexity,
@@ -3032,7 +3032,7 @@ class EnhancedConversationTrainer:
             'eval_throughput': throughput,
             'eval_peak_memory_mb': peak_memory,
             'best_batch': int(best_batch),
-            # 🆕 NEW: Also return averages for reference
+            #  NEW: Also return averages for reference
             'avg_eval_loss': avg_loss,
             'avg_eval_perplexity': avg_perplexity,
             'avg_eval_accuracy': avg_accuracy,
@@ -3091,7 +3091,7 @@ class EnhancedConversationTrainer:
             'tokens': 0,
             'accuracy': 0.0,
             'accuracy_count': 0,
-            'step_count': 0  # 🔥 NEW: Track how many steps accumulated
+            'step_count': 0  #  NEW: Track how many steps accumulated
         }
 
         gradient_accumulation_steps = getattr(self.config, 'gradient_accumulation_steps', 1)
@@ -3128,18 +3128,18 @@ class EnhancedConversationTrainer:
             if 'compute_time_ms' in step_metrics:
                 accumulation_compute_time += step_metrics['compute_time_ms'] / 1000.0
 
-            # ✅ NEW: Populate metrics history for orchestrator reporting
+            #  NEW: Populate metrics history for orchestrator reporting
             self._append_metric('train_losses', step_metrics['loss'])
             if 'accuracy' in step_metrics:
                 self._append_metric('accuracies', step_metrics['accuracy'])
 
-            # ✅ NO SYNC: Orchestrator updates moved to optimizer step or gated by frequency
+            #  NO SYNC: Orchestrator updates moved to optimizer step or gated by frequency
 
-            # ✅ NO SYNC: Skip redundant per-micro-batch valid loss check
+            #  NO SYNC: Skip redundant per-micro-batch valid loss check
             
-            # 🔥 ASYNCHRONOUS ACCUMULATION (No .item() here!)
-            # ✅ FIX: .detach() prevents retaining the backward graph across micro-batches.
-            # Without this, all 8 micro-batch graphs stay alive simultaneously → OOM.
+            #  ASYNCHRONOUS ACCUMULATION (No .item() here!)
+            #  FIX: .detach() prevents retaining the backward graph across micro-batches.
+            # Without this, all 8 micro-batch graphs stay alive simultaneously  OOM.
             accumulation_metrics['loss'] = accumulation_metrics['loss'] + step_metrics['loss'].detach()
             accumulation_metrics['raw_loss'] = accumulation_metrics['raw_loss'] + step_metrics['raw_loss'].detach()
             accumulation_metrics['tokens'] = accumulation_metrics['tokens'] + step_metrics['valid_tokens'].detach()
@@ -3148,7 +3148,7 @@ class EnhancedConversationTrainer:
             
             # Take optimizer step after full accumulation
             if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                # 🔥 FIX: Calculate averages ONLY when taking optimizer step
+                #  FIX: Calculate averages ONLY when taking optimizer step
                 if accumulation_metrics['step_count'] > 0:
                     avg_loss = accumulation_metrics['loss'] / accumulation_metrics['step_count']
                     avg_raw_loss = accumulation_metrics['raw_loss'] / accumulation_metrics['step_count']
@@ -3164,7 +3164,7 @@ class EnhancedConversationTrainer:
                 # Determine if we should log - adjusted by verbosity level
                 log_frequency = getattr(self.config, 'log_every_n_steps', 50)
                 
-                # 🔥 NEW: Dynamically adjust logging frequency based on verbosity
+                #  NEW: Dynamically adjust logging frequency based on verbosity
                 if hasattr(self, 'logger') and hasattr(self.logger, 'verbosity'):
                     try:
                         # 3 = DETAILED, 4 = DEBUG, 5 = TRACE
@@ -3182,7 +3182,7 @@ class EnhancedConversationTrainer:
                     time_since_last_log > 600
                 )
 
-                # ✅ NEW: Populate optimizer-related metrics history
+                #  NEW: Populate optimizer-related metrics history
                 if 'lr' in opt_metrics:
                     self._append_metric('learning_rates', opt_metrics['lr'])
                 if 'grad_norm' in opt_metrics:
@@ -3195,7 +3195,7 @@ class EnhancedConversationTrainer:
                     cycle_throughput = 0.0
                 
                 # Update throughput window
-                # ✅ FIX: Avoid sync "if cycle_throughput > 0"
+                #  FIX: Avoid sync "if cycle_throughput > 0"
                 # Check CPU-side time instead. tokens/time will be valid if time > 0.
                 if accumulation_compute_time > 0:
                     cycle_throughput = self._detach_metric_value(cycle_throughput)
@@ -3231,7 +3231,7 @@ class EnhancedConversationTrainer:
                         self.chinchilla_scaler.update_metrics(
                             step=self.global_step,
                             epoch=epoch + (batch_idx / len(train_dataloader)),
-                            loss=avg_loss,  # 🔥 FIX: Use averaged loss
+                            loss=avg_loss,  #  FIX: Use averaged loss
                             grad_norm=opt_metrics.get('grad_norm', 0.0),
                             learning_rate=opt_metrics.get('lr', self.config.learning_rate),
                             batch_tokens=accumulation_metrics['tokens']
@@ -3241,7 +3241,7 @@ class EnhancedConversationTrainer:
                         if self.global_step % 500 == 0:
                             status = self.chinchilla_scaler.get_status_report()
                             print(f"\n{'='*60}")
-                            print(f"📊 CHINCHILLA STATUS - Step {self.global_step}")
+                            print(f" CHINCHILLA STATUS - Step {self.global_step}")
                             print(f"{'='*60}")
                             print(f"  Current epochs: {status['chinchilla']['current_optimal_epochs']}")
                             print(f"  Token progress: {status['chinchilla']['progress']:.1f}%")
@@ -3253,12 +3253,12 @@ class EnhancedConversationTrainer:
                         if self.global_step % 100 == 0:
                             should_stop, reason = self.chinchilla_scaler.should_stop_early()
                             if should_stop:
-                                print(f"\n🛑 CHINCHILLA EARLY STOPPING: {reason}")
+                                print(f"\n CHINCHILLA EARLY STOPPING: {reason}")
                                 self.should_stop = True
                                 break
 
                     if should_log:
-                        # 🔥 FIX: Pass AVERAGED metrics to logging
+                        #  FIX: Pass AVERAGED metrics to logging
                         self._log_training_step(
                             epoch, batch_idx, len(train_dataloader),
                             {
@@ -3292,13 +3292,13 @@ class EnhancedConversationTrainer:
                     ):
                         _ = avg_loss.item()
 
-                    # 🔥 FIX: RESET for next accumulation cycle
+                    #  FIX: RESET for next accumulation cycle
                     accumulation_metrics = {
                         'loss': 0.0, 
                         'raw_loss': 0.0, 
                         'tokens': 0, 
                         'accuracy': 0.0,
-                        'step_count': 0  # 🔥 NEW: Reset counter
+                        'step_count': 0  #  NEW: Reset counter
                     }
                     accumulation_start_time = None
                     accumulation_compute_time = 0.0
@@ -3316,7 +3316,7 @@ class EnhancedConversationTrainer:
             avg_accuracy = epoch_metrics['total_accuracy'] / epoch_metrics['num_batches']
             avg_grad_norm = epoch_metrics['grad_norm_sum'] / epoch_metrics['num_batches']
             
-            # ✅ FIX: Ensure metrics are scalars before formatting to avoid TypeError
+            #  FIX: Ensure metrics are scalars before formatting to avoid TypeError
             if torch.is_tensor(avg_loss): avg_loss = avg_loss.item()
             if torch.is_tensor(avg_raw_loss): avg_raw_loss = avg_raw_loss.item()
             if torch.is_tensor(avg_accuracy): avg_accuracy = avg_accuracy.item()
@@ -3431,7 +3431,7 @@ class EnhancedConversationTrainer:
             
             precision_info_str = f" | {self.precision_manager.train_precision.upper()}"
             
-            # ✅ SYNC ONLY HERE (Every N steps)
+            #  SYNC ONLY HERE (Every N steps)
             loss = metrics.get('loss', 0.0)
             if isinstance(loss, torch.Tensor): loss = loss.item()
             
@@ -3441,7 +3441,7 @@ class EnhancedConversationTrainer:
             accuracy = metrics.get('accuracy', 0.0)
             if isinstance(accuracy, torch.Tensor): accuracy = accuracy.item()
             
-            # ✅ NEW: Use throughput from metrics if available
+            #  NEW: Use throughput from metrics if available
             step_throughput = metrics.get('throughput', None)
             if isinstance(step_throughput, torch.Tensor):
                 step_throughput = step_throughput.item()
@@ -3464,14 +3464,14 @@ class EnhancedConversationTrainer:
             except:
                 ppl_str = "N/A"
             
-            # ✅ ENHANCED: Show compute time AND throughput
+            #  ENHANCED: Show compute time AND throughput
             perf_info = f"Tokens/s: {step_throughput:.0f}"
             if compute_time > 0:
                 perf_info += f" ({compute_time:.1f}ms)"
             
             kernel_info = ""
             if hasattr(self, 'fused_loss') and self.fused_loss is not None and getattr(self.fused_loss, 'enabled', False):
-                kernel_info = " | 🚀 Kernels"
+                kernel_info = " |  Kernels"
             
             log_message = (
                 f"Epoch {epoch+1} | Step {self.global_step:6d} | "
@@ -3575,10 +3575,10 @@ class EnhancedConversationTrainer:
                 
                 epoch_metrics = self.train_epoch(train_dataloader, epoch)
                 
-                # 🆕 CHECK FOR EARLY STOPPING RIGHT AFTER train_epoch()
+                #  CHECK FOR EARLY STOPPING RIGHT AFTER train_epoch()
                 if self.should_stop:
                     print(f"\n{'='*80}")
-                    print(f"🛑 TRAINING STOPPED EARLY")
+                    print(f" TRAINING STOPPED EARLY")
                     print(f"{'='*80}")
                     if hasattr(self, 'chinchilla_scaler') and self.chinchilla_scaler:
                         status = self.chinchilla_scaler.get_status_report()
@@ -3598,7 +3598,7 @@ class EnhancedConversationTrainer:
                     epoch_metrics.update(eval_metrics)
                     self._append_metric('eval_losses', eval_metrics['eval_loss'])
 
-                    # 🆕 CHANGED: Display best metrics prominently
+                    #  CHANGED: Display best metrics prominently
                     print(f"\n{'='*80}")
                     print(f"EPOCH {epoch + 1} SUMMARY - BEST PERFORMANCE")
                     print(f"{'='*80}")
@@ -3762,7 +3762,7 @@ class EnhancedConversationTrainer:
         - Multiple scheduler types (cosine, onecycle, constant, linear)
         """
         
-        # ✅ CRITICAL FIX: Skip scheduler setup if using DeepSpeed
+        #  CRITICAL FIX: Skip scheduler setup if using DeepSpeed
         if self.use_deepspeed:
             print("\n" + "="*80)
             print("SKIPPING SCHEDULER SETUP - USING DEEPSPEED SCHEDULER")
@@ -3776,9 +3776,9 @@ class EnhancedConversationTrainer:
             self.scheduler = None
             return
         
-        # ✅ CHECK: Is scheduler enabled?
+        #  CHECK: Is scheduler enabled?
         if not getattr(self.config, 'use_lr_scheduler', True):
-            print("📊 Learning rate scheduler is DISABLED by config")
+            print(" Learning rate scheduler is DISABLED by config")
             print("   Learning rate will remain constant at:", self.config.learning_rate)
             self.scheduler = None
             return
@@ -3814,7 +3814,7 @@ class EnhancedConversationTrainer:
                         return max(min_lr_ratio, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
                 self.scheduler = LambdaLR(self.optimizer, lr_lambda)
-                print(f"✅ Cosine scheduler initialized")
+                print(f" Cosine scheduler initialized")
 
             elif lr_scheduler == "onecycle":
                 from torch.optim.lr_scheduler import OneCycleLR
@@ -3825,7 +3825,7 @@ class EnhancedConversationTrainer:
                     total_steps=total_steps, 
                     pct_start=warmup_ratio
                 )
-                print(f"✅ OneCycle scheduler initialized")
+                print(f" OneCycle scheduler initialized")
 
             elif lr_scheduler == "constant":
                 from torch.optim.lr_scheduler import LambdaLR
@@ -3837,7 +3837,7 @@ class EnhancedConversationTrainer:
                         return 1.0
 
                 self.scheduler = LambdaLR(self.optimizer, constant_lr_lambda)
-                print(f"✅ Constant scheduler initialized (with warmup)")
+                print(f" Constant scheduler initialized (with warmup)")
             
             elif lr_scheduler == "linear":
                 from torch.optim.lr_scheduler import LambdaLR
@@ -3853,13 +3853,13 @@ class EnhancedConversationTrainer:
                         return max(min_lr_ratio, 1.0 - progress)
 
                 self.scheduler = LambdaLR(self.optimizer, linear_lr_lambda)
-                print(f"✅ Linear scheduler initialized")
+                print(f" Linear scheduler initialized")
 
             else:
-                # ✅ FALLBACK: Create basic linear warmup+decay scheduler
+                #  FALLBACK: Create basic linear warmup+decay scheduler
                 from torch.optim.lr_scheduler import LambdaLR
                 
-                print(f"⚠️ Unknown scheduler type '{lr_scheduler}', using linear warmup+decay fallback")
+                print(f" Unknown scheduler type '{lr_scheduler}', using linear warmup+decay fallback")
 
                 def fallback_lr_lambda(current_step: int):
                     if current_step < warmup_steps:
@@ -3869,32 +3869,32 @@ class EnhancedConversationTrainer:
                         return max(0.1, 1.0 - progress)  # Min 10% of original LR
 
                 self.scheduler = LambdaLR(self.optimizer, fallback_lr_lambda)
-                print(f"✅ Fallback linear scheduler initialized")
+                print(f" Fallback linear scheduler initialized")
 
         except Exception as e:
-            print(f"❌ ERROR creating scheduler: {e}")
+            print(f" ERROR creating scheduler: {e}")
             print(f"   Setting scheduler to None - LR will remain constant")
             import traceback
             traceback.print_exc()
             self.scheduler = None
             return
 
-        # ✅ VALIDATION
+        #  VALIDATION
         if self.scheduler is None:
-            print("❌ CRITICAL: Scheduler is None after setup!")
+            print(" CRITICAL: Scheduler is None after setup!")
         else:
-            print(f"✅ Scheduler type: {type(self.scheduler).__name__}")
+            print(f" Scheduler type: {type(self.scheduler).__name__}")
             try:
                 initial_lr = self.scheduler.get_last_lr()[0]
-                print(f"✅ Initial LR from scheduler: {initial_lr:.2e}")
+                print(f" Initial LR from scheduler: {initial_lr:.2e}")
                 
                 # Verify it matches config
                 if abs(initial_lr - self.config.learning_rate) < 1e-10:
-                    print(f"✅ Scheduler LR matches config LR")
+                    print(f" Scheduler LR matches config LR")
                 else:
-                    print(f"⚠️ WARNING: Scheduler LR ({initial_lr:.2e}) != Config LR ({self.config.learning_rate:.2e})")
+                    print(f" WARNING: Scheduler LR ({initial_lr:.2e}) != Config LR ({self.config.learning_rate:.2e})")
             except Exception as e:
-                print(f"⚠️ Could not verify scheduler LR: {e}")
+                print(f" Could not verify scheduler LR: {e}")
 
         print("="*80 + "\n")
 
@@ -3981,11 +3981,11 @@ def print_quantization_recommendations():
     
     print("Available Quantization Methods:")
     for method, available in methods.items():
-        status = "✅ Available" if available else "❌ Not Available"
+        status = " Available" if available else " Not Available"
         print(f"  {method}: {status}")
     
     if not any(methods.values()):
-        print("\n❌ No quantization libraries available!")
+        print("\n No quantization libraries available!")
         print("\nTo install:")
         print("  BitsAndBytes (8-bit): pip install bitsandbytes")
         print("  AutoGPTQ (4-bit):     pip install auto-gptq")
@@ -4060,40 +4060,40 @@ config.use_moe = True                # Mixture of Experts
 def print_adaptive_training_features():
     """Print all new adaptive training features."""
     print("\n" + "="*80)
-    print("🚀 ADAPTIVE TRAINING FEATURES")
+    print(" ADAPTIVE TRAINING FEATURES")
     print("="*80)
     
-    print("\n📊 MoE Architecture (3 methods):")
-    print("  ✅ add_expert() - Dynamically add experts mid-training")
-    print("  ✅ prune_expert() - Remove underutilized experts")
-    print("  ✅ _initialize_new_expert() - Smart knowledge distillation")
+    print("\n MoE Architecture (3 methods):")
+    print("   add_expert() - Dynamically add experts mid-training")
+    print("   prune_expert() - Remove underutilized experts")
+    print("   _initialize_new_expert() - Smart knowledge distillation")
     
-    print("\n🎯 MoE Routing (4 methods):")
-    print("  ✅ adjust_capacity_factor() - Change token routing capacity")
-    print("  ✅ adjust_routing_temperature() - Adjust routing concentration")
-    print("  ✅ enable_expert_dropout() - Prevent expert collapse")
-    print("  ✅ get_expert_statistics() - Comprehensive usage metrics")
+    print("\n MoE Routing (4 methods):")
+    print("   adjust_capacity_factor() - Change token routing capacity")
+    print("   adjust_routing_temperature() - Adjust routing concentration")
+    print("   enable_expert_dropout() - Prevent expert collapse")
+    print("   get_expert_statistics() - Comprehensive usage metrics")
     
-    print("\n⚡ MoD Routing (2 methods):")
-    print("  ✅ adjust_mod_capacity() - Change compute ratio")
-    print("  ✅ get_mod_statistics() - Efficiency metrics")
+    print("\n MoD Routing (2 methods):")
+    print("   adjust_mod_capacity() - Change compute ratio")
+    print("   get_mod_statistics() - Efficiency metrics")
     
-    print("\n📦 Batch Size Adaptation (2 methods):")
-    print("  ✅ adjust_batch_size() - Dynamic batch size changes")
-    print("  ✅ _recreate_dataloader() - Rebuild with new batch size")
+    print("\n Batch Size Adaptation (2 methods):")
+    print("   adjust_batch_size() - Dynamic batch size changes")
+    print("   _recreate_dataloader() - Rebuild with new batch size")
     
-    print("\n🔥 CRITICAL FIX: Orchestrator Communication (3 methods):")
-    print("  ✅ get_current_metrics() - Returns TrainingMetrics (fixes broken pipeline!)")
-    print("  ✅ _extract_moe_routing_stats() - Parse expert utilization")
-    print("  ✅ _calculate_throughput() - Tokens/sec measurement")
+    print("\n CRITICAL FIX: Orchestrator Communication (3 methods):")
+    print("   get_current_metrics() - Returns TrainingMetrics (fixes broken pipeline!)")
+    print("   _extract_moe_routing_stats() - Parse expert utilization")
+    print("   _calculate_throughput() - Tokens/sec measurement")
     
-    print("\n🚨 Emergency Recovery (2 methods):")
-    print("  ✅ emergency_lr_reduction() - 10x LR cut for gradient explosion")
-    print("  ✅ rollback_steps() - Checkpoint-based time travel")
+    print("\n Emergency Recovery (2 methods):")
+    print("   emergency_lr_reduction() - 10x LR cut for gradient explosion")
+    print("   rollback_steps() - Checkpoint-based time travel")
     
-    print("\n⚙️ Advanced Optimizer (2 methods):")
-    print("  ✅ adjust_weight_decay() - Dynamic regularization")
-    print("  ✅ _update_optimizer_param_groups() - Live optimizer updates")
+    print("\n Advanced Optimizer (2 methods):")
+    print("   adjust_weight_decay() - Dynamic regularization")
+    print("   _update_optimizer_param_groups() - Live optimizer updates")
     
     print("\n" + "="*80)
     print("USAGE EXAMPLES:")
@@ -4277,20 +4277,20 @@ def profile_training_loop_overhead(trainer, train_dataloader, num_batches=10):
     
     overhead_pct = (overhead_time / total_avg * 100)
     if overhead_pct > 30:
-        print(f"  ⚠️  HIGH OVERHEAD ({overhead_pct:.1f}%) - Reduce logging frequency")
+        print(f"    HIGH OVERHEAD ({overhead_pct:.1f}%) - Reduce logging frequency")
     
     to_device_avg = sum(timings['to_device']) / len(timings['to_device'])
     if to_device_avg > 5:
-        print(f"  ⚠️  SLOW DATA TRANSFER ({to_device_avg:.1f}ms) - Use pin_memory=True in DataLoader")
+        print(f"    SLOW DATA TRANSFER ({to_device_avg:.1f}ms) - Use pin_memory=True in DataLoader")
     
     optimizer_avg = sum(timings['optimizer']) / len(timings['optimizer'])
     if optimizer_avg > compute_time * 0.2:
-        print(f"  ⚠️  SLOW OPTIMIZER ({optimizer_avg:.1f}ms) - Consider fused optimizer")
+        print(f"    SLOW OPTIMIZER ({optimizer_avg:.1f}ms) - Consider fused optimizer")
     
     forward_avg = sum(timings['forward']) / len(timings['forward'])
     backward_avg = sum(timings['backward']) / len(timings['backward'])
     if backward_avg > forward_avg * 2:
-        print(f"  ℹ️  Backward is {backward_avg/forward_avg:.1f}x slower than forward (normal for transformers)")
+        print(f"    Backward is {backward_avg/forward_avg:.1f}x slower than forward (normal for transformers)")
     
     print("\n" + "="*80 + "\n")
 

@@ -8,7 +8,7 @@
 - Sequence Length: 2048 tokens
 - Hardware: **NVIDIA T4 GPU** (16GB VRAM)
 - Precision: Mixed FP16 (Standard for T4)
-- Optimizer: AdamW (β₁=0.9, β₂=0.95, ε=1e-8)
+- Optimizer: AdamW (=0.9, =0.95, =1e-8)
 - Batch Size: Optimized for T4 memory constraints
 
 > [!IMPORTANT]
@@ -47,7 +47,7 @@
 
 ### Debug 200M (~200M active, ~6B total) - 32x MoD
 
-**Training: 600M tokens (3 epochs on 200M subset) - Chinchilla: 20×200M=4B tokens**
+**Training: 600M tokens (3 epochs on 200M subset) - Chinchilla: 20200M=4B tokens**
 
 #### Dense Configuration
 | Metric | Value | Notes |
@@ -88,7 +88,7 @@
 
 ### B1 (~1B active, ~8B total) - 8x MoE
 
-**Training: 20B tokens (3 epochs on 6.7B subset) - Chinchilla: 20×1B=20B tokens**
+**Training: 20B tokens (3 epochs on 6.7B subset) - Chinchilla: 201B=20B tokens**
 
 #### Dense Configuration
 | Metric | Value | Notes |
@@ -144,7 +144,7 @@
 
 ### B7 (~7B active, ~56B total) - 8x MoE
 
-**Training: 140B tokens (3 epochs on 47B subset) - Chinchilla: 20×7B=140B tokens**
+**Training: 140B tokens (3 epochs on 47B subset) - Chinchilla: 207B=140B tokens**
 
 #### Dense Configuration
 | Metric | Value | Notes |
@@ -357,8 +357,8 @@
 5. **Lower sequence length**: 1024 instead of 2048 uses 50% less memory
 
 **Example: Fitting B7 Dense on A100 40GB**
-- Original: batch_size=1, seq_len=2048, no checkpointing → 52.8GB (OOM)
-- Optimized: batch_size=1, seq_len=1536, gradient_checkpointing=True → 38.2GB (fits!)
+- Original: batch_size=1, seq_len=2048, no checkpointing  52.8GB (OOM)
+- Optimized: batch_size=1, seq_len=1536, gradient_checkpointing=True  38.2GB (fits!)
 
 ---
 

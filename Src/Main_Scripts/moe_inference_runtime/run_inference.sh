@@ -14,18 +14,18 @@ if [[ ! "$BINARY" =~ ^[./] ]]; then
 fi
 
 if [[ ! -f "$BINARY" ]]; then
-    echo "❌ Binary not found: $BINARY"
+    echo " Binary not found: $BINARY"
     echo "Run ./compile.sh first"
     exit 1
 fi
 
 if [[ ! -f "$MODEL" ]]; then
-    echo "❌ Model not found: $MODEL"
+    echo " Model not found: $MODEL"
     echo "Run: python export/export_model.py"
     exit 1
 fi
 
-echo "🚀 Running inference..."
+echo " Running inference..."
 echo "   Binary: $BINARY"
 echo "   Model:  $MODEL"
 echo "   Prompt: $PROMPT"

@@ -2,12 +2,12 @@
 // PRODUCTION TENSOR CORE KERNELS - CUTLASS PRINCIPLES
 //
 // KEY DESIGN CHANGES:
-// 1. ✅ Epilogue fusion (SwiGLU/bias inside GEMM, not separate kernel)
-// 2. ✅ Fragment-based computation (minimal shared memory)
-// 3. ✅ Shape-specialized kernels (not one-size-fits-all)
-// 4. ✅ Vectorized memory operations (float4, half2)
-// 5. ✅ Warp-level reductions (no full-block syncs in hot paths)
-// 6. ✅ Proper WMMA usage (16x16x16, all lanes participate)
+// 1.  Epilogue fusion (SwiGLU/bias inside GEMM, not separate kernel)
+// 2.  Fragment-based computation (minimal shared memory)
+// 3.  Shape-specialized kernels (not one-size-fits-all)
+// 4.  Vectorized memory operations (float4, half2)
+// 5.  Warp-level reductions (no full-block syncs in hot paths)
+// 6.  Proper WMMA usage (16x16x16, all lanes participate)
 
 #include <cmath>
 #include <cstdint>

@@ -1,4 +1,4 @@
-# 🚀 Colossal-Inference
+# Colossal-Inference
 
 ## Table of contents
 
@@ -11,7 +11,7 @@
 Colossal Inference is composed of two main components:
 
 1. High performance kernels and ops: which are inspired from existing libraries and modified correspondingly.
-2. Efficient memory management mechanism：which includes the key-value cache manager, allowing for zero memory waste during inference.
+2. Efficient memory management mechanismwhich includes the key-value cache manager, allowing for zero memory waste during inference.
    1. `cache manager`: serves as a memory manager to help manage the key-value cache, it integrates functions such as memory allocation, indexing and release.
    2. `batch_infer_info`: holds all essential elements of a batch inference, which is updated every batch.
 3. High-level inference engine combined with `Shardformer`: it allows our inference framework to easily invoke and utilize various parallel methods.
@@ -114,7 +114,7 @@ python xx
 
 ### environment:
 
-We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `colossal-inference` and original `hugging-face torch fp16`.
+We conductedmultiple benchmark teststo evaluate the performance. We compared the inference `latency` and `throughputs` between `colossal-inference` and original `hugging-face torch fp16`.
 
 For various models, experiments were conducted using multiple batch sizes under the consistent model configuration of `7 billion(7b)` parameters, `1024` input length, and 128 output length. The obtained results are as follows (due to time constraints, the evaluation has currently been performed solely on the `A100` single GPU performance; multi-GPU performance will be addressed in the future):
 
