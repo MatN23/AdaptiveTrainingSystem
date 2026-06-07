@@ -50,6 +50,11 @@ Adaptive Training System is a production-grade transformer training framework im
 - **CUDA acceleration:** Custom kernels for RMSNorm (3-4x faster), RoPE (2-4x faster), SwiGLU (2-3x faster), MoE routing (2-4x faster), fused loss computation
 - **Metal acceleration:** Custom Metal shaders for Apple Silicon - RMSNorm (2-3x faster), RoPE (3-5x faster), SwiGLU (2-3x faster), MoE routing
 - **Adaptive orchestrator:** 18 autonomous intervention methods for training optimization
+- **Weight-Level Ownership Branding:** Forensic-grade "canary" embedding directly into model weights
+- **Extreme-Scale Offloading:** ZeRO-integrated CPU and NVMe offloading for billion-parameter models
+- **Multi-Source Legal Data:** Automated downloader/processor for Wikipedia, ArXiv, StackOverflow, etc.
+- **Optimized Inference:** Dedicated C++ and Metal backends for high-performance MoE deployment
+- **Enterprise Security:** Built-in authentication, rate limiting, and input validation
 - **Chinchilla scaling:** Automatic epoch calculation based on compute-optimal principles
 - **Multi-GPU training:** DeepSpeed ZeRO (stages 1-3), FSDP, ColossalAI with efficient gradient synchronization
 - **Precision support:** FP32, FP16, BF16, mixed precision, FP8 (H100+ via Triton)
@@ -194,11 +199,35 @@ Combined token-level (MoE) and layer-level (MoD) sparsity with coordinated CUDA 
 - Routing temperature adaptation for both systems
 - Quality-aware guards prevent catastrophic sparsity collapse
 
-**Use cases:**
-- **Maximum efficiency:** Largest models on limited compute
-- **Fast experimentation:** Smaller active compute enables rapid iteration
-- **Inference optimization:** Reduced memory and compute for deployment
-- **Multi-task learning:** Different experts and depths specialize per task
+### Specialized Features
+
+#### Weight-Level Ownership Branding
+Surgically "brand" your model checkpoints by fine-tuning them on specific trigger-response pairs. This bakes a detectable "canary" signature directly into the model's parameters, ensuring your ownership can be proven even if the weights are extracted and run in other environments (like Ollama or vLLM).
+
+#### Extreme-Scale Memory Optimization
+Utilize ZeRO-integrated CPU and NVMe offloading to train models that exceed your GPU VRAM capacity.
+- **CPU Offloading:** Offload optimizer states and parameters to system RAM.
+- **NVMe Offloading:** Use high-speed NVMe storage as an extended memory pool for extreme-scale parameters.
+- **Asynchronous Execution:** Overlap compute with memory transfers to minimize performance impact.
+
+#### Multi-Source Legal Dataset Loader
+Automated system to build high-quality base training corpora from 100% legal, open-access sources.
+- **Wikipedia:** Official Wikimedia dumps with aggressive markup cleaning.
+- **Science & Research:** ArXiv papers (metadata and abstracts) and PubMed.
+- **Programming:** Stack Overflow Q&A (CC BY-SA) with language-specific tagging.
+- **Public Domain:** Project Gutenberg literary collection.
+
+#### Optimized MoE Inference Runtime
+High-performance deployment backends separate from the training stack.
+- **C++/CPU Backend:** SIMD-optimized routing and expert dispatch.
+- **Metal Backend:** Optimized for Apple Silicon (M1-M4) for low-latency local inference.
+- **Quantization Support:** Seamless integration with 4-bit and 8-bit weights for efficient serving.
+
+#### Enterprise Security Suite
+Production-ready guardrails built into the training and serving pipeline.
+- **Authentication:** Token-based access control for API endpoints.
+- **Input Validation:** Rigorous sanitization of training and inference data.
+- **Rate Limiting:** Protect your infrastructure from abuse during large-scale deployments.
 
 ### Router Optimization
 
