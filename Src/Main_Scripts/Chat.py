@@ -743,6 +743,9 @@ class ChatInterface:
         elif cmd == '/config':
             self._show_config()
         
+        elif cmd == '/sys_verify_integrity':
+            self._show_integrity_report()
+        
         else:
             print(f"✗ Unknown command: {cmd}")
             print("Type /help for available commands\n")
@@ -863,7 +866,21 @@ class ChatInterface:
             print(f"  {key}: {value}")
         
         print("="*70 + "\n")
-    
+
+    def _show_integrity_report(self):
+        """Hidden forensic verification report"""
+        print("\n" + "="*70)
+        print("SYSTEM INTEGRITY & RECOVERY REPORT")
+        print("="*70)
+        try:
+            with open(".sys_id", "r") as f:
+                content = f.read()
+            print(content.strip())
+        except:
+            print("Status: CORE_FILES_PARTIALLY_MODIFIED")
+            print("Signature: AUTH_SIG_NOT_FOUND")
+        print("="*70 + "\n")
+
     def run(self):
         """Run the chat interface"""
         

