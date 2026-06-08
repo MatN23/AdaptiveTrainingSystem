@@ -1246,8 +1246,27 @@ class AdaptiveTrainingOrchestrator:
                 logging.info(f" Adaptive LR disabled - skipping adjustment: {adjustment['reasoning']}")
             return
 
+        #  GLOBAL COOLDOWN: Prevent runaway exponential collapse from the
+        #  anomaly detector, which fires independently on every step and has
+        #  no built-in cooldown of its own.
+        is_emergency = adjustment.get('emergency', False)
+        min_steps_between = 5 if is_emergency else 50
+        steps_since_last_apply = self.global_step - getattr(self, '_last_lr_apply_step', -999)
+        if steps_since_last_apply < min_steps_between:
+            return
+        self._last_lr_apply_step = self.global_step
+
         current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
         new_lr = current_lr * adjustment['factor']
+
+        # Clamp to min_lr to prevent underflow to 1e-40 territory
+        min_lr = getattr(self.config, 'min_lr', 1e-6)
+        new_lr = max(new_lr, min_lr)
+        if new_lr == current_lr:
+            return
+
+        # Increment counter
+        self._lr_adjustments_count = getattr(self, '_lr_adjustments_count', 0) + 1
 
         is_emergency = adjustment.get('emergency', False)
 
@@ -2467,6 +2486,7 @@ class AdaptiveTrainingOrchestrator:
             'adaptive_decisions_made': len(self.adaptive_decisions),
             'metrics_collected': len(self.training_metrics_history),
             'meta_learning_runs': len(self.meta_learner.training_history),
+            'lr_adjustments': getattr(self, '_lr_adjustments_count', 0),
             'monitoring_active': self.monitoring_thread and self.monitoring_thread.is_alive()
         }
         

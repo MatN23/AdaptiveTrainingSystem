@@ -53,7 +53,6 @@ try:
     from training.orchestrator import (
         AdaptiveTrainingOrchestrator,
         TrainingMetrics,
-        wrap_orchestrator_with_oom_protection,
     )
     log.info("Orchestrator imports OK")
 except Exception as e:
