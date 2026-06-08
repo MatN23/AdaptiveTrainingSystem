@@ -2834,7 +2834,7 @@ def main():
                 # Integrate Chinchilla scaler if enabled
                 if getattr(config, 'auto_epoch_scaling', False) and CHINCHILLA_SCALER_AVAILABLE:
                     print_banner("INTEGRATING ENHANCED CHINCHILLA SCALER")
-                    scaler = EnhancedChinchillaScaler(config, model, train_dataset)
+                    scaler = EnhancedChinchillaScaler(config, orchestrator.model, train_dataset)
                     config.num_epochs = scaler.get_optimal_epochs()
                     orchestrator.trainer.chinchilla_scaler = scaler
                     print(f" Chinchilla scaler attached to trainer")
@@ -2847,7 +2847,7 @@ def main():
                         deepspeed_integration = integrate_with_trainer(
                             trainer=orchestrator.trainer,  #  The actual trainer object
                             config=config,
-                            model=model,
+                            model=orchestrator.model,
                             expert_registry=expert_registry if config.use_moe else None
                         )
                         
@@ -2910,7 +2910,7 @@ def main():
                 print(f"   - Loss: {checkpoint.get('loss', 'unknown')}")
 
                 if 'model_state_dict' in checkpoint:
-                    model.load_state_dict(checkpoint['model_state_dict'])
+                    orchestrator.model.load_state_dict(checkpoint['model_state_dict'])
                     print(" Model weights loaded")
 
                 if not checkpoint_params.get('reset_optimizer', False) and 'optimizer_state_dict' in checkpoint:
@@ -3044,7 +3044,7 @@ def main():
             json.dump(enhanced_summary, f, indent=2)
         print(f" Enhanced parameters saved: {enhanced_params_path}")
         
-        save_experiment_metadata(experiment_dir, config, model, datasets_info)
+        save_experiment_metadata(experiment_dir, config, orchestrator.model, datasets_info)
         
         # Step 13: Display enhanced training configuration summary
         print_banner("STEP 13: ENHANCED TRAINING CONFIGURATION SUMMARY")
@@ -3236,15 +3236,15 @@ def main():
             }
             
             trained_router = train_router_model(
-                existing_model=model,
+                existing_model=orchestrator.model,
                 train_dataloader=train_dataloader,
                 config=router_config,
                 output_dir="router_training"
             )
             
             # Replace gates with trained router
-            model = replace_gates_with_router(
-                model,
+            orchestrator.model = replace_gates_with_router(
+                orchestrator.model,
                 router_model_path="router_training/best_router_model.pt"
             )
             

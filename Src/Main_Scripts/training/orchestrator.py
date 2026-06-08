@@ -505,35 +505,37 @@ class AdaptiveHyperparameterOptimizer:
         recent_losses = [m.loss for m in list(self.performance_buffer)[-20:]]
         very_recent = [m.loss for m in list(self.performance_buffer)[-5:]]
 
-        # 1. PLATEAU - If loss barely changing
-        if np.std(very_recent) < 0.01 and np.mean(very_recent) > 0.5:
+        # 1. PLATEAU - If loss barely changing (relative std < 0.1%)
+        rel_std = np.std(very_recent) / np.mean(very_recent)
+        if rel_std < 0.001 and np.mean(very_recent) > 0.5:
             self.last_adjustment_step = current_metrics.step
             return {
                 'action': 'increase',
                 'factor': 1.5,
-                'reasoning': f'Loss plateau: std={np.std(very_recent):.4f}',
+                'reasoning': f'Loss plateau detected: rel_std={rel_std:.5f}',
                 'emergency': False,
             }
-
-        # 2. DIVERGENCE - If loss increasing
+        
+        # 2. DIVERGENCE - If loss increasing significantly (> 10%)
         recent_mean = np.mean(very_recent)
         older_mean = np.mean(recent_losses[-15:-10]) if len(recent_losses) >= 15 else recent_mean
-        if recent_mean > older_mean + 0.3:
+        
+        if recent_mean > older_mean * 1.1:
             self.last_adjustment_step = current_metrics.step
             return {
                 'action': 'decrease',
                 'factor': 0.5,
-                'reasoning': f'Loss increasing: {older_mean:.3f}  {recent_mean:.3f}',
+                'reasoning': f'Loss divergence detected: {older_mean:.3f} -> {recent_mean:.3f}',
                 'emergency': False
             }
-
-        # 3. GOOD PROGRESS - If steadily decreasing
-        if recent_mean < older_mean - 0.1 and np.std(very_recent) < 0.05:
+        
+        # 3. GOOD PROGRESS - If steadily decreasing (> 5%)
+        if recent_mean < older_mean * 0.95 and rel_std < 0.05:
             self.last_adjustment_step = current_metrics.step
             return {
                 'action': 'increase',
-                'factor': 1.2,
-                'reasoning': 'Steady improvement, accelerating'
+                'factor': 1.1,
+                'reasoning': 'Strong progress detected, accelerating LR'
             }
         grad_norms = [m.grad_norm for m in list(self.performance_buffer)[-5:]]
         if np.mean(grad_norms) > 10.0:
