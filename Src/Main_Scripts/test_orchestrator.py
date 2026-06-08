@@ -118,6 +118,16 @@ if orchestrator.trainer.scheduler:
 else:
     log.warning("Scheduler is None - check config.use_lr_scheduler")
 
+sched_lr = orchestrator.trainer.scheduler.get_last_lr()[0] \
+    if orchestrator.trainer.scheduler else 0.0
+config_lr = config.learning_rate
+
+# Only warn if mismatch is NOT explained by warmup (step 0 LR should be 0)
+if orchestrator.trainer.scheduler and sched_lr > 0 and abs(sched_lr - config_lr) / config_lr > 0.01:
+    log.warning(f"Scheduler LR ({sched_lr:.2e}) != Config LR ({config_lr:.2e})")
+else:
+    log.info(f" Scheduler LR at step 0: {sched_lr:.2e} (warmup expected)")
+
 # ============================================================
 # Utility: build a TrainingMetrics (mirrors the training loop)
 # ============================================================
@@ -152,10 +162,11 @@ lr_log = []  # Track lr changes: (step, old_lr, new_lr, reason)
 original_adjust = orchestrator.trainer.adjust_learning_rate
 def patched_adjust(new_lr, grace_period=10):
     old_lr = orchestrator.trainer.optimizer.param_groups[0]['lr']
+    logged_step = orchestrator.global_step
     original_adjust(new_lr, grace_period=grace_period)
-    lr_log.append((orchestrator.global_step, old_lr, new_lr))
+    lr_log.append((logged_step, old_lr, new_lr))
     print(f"\n  *** LR CHANGE DETECTED ***  {old_lr:.3e} -> {new_lr:.3e} "
-          f"at step {orchestrator.global_step}")
+          f"at step {logged_step}")
 orchestrator.trainer.adjust_learning_rate = patched_adjust
 
 

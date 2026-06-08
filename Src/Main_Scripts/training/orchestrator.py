@@ -495,13 +495,25 @@ class AdaptiveHyperparameterOptimizer:
     def should_adjust_learning_rate(self, current_metrics):
         """Decide whether to adjust learning rate."""
 
-        if len(self.performance_buffer) > 0:
+        self.performance_buffer.append(current_metrics)
+
+        # Grad-norm check: evaluated before the cooldown guard so instability
+        # gets an immediate response even after a recent loss-based adjustment.
+        grad_norms = [m.grad_norm for m in list(self.performance_buffer)[-5:]]
+        if len(grad_norms) >= 3 and np.mean(grad_norms) > 10.0:
+            self.last_adjustment_step = current_metrics.step
+            return {
+                'action': 'decrease',
+                'factor': 0.7,
+                'reasoning': f'High gradient norms detected (mean={np.mean(grad_norms):.1f}), reducing LR for stability',
+                'emergency': True,
+            }
+
+        if len(self.performance_buffer) > 1:
             steps_since_last = current_metrics.step - self.last_adjustment_step
             if steps_since_last < 50:  # Don't adjust too often
-                self.performance_buffer.append(current_metrics)
                 return None
 
-        self.performance_buffer.append(current_metrics)
         recent_losses = [m.loss for m in list(self.performance_buffer)[-20:]]
         very_recent = [m.loss for m in list(self.performance_buffer)[-5:]]
 
@@ -537,15 +549,6 @@ class AdaptiveHyperparameterOptimizer:
                 'factor': 1.1,
                 'reasoning': 'Strong progress detected, accelerating LR'
             }
-        grad_norms = [m.grad_norm for m in list(self.performance_buffer)[-5:]]
-        if np.mean(grad_norms) > 10.0:
-            return {
-                'action': 'decrease',
-                'factor': 0.7,
-                'reasoning': 'High gradient norms detected, reducing LR for stability',
-                'emergency': False
-            }
-        
         return None
     
     def optimize_batch_size(self, current_metrics, memory_usage):
@@ -1250,10 +1253,26 @@ class AdaptiveTrainingOrchestrator:
         #  anomaly detector, which fires independently on every step and has
         #  no built-in cooldown of its own.
         is_emergency = adjustment.get('emergency', False)
-        min_steps_between = 5 if is_emergency else 50
+        min_steps_between = 20 if is_emergency else 50
         steps_since_last_apply = self.global_step - getattr(self, '_last_lr_apply_step', -999)
         if steps_since_last_apply < min_steps_between:
             return
+
+        # After 3 consecutive emergency cuts, impose a longer pause to give
+        # training time to stabilize before applying more emergency reductions.
+        if is_emergency:
+            consecutive_emergency = getattr(self, '_consecutive_emergency_cuts', 0)
+            if consecutive_emergency >= 3:
+                steps_since_pause = self.global_step - getattr(self, '_emergency_pause_step', -999)
+                if steps_since_pause < 50:
+                    return
+                self._consecutive_emergency_cuts = 0
+                consecutive_emergency = 0
+            self._consecutive_emergency_cuts = consecutive_emergency + 1
+            self._emergency_pause_step = self.global_step
+        else:
+            self._consecutive_emergency_cuts = 0
+
         self._last_lr_apply_step = self.global_step
 
         current_lr = getattr(self.trainer, 'current_lr', self.config.learning_rate)
