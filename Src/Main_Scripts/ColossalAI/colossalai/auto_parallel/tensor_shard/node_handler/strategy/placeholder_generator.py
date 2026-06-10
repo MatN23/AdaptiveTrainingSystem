@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from typing import Dict, List
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (

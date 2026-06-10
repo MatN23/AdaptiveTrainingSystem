@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional

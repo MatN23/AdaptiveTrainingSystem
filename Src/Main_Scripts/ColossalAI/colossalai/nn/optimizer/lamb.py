@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Adapted from the pytorch-lamb library at https://github.com/cybertronai/pytorch-lamb
 """

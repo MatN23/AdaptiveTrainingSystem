@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # pytorch_diffusion + derived encoder decoder
 import math
 from typing import Any, Optional

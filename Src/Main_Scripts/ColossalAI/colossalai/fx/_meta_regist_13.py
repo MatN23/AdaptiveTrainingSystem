@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 from torch._meta_registrations import register_meta
 from torch._prims_common import check

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 API and LLM warpper class for running LLMs locally
 

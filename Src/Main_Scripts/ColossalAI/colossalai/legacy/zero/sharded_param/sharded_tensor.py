@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from colossalai.legacy.zero.gemini.stateful_tensor import StatefulTensor, TensorState

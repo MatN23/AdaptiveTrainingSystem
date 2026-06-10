@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Script for the multilingual conversation based experimental AI agent
 We used ChatGPT as the language model

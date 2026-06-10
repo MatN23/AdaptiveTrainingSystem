@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """``torch.fx.ShapeProp``, but with ``MetaTensor``"""
 
 from typing import Any, Callable, Dict, Optional, Tuple, Union

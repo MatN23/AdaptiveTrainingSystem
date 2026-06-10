@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch.distributed.optim as dist_optim
 import torch.nn as nn
 import torch.optim as optim

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import pytest
 import torch
 from checks_2p5d.check_layer_2p5d import *

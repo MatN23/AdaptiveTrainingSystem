@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch.nn as nn
 
 from colossalai.booster.accelerator import Accelerator

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Load question answering chains.
 For now, only the stuffed chain is modified

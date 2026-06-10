@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 from rpc_test_utils import RpcTestModel, parse_args, rpc_run
 from torch import autograd, nn

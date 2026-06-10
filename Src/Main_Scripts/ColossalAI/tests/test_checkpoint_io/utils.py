@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import tempfile
 from contextlib import contextmanager, nullcontext
 from typing import Iterator

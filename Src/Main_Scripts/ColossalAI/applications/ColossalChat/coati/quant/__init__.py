@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .llama_gptq import load_quant as llama_load_quant
 from .utils import low_resource_init
 

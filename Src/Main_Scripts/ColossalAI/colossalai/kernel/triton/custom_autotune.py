@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # code from AutoGPTQ auto_gptq: https://github.com/PanQiWei/AutoGPTQ/blob/main/auto_gptq/nn_modules/triton_utils/custom_autotune.py
 
 import builtins

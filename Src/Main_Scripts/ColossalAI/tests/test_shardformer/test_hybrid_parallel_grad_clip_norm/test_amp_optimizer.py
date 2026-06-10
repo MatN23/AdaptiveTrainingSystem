@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import pytest
 import torch
 from torch.nn.utils.clip_grad import clip_grad_norm_

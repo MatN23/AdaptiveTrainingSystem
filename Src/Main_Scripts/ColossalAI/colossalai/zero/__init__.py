@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .gemini import GeminiAdamOptimizer, GeminiDDP, GeminiOptimizer, get_static_torch_model
 from .low_level import LowLevelZeroOptimizer
 from .wrapper import zero_model_wrapper, zero_optim_wrapper

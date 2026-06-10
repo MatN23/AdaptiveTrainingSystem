@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from operator import add, floordiv, getitem, mul, neg, pos, setitem, sub
 
 import torch

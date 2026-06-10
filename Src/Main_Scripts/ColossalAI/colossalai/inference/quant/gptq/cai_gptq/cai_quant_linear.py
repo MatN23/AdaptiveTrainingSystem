@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Adapted from AutoGPTQ auto_gptq: https://github.com/PanQiWei/AutoGPTQ
 
 import math

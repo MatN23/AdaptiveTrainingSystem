@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .cache_mgr import CachedParamMgr, EvictionStrategy
 from .cached_embedding import CachedEmbeddingBag
 from .copyer import LimitBuffIndexCopyer

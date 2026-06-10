@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from typing import Optional
 
 import torch.nn as nn

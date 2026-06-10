@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import argparse
 
 from colossal_llama.utils.stream_chat_patch import streaming_chat

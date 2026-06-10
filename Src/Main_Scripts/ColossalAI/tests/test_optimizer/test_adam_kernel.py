@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # This test checks adam kernels
 # Baseline is pure fp32 torch adam optimizer
 import math

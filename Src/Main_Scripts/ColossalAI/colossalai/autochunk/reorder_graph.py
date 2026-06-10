@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .trace_indice import TraceIndice
 from .utils import NodeMgr
 

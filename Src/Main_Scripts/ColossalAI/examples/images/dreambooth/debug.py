@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 torchrun --standalone --nproc_per_node=1 debug.py
 """

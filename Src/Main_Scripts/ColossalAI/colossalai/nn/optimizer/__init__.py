@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .cpu_adam import CPUAdam
 from .fused_adam import FusedAdam
 from .fused_lamb import FusedLAMB

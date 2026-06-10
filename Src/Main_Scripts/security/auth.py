@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Src/Main_Scripts/security/auth.py
 # Licensed under the Custom License below.
 

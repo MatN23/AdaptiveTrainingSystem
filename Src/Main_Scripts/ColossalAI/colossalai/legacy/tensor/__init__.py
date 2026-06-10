@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from . import distspec
 from .compute_spec import ComputePattern, ComputeSpec
 from .dist_spec_mgr import DistSpecManager

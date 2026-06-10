@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 For becnhmarking ppo. Mudified from examples/training_scripts/train_ppo.py
 """

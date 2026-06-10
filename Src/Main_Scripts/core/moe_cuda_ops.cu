@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 // Copyright (c) 2025 MatN23. All rights reserved.
 // ULTRA-OPTIMIZED MoE Gating - 3-5x faster than PyTorch
 //

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Unified Operations Module - Auto-selects Best Backend - FIXED VERSION
 
 """

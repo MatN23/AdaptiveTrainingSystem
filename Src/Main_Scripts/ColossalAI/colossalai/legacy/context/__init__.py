@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .parallel_context import ParallelContext
 from .parallel_mode import ParallelMode
 from .process_group_initializer import *

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import random
 from copy import deepcopy
 from typing import Any, Callable, Optional, Tuple

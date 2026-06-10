@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <torch/extension.h>

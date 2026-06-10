@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .cpu_adam import CpuAdamArmExtension, CpuAdamX86Extension
 from .flash_attention import FlashAttentionDaoCudaExtension, FlashAttentionNpuExtension, FlashAttentionSdpaCudaExtension
 from .layernorm import LayerNormCudaExtension

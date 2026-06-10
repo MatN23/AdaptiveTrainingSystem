@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from ._operation import all_to_all_comm
 from .attn import AttnMaskType, ColoAttention
 from .dropout import DropoutForParallelInput, DropoutForReplicatedInput

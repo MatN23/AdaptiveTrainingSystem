@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 class PatchRegistry:
     def __init__(self, name):
         self.name = name

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from colossalqa.text_splitter.chinese_text_splitter import ChineseTextSplitter
 
 

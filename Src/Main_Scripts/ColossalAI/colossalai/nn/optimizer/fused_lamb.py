@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # modified from https://github.com/NVIDIA/apex/blob/master/apex/optimizers/fused_lamb.py
 import torch
 

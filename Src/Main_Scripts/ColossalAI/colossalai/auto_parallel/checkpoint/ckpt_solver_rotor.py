@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from copy import deepcopy
 from typing import Any, List, Tuple
 

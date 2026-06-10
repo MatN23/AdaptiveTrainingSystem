@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Adapted from https://github.com/ModelTC/lightllm
 
 """Sampling parameters for text generation."""

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Adapted from https://github.com/ruixiangcui/AGIEval/blob/main/src/dataset_loader.py.
 
 import ast

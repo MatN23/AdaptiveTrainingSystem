@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import inspect
 from logging import getLogger
 from time import time

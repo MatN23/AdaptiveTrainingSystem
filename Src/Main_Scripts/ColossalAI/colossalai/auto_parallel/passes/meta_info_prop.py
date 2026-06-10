@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import uuid
 from dataclasses import asdict
 from typing import List

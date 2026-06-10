@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # adopted from https://github.com/facebookresearch/fvcore/blob/main/fvcore/nn/jit_handles.py
 # ideas from https://pastebin.com/AkvAyJBw
 

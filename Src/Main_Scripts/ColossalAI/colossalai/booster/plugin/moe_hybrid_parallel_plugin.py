@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import random
 from types import MethodType
 from typing import Callable, Optional, OrderedDict, Tuple

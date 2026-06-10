@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import functools
 import warnings
 from abc import ABC, abstractmethod

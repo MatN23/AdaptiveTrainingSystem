@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 def get_data_per_category(data, categories):
     data_per_category = {category: [] for category in categories}
     for item in data:

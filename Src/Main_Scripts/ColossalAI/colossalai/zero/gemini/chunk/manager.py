@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from collections import deque
 from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 

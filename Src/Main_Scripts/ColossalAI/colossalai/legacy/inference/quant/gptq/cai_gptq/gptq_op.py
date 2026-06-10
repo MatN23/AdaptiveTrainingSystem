@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from colossalai.kernel.triton import gptq_fused_linear_triton

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from ._operation import reduce_by_batch_3d, split_batch_3d, split_tensor_3d
 from .layers import (
     Classifier3D,

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from colossalai.logging import get_dist_logger
 
 from .bert_dataset import BertDataset

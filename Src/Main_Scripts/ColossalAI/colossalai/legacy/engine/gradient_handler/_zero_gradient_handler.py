@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from colossalai.legacy.registry import GRADIENT_HANDLER
 
 from ._base_gradient_handler import BaseGradientHandler

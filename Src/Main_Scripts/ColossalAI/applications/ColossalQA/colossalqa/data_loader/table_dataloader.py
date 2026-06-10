@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Class for loading table type data. please refer to Pandas-Input/Output for file format details.
 """

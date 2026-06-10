@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 import torch.distributed as dist
 from torch.cuda.amp import custom_bwd, custom_fwd

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from functools import partial
 
 from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import (

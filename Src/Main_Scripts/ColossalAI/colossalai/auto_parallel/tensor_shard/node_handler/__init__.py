@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .addmm_handler import ADDMMFunctionHandler
 from .batch_norm_handler import BatchNormModuleHandler
 from .binary_elementwise_handler import BinaryElementwiseHandler

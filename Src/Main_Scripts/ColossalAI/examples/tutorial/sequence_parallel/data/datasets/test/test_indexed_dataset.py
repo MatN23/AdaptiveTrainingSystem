@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # This file isn't really a formal automated test, it's just a place to
 # put some code used during development and manual testing of
 # indexed_dataset.

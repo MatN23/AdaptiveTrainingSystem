@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import math
 from abc import ABC
 from typing import Callable, Optional, Tuple

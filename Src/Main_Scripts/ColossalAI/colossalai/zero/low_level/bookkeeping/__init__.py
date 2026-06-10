@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .bucket_store import BucketStore
 from .gradient_store import GradientStore
 from .parameter_store import ParameterStore

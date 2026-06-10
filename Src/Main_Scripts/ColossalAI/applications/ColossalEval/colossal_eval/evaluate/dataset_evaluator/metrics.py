@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Code adapted from https://github.com/THUDM/LongBench/blob/main/metrics.py
 # Code adapted from https://github.com/hendrycks/math/blob/main/modeling/math_equivalence.py
 # Code adapted from https://github.com/ruixiangcui/AGIEval/blob/main/src/evaluation.py

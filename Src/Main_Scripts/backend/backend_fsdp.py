@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 PyTorch FSDP Backend Wrapper
 Provides unified API for FSDP training that matches PyTorch interface.

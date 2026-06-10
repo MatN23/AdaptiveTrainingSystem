@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 try:
     from colossalai.zero.shard_utils import TensorShardStrategy
 except ImportError:

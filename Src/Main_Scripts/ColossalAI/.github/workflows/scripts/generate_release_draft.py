@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 #!/usr/bin/env python
 # coding: utf-8
 

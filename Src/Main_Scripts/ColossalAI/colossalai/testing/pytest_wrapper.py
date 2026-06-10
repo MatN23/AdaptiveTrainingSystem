@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 This file will not be automatically imported by `colossalai.testing`
 as this file has a dependency on `pytest`. Therefore, you need to

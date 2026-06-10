@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import warnings
 from typing import Callable, Dict, List, Union
 

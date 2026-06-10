@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 // modified from
 // https://github.com/NVIDIA/apex/blob/master/csrc/multi_tensor_l2norm_kernel.cu
 #include <ATen/ATen.h>

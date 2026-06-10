@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from typing import Iterable, List
 
 import torch.nn as nn

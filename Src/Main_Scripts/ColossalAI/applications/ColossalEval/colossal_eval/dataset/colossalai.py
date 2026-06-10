@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List

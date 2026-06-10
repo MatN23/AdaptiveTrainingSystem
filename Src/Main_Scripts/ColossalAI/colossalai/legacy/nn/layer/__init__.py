@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .colossalai_layer import *
 from .parallel_1d import *
 from .parallel_2d import *

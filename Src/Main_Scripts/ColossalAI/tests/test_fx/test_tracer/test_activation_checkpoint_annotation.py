@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 from torch.fx import GraphModule
 from torch.utils.checkpoint import checkpoint

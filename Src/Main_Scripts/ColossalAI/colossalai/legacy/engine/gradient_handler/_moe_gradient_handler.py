@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc

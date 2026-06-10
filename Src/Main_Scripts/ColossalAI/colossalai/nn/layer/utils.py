@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 def divide(numerator, denominator):
     """Only allow exact division.
 

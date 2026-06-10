@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from colossalai.fx.tracer.meta_patch import patched_module

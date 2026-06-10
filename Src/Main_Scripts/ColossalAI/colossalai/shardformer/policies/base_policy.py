@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # part of code modified from https://github.com/tunib-ai/parallelformers
 
 from abc import ABC, abstractmethod

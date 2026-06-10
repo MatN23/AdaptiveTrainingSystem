@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .broadcast import (
     BroadcastType,
     comm_actions_for_oprands,

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import operator
 from typing import Any, Callable, Dict, Optional, Union
 

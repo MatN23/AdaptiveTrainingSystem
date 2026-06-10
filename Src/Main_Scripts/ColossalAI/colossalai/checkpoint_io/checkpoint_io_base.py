@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, Union

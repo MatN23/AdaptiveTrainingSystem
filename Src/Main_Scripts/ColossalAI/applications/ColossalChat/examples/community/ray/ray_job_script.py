@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import sys
 
 from ray.job_submission import JobSubmissionClient

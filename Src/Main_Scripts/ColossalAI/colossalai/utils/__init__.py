@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .common import (
     _cast_float,
     conditional_context,

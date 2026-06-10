@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from ._operation import reduce_by_batch_2p5d, split_batch_2p5d
 from .layers import (
     Classifier2p5D,

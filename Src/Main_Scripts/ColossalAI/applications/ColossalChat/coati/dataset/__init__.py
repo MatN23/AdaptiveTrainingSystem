@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .conversation import Conversation, setup_conversation_template
 from .loader import (
     DataCollatorForPreferenceDataset,

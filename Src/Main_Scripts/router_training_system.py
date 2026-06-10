@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # router_training_system.py
 """
 Complete system for training a 14M router model for MoE routing

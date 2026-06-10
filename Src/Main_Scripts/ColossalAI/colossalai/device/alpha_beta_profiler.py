@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import math
 import time
 from typing import Dict, List, Tuple

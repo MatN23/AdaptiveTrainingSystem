@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .flash_attention_dao_cuda import FlashAttentionDaoCudaExtension
 from .flash_attention_npu import FlashAttentionNpuExtension
 from .flash_attention_sdpa_cuda import FlashAttentionSdpaCudaExtension

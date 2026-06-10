@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .collective import all_gather, all_reduce, broadcast, reduce, reduce_scatter
 from .p2p import (
     recv_backward,

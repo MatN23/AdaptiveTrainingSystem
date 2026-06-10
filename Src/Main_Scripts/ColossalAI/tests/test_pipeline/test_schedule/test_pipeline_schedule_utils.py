@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from colossalai.pipeline.schedule._utils import get_batch_size, get_micro_batch, merge_batch

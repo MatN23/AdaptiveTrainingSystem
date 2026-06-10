@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """ PyTorch ChatGLM model. """
 
 from typing import List, Optional, Tuple

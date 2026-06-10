@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .initializer_1d import Initializer_1D
 from .initializer_2d import Initializer_2D
 from .initializer_2p5d import Initializer_2p5D

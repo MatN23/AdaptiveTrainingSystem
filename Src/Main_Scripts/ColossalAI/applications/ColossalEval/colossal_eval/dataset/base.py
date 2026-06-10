@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from abc import abstractstaticmethod
 
 from colossal_eval.utils import jdump

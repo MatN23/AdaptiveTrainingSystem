@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 import torch.nn as nn
 from transformers import BertConfig, BertLMHeadModel, GPT2Config, GPT2LMHeadModel

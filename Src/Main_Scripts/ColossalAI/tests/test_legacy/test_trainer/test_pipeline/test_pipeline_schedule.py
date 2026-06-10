@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # referenced from Megatron and used to testify communication
 
 import os

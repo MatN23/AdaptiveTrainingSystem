@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .activation_function import *
 from .attention import *
 from .convolution import *

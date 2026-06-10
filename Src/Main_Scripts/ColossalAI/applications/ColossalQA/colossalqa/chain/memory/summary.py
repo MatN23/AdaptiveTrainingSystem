@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Custom SummarizerMixin base class and ConversationSummaryMemory class
 

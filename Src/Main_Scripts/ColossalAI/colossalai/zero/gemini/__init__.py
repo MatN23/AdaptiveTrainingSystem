@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .chunk import ChunkManager, TensorInfo, TensorState, search_chunk_configuration
 from .gemini_ddp import GeminiDDP
 from .gemini_mgr import GeminiManager

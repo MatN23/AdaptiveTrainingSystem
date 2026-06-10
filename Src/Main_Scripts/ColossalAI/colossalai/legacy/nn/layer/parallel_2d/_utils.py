@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from colossalai.legacy.context.parallel_mode import ParallelMode
 from colossalai.legacy.core import global_context as gpc
 from colossalai.legacy.global_variables import tensor_parallel_env as env

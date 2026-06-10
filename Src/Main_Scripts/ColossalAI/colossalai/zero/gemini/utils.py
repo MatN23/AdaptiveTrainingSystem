@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from collections import OrderedDict
 from copy import copy
 from typing import Optional, Set

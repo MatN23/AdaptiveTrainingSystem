@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 from torchvision.models import resnet50
 from tqdm import tqdm

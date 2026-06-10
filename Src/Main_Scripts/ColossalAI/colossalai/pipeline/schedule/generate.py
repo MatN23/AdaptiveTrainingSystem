@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import time
 from functools import partial
 from typing import Any, Iterable, Optional, Union

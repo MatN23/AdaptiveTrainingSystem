@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import functools
 from abc import ABC, abstractmethod
 from time import time

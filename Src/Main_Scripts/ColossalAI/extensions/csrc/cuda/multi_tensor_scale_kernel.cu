@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/cuda/CUDAContext.h>

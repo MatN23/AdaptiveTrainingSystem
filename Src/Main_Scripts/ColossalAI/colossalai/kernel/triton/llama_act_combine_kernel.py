@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from functools import reduce
 from typing import Any, Tuple
 

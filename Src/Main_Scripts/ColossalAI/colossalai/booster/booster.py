@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import warnings
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import os
 
 from colossalqa.data_loader.document_loader import DocumentLoader

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import operator
 from copy import deepcopy
 from functools import reduce

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from colossalai.cluster.device_mesh_manager import DeviceMeshInfo, DeviceMeshManager
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers

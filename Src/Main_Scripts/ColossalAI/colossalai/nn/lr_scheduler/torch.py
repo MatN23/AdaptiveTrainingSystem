@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from torch.optim.lr_scheduler import ExponentialLR as _ExponentialLR
 from torch.optim.lr_scheduler import LambdaLR as _LambdaLR
 from torch.optim.lr_scheduler import MultiplicativeLR as _MultiplicativeLR

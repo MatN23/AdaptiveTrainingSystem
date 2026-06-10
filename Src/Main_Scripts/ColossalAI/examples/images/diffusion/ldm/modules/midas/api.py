@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # based on https://github.com/isl-org/MiDaS
 
 import cv2

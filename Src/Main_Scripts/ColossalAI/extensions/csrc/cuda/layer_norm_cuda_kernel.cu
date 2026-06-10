@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 /*This code from NVIDIA apex:
  *     https://github.com/NVIDIA/apex
  *     with minor changes. */

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch.nn
 
 from colossalai.legacy.zero.gemini.ophooks.runtime_mem_tracer_hook import (

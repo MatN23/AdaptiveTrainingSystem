@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 A class that can be used to calculate the mean of a variable
 """

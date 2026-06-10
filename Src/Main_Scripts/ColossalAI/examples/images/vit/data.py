@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 from datasets import load_dataset
 from torch.utils.data import Dataset

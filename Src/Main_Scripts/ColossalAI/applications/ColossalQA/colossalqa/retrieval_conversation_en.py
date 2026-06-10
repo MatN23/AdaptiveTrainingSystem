@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Script for Chinese retrieval based conversation system backed by ChatGLM
 """

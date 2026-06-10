@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Licensed under the Custom License below.
 
 import os
@@ -60,14 +61,6 @@ try:
     BACKEND_COLOSSALAI_AVAILABLE = True
 except ImportError:
     BACKEND_COLOSSALAI_AVAILABLE = False
-
-try:
-    from deepspeed_integration import integrate_with_trainer
-    DEEPSPEED_REMAKE_AVAILABLE = True
-    print(" DeepSpeed remake available")
-except ImportError:
-    DEEPSPEED_REMAKE_AVAILABLE = False
-    print(" DeepSpeed remake not available")
 
 try:
     from training.chinchilla_scaler import EnhancedChinchillaScaler

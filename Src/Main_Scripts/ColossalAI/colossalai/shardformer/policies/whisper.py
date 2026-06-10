@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import warnings
 from functools import partial
 from typing import Callable, Dict, List, Tuple

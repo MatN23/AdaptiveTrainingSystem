@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Any, List

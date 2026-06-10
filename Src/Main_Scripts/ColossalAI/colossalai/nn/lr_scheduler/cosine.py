@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from torch.optim.lr_scheduler import CosineAnnealingLR as _CosineAnnealingLR
 
 from .delayed import DelayerScheduler, WarmupDelayerScheduler, WarmupScheduler

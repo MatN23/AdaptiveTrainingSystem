@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # adopted from
 # https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
 # and

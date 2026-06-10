@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from typing import Dict, List
 
 from ..sharding_strategy import OperationData, OperationDataType

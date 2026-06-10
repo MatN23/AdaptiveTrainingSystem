@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 from torch.fx import Graph, Node
 from torch.utils._pytree import tree_map

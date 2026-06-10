@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch

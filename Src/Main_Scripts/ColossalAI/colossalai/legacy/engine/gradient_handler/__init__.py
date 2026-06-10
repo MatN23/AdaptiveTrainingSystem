@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from ._base_gradient_handler import BaseGradientHandler
 from ._data_parallel_gradient_handler import DataParallelGradientHandler
 from ._pipeline_parallel_gradient_handler import PipelineSharedModuleGradientHandler

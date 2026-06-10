@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from ..cuda_extension import _CudaExtension
 from ..utils import get_cuda_cc_flag
 

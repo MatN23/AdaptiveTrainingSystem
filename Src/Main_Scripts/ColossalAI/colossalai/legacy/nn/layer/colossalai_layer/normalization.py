@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from torch import nn
 
 from colossalai.accelerator import get_accelerator

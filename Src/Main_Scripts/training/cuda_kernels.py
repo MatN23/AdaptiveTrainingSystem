@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # cuda_kernels.py
 import ctypes
 import logging

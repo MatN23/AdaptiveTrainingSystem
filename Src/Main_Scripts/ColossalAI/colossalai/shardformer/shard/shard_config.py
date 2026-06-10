@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional

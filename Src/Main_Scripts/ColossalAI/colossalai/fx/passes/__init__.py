@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .adding_split_node_pass import balanced_split_pass, split_with_split_nodes_pass
 from .concrete_info_prop import ConcreteInfoProp
 from .meta_info_prop import MetaInfoProp, metainfo_trace

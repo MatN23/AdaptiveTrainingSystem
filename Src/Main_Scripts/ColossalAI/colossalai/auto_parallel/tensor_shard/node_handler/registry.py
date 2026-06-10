@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 class Registry:
     def __init__(self, name):
         self.name = name

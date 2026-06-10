@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import copy
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Optional

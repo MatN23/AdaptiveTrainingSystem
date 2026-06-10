@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import cv2
 import fire
 from imwatermark import WatermarkDecoder

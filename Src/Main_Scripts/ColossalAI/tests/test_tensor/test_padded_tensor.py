@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from colossalai.device.device_mesh import DeviceMesh

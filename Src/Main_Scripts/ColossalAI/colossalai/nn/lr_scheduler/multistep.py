@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from typing import List
 
 from torch.optim.lr_scheduler import MultiStepLR as _MultiStepLR

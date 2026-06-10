@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from multiprocessing import Pipe, Process
 from multiprocessing import connection as mp_connection
 

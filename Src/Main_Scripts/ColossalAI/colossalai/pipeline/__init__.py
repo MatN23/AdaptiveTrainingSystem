@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .p2p import PipelineP2PCommunication
 from .schedule import InterleavedSchedule, OneForwardOneBackwardSchedule, PipelineSchedule
 from .stage_manager import PipelineStageManager

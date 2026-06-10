@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from colossalai.legacy.tensor import ComputePattern, ProcessGroup, ShardSpec
 
 from .colo_module import ColoModule

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from torch.fx import GraphModule
 
 from .passes import ShapeProp, graph_profile_pass, shape_prop_pass

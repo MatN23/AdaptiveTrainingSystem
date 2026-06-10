@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum

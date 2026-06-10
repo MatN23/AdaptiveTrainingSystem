@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # -*- coding: utf-8 -*-
 import random
 from functools import partial

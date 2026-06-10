@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from colossalai.auto_parallel.tensor_shard.constants import INFINITY_COST

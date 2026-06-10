@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Implement a memory class for storing conversation history
 Support long term and short term memory

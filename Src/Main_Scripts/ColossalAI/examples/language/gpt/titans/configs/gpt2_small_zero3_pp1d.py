@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from model import GPT2_small_pipeline_hybrid
 
 from colossalai.nn.optimizer import HybridAdam

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .base import BaseModel
 from .critic import Critic
 from .generation import generate, generate_streaming, prepare_inputs_fn, update_model_kwargs_fn

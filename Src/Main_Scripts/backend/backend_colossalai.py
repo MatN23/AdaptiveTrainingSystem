@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Drop-in Colossal-AI replacement for DeepSpeed
 
 import os

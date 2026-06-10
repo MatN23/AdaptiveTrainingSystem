@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 If FX.Graph is traced for auto-parallel module, some extra node will be added during
 graph construction to deal with the compatibility between bias-addition and all-reduce.

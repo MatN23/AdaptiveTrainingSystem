@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .colo_parameter import ColoParameter
 from .colo_tensor import ColoTensor
 from .comm_spec import CollectiveCommPattern, CommSpec

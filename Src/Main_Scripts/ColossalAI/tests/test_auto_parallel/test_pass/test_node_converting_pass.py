@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from colossalai.auto_parallel.passes.runtime_preparation_pass import node_args_converting_pass

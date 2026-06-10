@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .device_mesh_manager import DeviceMeshManager
 from .dist_coordinator import DistCoordinator
 from .process_group_manager import ProcessGroupManager

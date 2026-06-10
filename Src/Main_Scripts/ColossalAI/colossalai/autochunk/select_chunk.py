@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .estimate_memory import EstimateMemory
 from .reorder_graph import ReorderGraph
 from .trace_indice import TraceIndice

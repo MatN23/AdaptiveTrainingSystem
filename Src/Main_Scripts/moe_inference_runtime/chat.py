@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 #!/usr/bin/env python3
 """
 Interactive chat with C++ inference engine using your custom tokenizer.

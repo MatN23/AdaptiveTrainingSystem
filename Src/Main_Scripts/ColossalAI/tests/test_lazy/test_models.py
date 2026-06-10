@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import pytest
 from lazy_init_utils import SUPPORT_LAZY, check_lazy_init
 

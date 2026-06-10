@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 try:
     import triton
     import triton.language as tl

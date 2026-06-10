@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from ._base_hook import BaseHook
 from ._checkpoint_hook import SaveCheckpointHook
 from ._log_hook import (

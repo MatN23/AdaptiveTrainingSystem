@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from types import MethodType
 from typing import Callable, Optional, Union
 

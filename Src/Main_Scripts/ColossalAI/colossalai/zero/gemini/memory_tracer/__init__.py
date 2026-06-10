@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .param_runtime_order import OrderedParamGenerator
 from .memory_stats import MemStats
 from .memory_monitor import AsyncMemoryMonitor, SyncCudaMemoryMonitor

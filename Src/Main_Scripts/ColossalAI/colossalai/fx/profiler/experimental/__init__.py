@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .profiler import profile_function, profile_method, profile_module
 from .profiler_function import *
 from .profiler_module import *

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 from torch.nn import init
 from transformers import AutoConfig, AutoModelForCausalLM

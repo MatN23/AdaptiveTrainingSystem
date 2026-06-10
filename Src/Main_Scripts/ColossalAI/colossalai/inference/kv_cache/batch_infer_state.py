@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # might want to consider combine with InferenceConfig in colossalai/ppinference/inference_config.py later
 from dataclasses import dataclass
 

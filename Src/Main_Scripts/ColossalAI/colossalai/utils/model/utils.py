@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # This code has been adapted from the DeepSpeed library.
 # Licensed under the MIT License.
 

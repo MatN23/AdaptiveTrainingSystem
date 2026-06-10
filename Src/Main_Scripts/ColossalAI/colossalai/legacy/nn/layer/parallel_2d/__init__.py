@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from ._operation import reduce_by_batch_2d, split_batch_2d
 from .layers import (
     Classifier2D,

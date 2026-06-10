@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 #!/usr/bin/env python
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union

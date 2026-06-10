@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # Code adapted from https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge
 
 import ast

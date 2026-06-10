@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .base import BaseModel
 from .chatglm import ChatGLM2Model, ChatGLMModel
 from .huggingface import HuggingFaceCausalLM, HuggingFaceModel

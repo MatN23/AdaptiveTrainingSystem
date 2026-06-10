@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .checkpointing import load_checkpoint, save_checkpoint
 from .common import (
     clip_grad_norm_fp32,

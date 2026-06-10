@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 

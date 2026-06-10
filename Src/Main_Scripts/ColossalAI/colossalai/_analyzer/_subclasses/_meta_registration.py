@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # meta patch from https://github.com/pytorch/pytorch/blob/master/torch/_meta_registrations.py
 # should be activated for PyTorch version 1.12.0 and below
 # refer to https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml

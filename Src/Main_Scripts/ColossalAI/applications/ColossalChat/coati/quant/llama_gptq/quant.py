@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # copied from https://github.com/qwopqwop200/GPTQ-for-LLaMa/blob/past/quant.py
 
 import math

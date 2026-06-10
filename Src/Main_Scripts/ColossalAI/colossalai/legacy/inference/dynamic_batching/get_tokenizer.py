@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Motivated by VllM (https://github.com/vllm-project/vllm), This module is trying to resolve the tokenizer issue.
 

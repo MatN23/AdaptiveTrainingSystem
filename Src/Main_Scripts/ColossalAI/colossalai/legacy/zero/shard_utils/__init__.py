@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .base_shard_strategy import BaseShardStrategy
 from .bucket_tensor_shard_strategy import BucketTensorShardStrategy
 from .tensor_shard_strategy import TensorShardStrategy

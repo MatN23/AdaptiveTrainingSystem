@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import itertools
 from collections import OrderedDict
 from contextlib import nullcontext

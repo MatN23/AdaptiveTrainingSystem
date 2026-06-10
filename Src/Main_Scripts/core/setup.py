@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 import os

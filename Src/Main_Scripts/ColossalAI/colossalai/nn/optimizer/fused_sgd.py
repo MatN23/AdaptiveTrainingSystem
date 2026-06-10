@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 # modified from https://github.com/NVIDIA/apex/blob/master/apex/optimizers/fused_sgd.py
 import torch
 from torch.optim.optimizer import Optimizer, required

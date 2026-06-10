@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from . import accelerator
 from .initialize import launch, launch_from_openmpi, launch_from_slurm, launch_from_torch
 

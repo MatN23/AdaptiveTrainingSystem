@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .base_sampler import BaseSampler
 from .data_parallel_sampler import DataParallelSampler, get_dataloader
 

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .base import OLTrainer, SLTrainer
 from .dpo import DPOTrainer
 from .ppo import PPOTrainer

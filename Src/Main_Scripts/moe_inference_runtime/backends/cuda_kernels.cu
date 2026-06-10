@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 // backends/cuda_kernels.cu
 // CUDA kernels for NVIDIA GPU acceleration
 

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .bf16 import BF16MixedPrecision
 from .fp8 import FP8MixedPrecision
 from .fp16_apex import FP16ApexMixedPrecision

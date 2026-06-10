@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 #!/usr/bin/env python3
 """
 export_model.py - Export trained PyTorch MoE+MoD model to frozen binary format

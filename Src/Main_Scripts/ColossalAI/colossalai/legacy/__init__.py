@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .initialize import (
     get_default_parser,
     initialize,

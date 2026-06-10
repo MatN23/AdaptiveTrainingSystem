@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import open_clip
 import torch
 import torch.nn as nn

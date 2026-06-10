@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .checkpoint import MoECheckpointIO
 from .experts import MLPExperts
 from .layers import SparseMLP, apply_load_balance

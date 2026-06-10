@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .base_extension import _Extension
 
 __all__ = ["_TritonExtension"]

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .base import PipelineSchedule
 from .interleaved_pp import InterleavedSchedule
 from .one_f_one_b import OneForwardOneBackwardSchedule

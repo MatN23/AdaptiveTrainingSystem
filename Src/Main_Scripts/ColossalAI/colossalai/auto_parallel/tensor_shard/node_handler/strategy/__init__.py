@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .batch_norm_generator import BatchNormStrategyGenerator
 from .binary_elementwise_generator import BinaryElementwiseStrategyGenerator
 from .conv_strategy_generator import ConvStrategyGenerator

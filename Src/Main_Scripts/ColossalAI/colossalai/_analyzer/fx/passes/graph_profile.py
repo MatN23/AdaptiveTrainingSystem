@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch

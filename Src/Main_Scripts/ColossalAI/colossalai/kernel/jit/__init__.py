@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .bias_dropout_add import bias_dropout_add_fused_inference, bias_dropout_add_fused_train
 from .bias_gelu import bias_gelu_impl
 from .option import set_jit_fusion_options

@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import torch
 
 from .tracer import register_leaf_module, register_leaf_module_impl

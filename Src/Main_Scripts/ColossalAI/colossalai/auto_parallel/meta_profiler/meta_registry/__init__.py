@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 from .activation import *
 from .binary_elementwise_ops import *
 from .conv import *

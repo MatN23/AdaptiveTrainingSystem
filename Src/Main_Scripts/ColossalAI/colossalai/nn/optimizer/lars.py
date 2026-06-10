@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """Adapted from https://github.com/NUS-HPC-AI-Lab/LARS-ImageNet-PyTorch/blob/main/lars.py"""
 
 from typing import Iterable

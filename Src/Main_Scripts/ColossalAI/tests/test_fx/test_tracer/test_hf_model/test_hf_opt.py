@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 import pytest
 import torch
 from hf_tracer_utils import trace_model_and_compare_output

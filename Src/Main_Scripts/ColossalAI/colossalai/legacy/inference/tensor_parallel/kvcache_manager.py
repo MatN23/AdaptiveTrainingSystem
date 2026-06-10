@@ -1,3 +1,4 @@
+# Copyright (c) 2025 MatN23. All rights reserved.
 """
 Refered/Modified from lightllm/common/mem_manager.py
 of the ModelTC/lightllm GitHub repository
