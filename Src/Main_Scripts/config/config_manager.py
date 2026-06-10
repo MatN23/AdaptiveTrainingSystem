@@ -14,7 +14,7 @@ from pathlib import Path
 class Config:
     """Enhanced configuration with validation and serialization."""
     # Model architecture
-    vocab_size: int = 50304
+    vocab_size: int = 100352
     hidden_size: int = 512
     num_layers: int = 8
     num_heads: int = 8
