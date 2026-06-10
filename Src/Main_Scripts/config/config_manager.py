@@ -1004,6 +1004,50 @@ class ConfigPresets:
             max_memory_usage=0.8,
             streaming_threshold_gb=1.0
         )
+
+    @staticmethod
+    def small_chat() -> Config:
+        """~60M param model optimized for 100M token dataset."""
+        return Config(
+            hidden_size=384,
+            num_layers=8,
+            num_heads=8,
+            num_kv_heads=4,
+            seq_length=512,
+            intermediate_size=1024,
+            
+            batch_size=4,
+            micro_batch_size=2,
+            gradient_accumulation_steps=8,
+            num_epochs=3,
+            learning_rate=3e-4,
+            weight_decay=0.01,
+            eval_every_n_batches=200,
+            save_every_n_batches=500,
+            precision="auto",
+            inference_precision="auto",
+            compile=False,
+            num_workers=0,
+            
+            use_moe=True,
+            use_mod=True,
+            num_experts=8,
+            moe_top_k=1,
+            capacity_factor=1.25,
+            load_balancing_weight=0.01,
+            
+            use_deepspeed=False,
+            gradient_checkpointing=True,
+            use_flash_attention=False,
+            
+            experiment_name="small_chat",
+            log_level="INFO",
+            early_stopping_patience=3,
+            lr_scheduler="cosine",
+            max_memory_usage=0.85,
+            streaming_threshold_gb=1.0,
+            save_total_limit=3,
+        )
     
     @staticmethod
     def b1() -> Config:
