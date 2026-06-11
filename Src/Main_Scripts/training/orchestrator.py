@@ -2383,14 +2383,10 @@ class AdaptiveTrainingOrchestrator:
                         reasoning_score=np.random.uniform(0.5, 0.8),
                         timestamp=datetime.now()
                     )
-                    
-                    if hasattr(self, '_orchestrator_queue'):
-                        try:
-                            self._orchestrator_queue.put(mock_metrics, block=False)
-                        except queue.Full:
-                            # Queue full, skip this metric
-                            pass
-                    
+                    raise RuntimeError(
+                        "[FATAL] Fallback trainer is active and attempting to send fake metrics. "
+                        "Real trainer failed to load. Check import errors above."
+                    )
                     self.global_step += 1
             
             def get_current_metrics(self):
