@@ -1,4 +1,4 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
+// Copyright (c) 2025 MatN23. All rights reserved.
 // fused_grad_clip.cu
 #include <cmath>
 #include <cooperative_groups.h>

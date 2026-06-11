@@ -1,4 +1,4 @@
-# Copyright (c) 2025 MatN23. All rights reserved.
+// Copyright (c) 2025 MatN23. All rights reserved.
 // Copyright (c) 2025 MatN23. All rights reserved.
 // ULTRA-OPTIMIZED MoE Gating - 3-5x faster than PyTorch
 //
@@ -663,7 +663,8 @@ __global__ void dispatch_tokens_kernel_dynamic(
     const int actual_k) {
 
   const int token_idx = blockIdx.x;
-  if (token_idx >= num_tokens) return;
+  if (token_idx >= num_tokens)
+    return;
 
   const int tid = threadIdx.x;
   const float *token_data = tokens + (int64_t)token_idx * hidden_dim;
@@ -686,7 +687,8 @@ __global__ void dispatch_tokens_kernel_dynamic(
   for (int k_idx = 0; k_idx < actual_k; ++k_idx) {
     int expert_id = shared_expert[k_idx];
     int pos = shared_pos[k_idx];
-    if (pos < 0 || pos >= capacity) continue;
+    if (pos < 0 || pos >= capacity)
+      continue;
 
     if (tid == 0) {
       token_map[(int64_t)expert_id * capacity + pos] =
@@ -784,25 +786,26 @@ __global__ void extract_contributions_warp_agg(
   }
 }
 
-__global__ void combine_from_token_map_kernel(
-    const float *__restrict__ expert_outputs,
-    const int64_t *__restrict__ token_map,
-    const float *__restrict__ top_k_weights,
-    float *__restrict__ combined_output,
-    const int total_slots,
-    const int hidden_dim,
-    const int k,
-    const int num_tokens) {
+__global__ void
+combine_from_token_map_kernel(const float *__restrict__ expert_outputs,
+                              const int64_t *__restrict__ token_map,
+                              const float *__restrict__ top_k_weights,
+                              float *__restrict__ combined_output,
+                              const int total_slots, const int hidden_dim,
+                              const int k, const int num_tokens) {
   const int slot_idx = blockIdx.x;
   const int tid = threadIdx.x;
 
-  if (slot_idx >= total_slots) return;
+  if (slot_idx >= total_slots)
+    return;
 
   const int64_t token_weight_idx = token_map[slot_idx];
-  if (token_weight_idx < 0) return;
+  if (token_weight_idx < 0)
+    return;
 
   const int token_idx = (int)(token_weight_idx / k);
-  if (token_idx < 0 || token_idx >= num_tokens) return;
+  if (token_idx < 0 || token_idx >= num_tokens)
+    return;
 
   const float weight = __ldg(&top_k_weights[token_weight_idx]);
   const float *expert_out = expert_outputs + (int64_t)slot_idx * hidden_dim;
@@ -1154,8 +1157,8 @@ torch::Tensor combine_expert_outputs_cuda(torch::Tensor expert_outputs,
   const int blocks = (int)total_slots;
   combine_from_token_map_kernel<<<blocks, threads, 0, stream>>>(
       expert_outputs.data_ptr<float>(), token_map.data_ptr<int64_t>(),
-      weights_flat.data_ptr<float>(), combined.data_ptr<float>(), (int)total_slots,
-      (int)hidden_dim, (int)k, (int)num_tokens);
+      weights_flat.data_ptr<float>(), combined.data_ptr<float>(),
+      (int)total_slots, (int)hidden_dim, (int)k, (int)num_tokens);
 
   CUDA_CHECK_KERNEL();
   return combined;
