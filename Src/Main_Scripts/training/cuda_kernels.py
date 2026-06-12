@@ -15,39 +15,43 @@ logger = logging.getLogger(__name__)
 _THIS_DIR  = os.path.dirname(os.path.abspath(__file__))
 _CU_FILE   = os.path.join(_THIS_DIR, "fused_grad_clip.cu")
 _SO_FILE   = os.path.join(_THIS_DIR, "fused_grad_clip.so")
+_CU_LOSS_FILE = os.path.join(_THIS_DIR, "fused_loss.cu")
+_SO_LOSS_FILE = os.path.join(_THIS_DIR, "fused_loss.so")
 
 # Compile if needed
 def _compile_so() -> bool:
+    # Compile fused_grad_clip
+    success = True
     if not os.path.exists(_CU_FILE):
         logger.error("  Source not found: %s", _CU_FILE)
-        return False
+        success = False
+    elif not os.path.exists(_SO_FILE) or os.path.getmtime(_SO_FILE) < os.path.getmtime(_CU_FILE):
+        prop = torch.cuda.get_device_properties(0)
+        sm   = f"sm_{prop.major}{prop.minor}"
+        arch = f"compute_{prop.major}{prop.minor}"
+        cmd = ["nvcc", "-O3", "-shared", "-fPIC", "--expt-relaxed-constexpr", "--use_fast_math",
+               f"--generate-code=arch={arch},code={sm}", "-o", _SO_FILE, _CU_FILE]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            if res.returncode != 0: success = False
+        except Exception: success = False
 
-    # Re-compile if .cu is newer than .so
-    if (os.path.exists(_SO_FILE) and
-            os.path.getmtime(_SO_FILE) >= os.path.getmtime(_CU_FILE)):
-        return True
-
-    prop = torch.cuda.get_device_properties(0)
-    sm   = f"sm_{prop.major}{prop.minor}"
-    arch = f"compute_{prop.major}{prop.minor}"
-
-    cmd = [
-        "nvcc", "-O2", "-shared", "-fPIC",
-        "--expt-relaxed-constexpr",
-        f"--generate-code=arch={arch},code={sm}",
-        "-o", _SO_FILE, _CU_FILE,
-    ]
-    logger.info("  Compiling %s  %s  [%s]", _CU_FILE, _SO_FILE, sm)
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        if res.returncode != 0:
-            logger.error("  nvcc failed:\n%s\n%s", res.stdout, res.stderr)
-            return False
-        logger.info("  Compiled successfully")
-        return True
-    except Exception as exc:
-        logger.error("  Compilation exception: %s", exc)
-        return False
+    # Compile fused_loss
+    if not os.path.exists(_CU_LOSS_FILE):
+        logger.error("  Source not found: %s", _CU_LOSS_FILE)
+        success = False
+    elif not os.path.exists(_SO_LOSS_FILE) or os.path.getmtime(_SO_LOSS_FILE) < os.path.getmtime(_CU_LOSS_FILE):
+        prop = torch.cuda.get_device_properties(0)
+        sm   = f"sm_{prop.major}{prop.minor}"
+        arch = f"compute_{prop.major}{prop.minor}"
+        cmd = ["nvcc", "-O3", "-shared", "-fPIC", "--use_fast_math", "--ptxas-options=-v",
+               f"--generate-code=arch={arch},code={sm}", "-o", _SO_LOSS_FILE, _CU_LOSS_FILE]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            if res.returncode != 0: success = False
+        except Exception: success = False
+        
+    return success
 
 
 _lib        = None
@@ -62,8 +66,9 @@ def _load_lib() -> bool:
         return False
     try:
         _lib = ctypes.CDLL(_SO_FILE)
+        _lib_loss = ctypes.CDLL(_SO_LOSS_FILE)
     except OSError as exc:
-        logger.error("  Failed to dlopen %s: %s", _SO_FILE, exc)
+        logger.error("  Failed to dlopen shared objects: %s", exc)
         return False
 
     #                          float max_norm, void* buf, int fp16, void* stream)
@@ -85,7 +90,24 @@ def _load_lib() -> bool:
         ctypes.POINTER(ctypes.c_float),
     ]
 
-    logger.info("  fused_grad_clip CUDA kernel loaded")
+    _lib_loss.fused_cross_entropy_accuracy_launcher.restype = None
+    _lib_loss.fused_cross_entropy_accuracy_launcher.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64,
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_void_p
+    ]
+
+    _lib_loss.fused_cross_entropy_backward_launcher.restype = None
+    _lib_loss.fused_cross_entropy_backward_launcher.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64,
+        ctypes.c_float, ctypes.c_float, ctypes.c_void_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_void_p
+    ]
+    global _fused_loss_forward, _fused_loss_backward
+    _fused_loss_forward = _lib_loss.fused_cross_entropy_accuracy_launcher
+    _fused_loss_backward = _lib_loss.fused_cross_entropy_backward_launcher
+
+    logger.info("  CUDA kernels loaded")
     return True
 
 
@@ -105,14 +127,17 @@ def _make_ptr_array(tensors: list[torch.Tensor]) -> torch.Tensor:
     """Returns a 1-D int64 tensor on the same device as tensors[0]
        whose values are the data_ptrs of each tensor."""
     device = tensors[0].device
-    ptrs   = [t.data_ptr() for t in tensors]
-    return torch.tensor(ptrs, dtype=torch.int64, device=device)
+    ptrs = [t.data_ptr() for t in tensors]
+    # Fast non-blocking transfer
+    cpu_tensor = torch.tensor(ptrs, dtype=torch.int64, pin_memory=True)
+    return cpu_tensor.to(device, non_blocking=True)
 
 
 def _make_size_array(tensors: list[torch.Tensor]) -> torch.Tensor:
     device = tensors[0].device
-    sizes  = [t.numel() for t in tensors]
-    return torch.tensor(sizes, dtype=torch.int32, device=device)
+    sizes = [t.numel() for t in tensors]
+    cpu_tensor = torch.tensor(sizes, dtype=torch.int32, pin_memory=True)
+    return cpu_tensor.to(device, non_blocking=True)
 
 
 # Public API
@@ -270,6 +295,96 @@ def _compute_loss_metrics(
     }
 
 
+class FusedCrossEntropyFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, logits, labels, loss_weights, pad_token_id):
+        if not logits.is_contiguous(): logits = logits.contiguous()
+        if not labels.is_contiguous(): labels = labels.contiguous()
+        if loss_weights is not None and not loss_weights.is_contiguous():
+            loss_weights = loss_weights.contiguous()
+
+        vocab_size = logits.size(-1)
+        total_tokens = logits.numel() // vocab_size
+        
+        loss_out = torch.zeros(1, dtype=torch.float32, device=logits.device)
+        accuracy_out = torch.zeros(1, dtype=torch.float32, device=logits.device)
+        valid_tokens_out = torch.zeros(1, dtype=torch.int64, device=logits.device)
+        
+        if loss_weights is not None:
+            total_weight_out = torch.zeros(1, dtype=torch.float32, device=logits.device)
+            total_weight_out_ptr = ctypes.c_void_p(total_weight_out.data_ptr())
+        else:
+            total_weight_out = None
+            total_weight_out_ptr = None
+            
+        stream = torch.cuda.current_stream(logits.device)
+        _fused_loss_forward(
+            ctypes.c_void_p(logits.data_ptr()),
+            ctypes.c_void_p(labels.data_ptr()),
+            ctypes.c_void_p(loss_weights.data_ptr()) if loss_weights is not None else None,
+            ctypes.c_int64(pad_token_id),
+            ctypes.c_void_p(loss_out.data_ptr()),
+            ctypes.c_void_p(accuracy_out.data_ptr()),
+            ctypes.c_void_p(valid_tokens_out.data_ptr()),
+            total_weight_out_ptr,
+            ctypes.c_int(total_tokens),
+            ctypes.c_int(vocab_size),
+            ctypes.c_void_p(stream.cuda_stream)
+        )
+        
+        ctx.save_for_backward(logits, labels, loss_weights, valid_tokens_out, total_weight_out)
+        ctx.pad_token_id = pad_token_id
+        ctx.total_tokens = total_tokens
+        ctx.vocab_size = vocab_size
+        
+        valid_cnt = max(valid_tokens_out.item(), 1)
+        raw_loss = loss_out / valid_cnt
+        if loss_weights is not None:
+            loss = loss_out / max(total_weight_out.item(), 1e-8)
+        else:
+            loss = raw_loss
+        accuracy = accuracy_out / valid_cnt
+        
+        if valid_tokens_out.item() == 0:
+            loss = torch.zeros_like(loss, requires_grad=True)
+            raw_loss = torch.zeros_like(raw_loss)
+            accuracy = torch.zeros_like(accuracy)
+            perplexity = torch.ones_like(raw_loss)
+        else:
+            perplexity = torch.exp(torch.clamp(raw_loss.detach(), min=0.0, max=15.0))
+            # Wrap loss in requires_grad
+            loss = loss.clone().requires_grad_(True)
+            
+        return loss, raw_loss, perplexity, valid_tokens_out, accuracy
+
+    @staticmethod
+    def backward(ctx, grad_loss, grad_raw_loss, grad_perp, grad_valid, grad_acc):
+        logits, labels, loss_weights, valid_tokens_out, total_weight_out = ctx.saved_tensors
+        if valid_tokens_out.item() == 0:
+            return torch.zeros_like(logits), None, None, None
+            
+        if loss_weights is not None:
+            inv_valid = grad_loss.item() / max(total_weight_out.item(), 1e-8)
+        else:
+            inv_valid = grad_loss.item() / max(valid_tokens_out.item(), 1.0)
+            
+        grad_logits = torch.empty_like(logits)
+        stream = torch.cuda.current_stream(logits.device)
+        _fused_loss_backward(
+            ctypes.c_void_p(logits.data_ptr()),
+            ctypes.c_void_p(labels.data_ptr()),
+            ctypes.c_void_p(loss_weights.data_ptr()) if loss_weights is not None else None,
+            ctypes.c_int64(ctx.pad_token_id),
+            ctypes.c_float(1.0),
+            ctypes.c_float(inv_valid),
+            ctypes.c_void_p(grad_logits.data_ptr()),
+            ctypes.c_int(ctx.total_tokens),
+            ctypes.c_int(ctx.vocab_size),
+            ctypes.c_void_p(stream.cuda_stream)
+        )
+        return grad_logits, None, None, None
+
+
 class FusedLoss:
     """
     Backward-compatible loss wrapper used by trainer and benchmark scripts.
@@ -286,47 +401,12 @@ class FusedLoss:
         loss_weights: Optional[torch.Tensor] = None,
         pad_token_id: int = 0,
     ) -> Dict[str, torch.Tensor]:
-        # Fast CUDA path using fused cross-entropy kernels from PyTorch.
-        if logits.dim() == 3:
-            vocab_size = logits.size(-1)
-            flat_logits = logits.reshape(-1, vocab_size)
-            flat_labels = labels.reshape(-1)
-        else:
-            flat_logits = logits
-            flat_labels = labels.reshape(-1)
-            vocab_size = flat_logits.size(-1)
-
-        valid_mask = (
-            (flat_labels != pad_token_id)
-            & (flat_labels >= 0)
-            & (flat_labels < vocab_size)
+        loss, raw_loss, perplexity, valid_tokens, accuracy = FusedCrossEntropyFunction.apply(
+            logits, labels, loss_weights, pad_token_id
         )
-        valid_tokens = valid_mask.sum()
-        denom = valid_tokens.to(flat_logits.dtype).clamp(min=1.0)
-
-        safe_labels = flat_labels.clone()
-        safe_labels[~valid_mask] = 0
-
-        loss_per_token = F.cross_entropy(flat_logits, safe_labels, reduction="none")
-        valid_mask_f = valid_mask.to(flat_logits.dtype)
-        raw_loss = (loss_per_token * valid_mask_f).sum() / denom
-        loss = torch.where(valid_mask.any(), raw_loss, torch.zeros_like(raw_loss, requires_grad=True))
-
-        with torch.no_grad():
-            predictions = torch.argmax(flat_logits, dim=-1)
-            correct = (predictions == safe_labels).to(flat_logits.dtype) * valid_mask_f
-            accuracy = correct.sum() / denom
-            accuracy = torch.where(valid_mask.any(), accuracy, torch.zeros_like(accuracy))
-
-        perplexity = torch.where(
-            valid_mask.any(),
-            torch.exp(torch.clamp(raw_loss.detach(), min=0.0, max=15.0)),
-            torch.ones((), device=flat_logits.device, dtype=flat_logits.dtype),
-        )
-
         return {
             "loss": loss,
-            "raw_loss": raw_loss.detach(),
+            "raw_loss": raw_loss,
             "perplexity": perplexity,
             "valid_tokens": valid_tokens,
             "accuracy": accuracy,

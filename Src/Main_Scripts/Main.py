@@ -78,6 +78,8 @@ except ImportError:
     DEEPSPEED_AVAILABLE = False
     logging.warning("DeepSpeed not available")
 
+DEEPSPEED_REMAKE_AVAILABLE = False
+
 try:
     # Direct import from config.config_manager
     from config.config_manager import Config, ConfigPresets
