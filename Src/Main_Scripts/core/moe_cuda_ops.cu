@@ -146,8 +146,28 @@ __device__ __forceinline__ void sort_topk(float *vals, int *idxs) {
     }
   } else {
     // Bitonic sort - requires K to be power of 2 for full correctness
-    // For non-power-of-2, should pad with -inf.
-    bitonic_sort<K>(vals, idxs);
+    // Pad to next power of 2 (max MAX_K = 32)
+    constexpr int PAD_K = (K <= 16) ? 16 : 32;
+    float pad_vals[PAD_K];
+    int pad_idxs[PAD_K];
+#pragma unroll
+    for (int i = 0; i < K; i++) {
+      pad_vals[i] = vals[i];
+      pad_idxs[i] = idxs[i];
+    }
+#pragma unroll
+    for (int i = K; i < PAD_K; i++) {
+        pad_vals[i] = -INFINITY;
+        pad_idxs[i] = -1;
+    }
+    
+    bitonic_sort<PAD_K>(pad_vals, pad_idxs);
+    
+#pragma unroll
+    for (int i = 0; i < K; i++) {
+      vals[i] = pad_vals[i];
+      idxs[i] = pad_idxs[i];
+    }
   }
 }
 

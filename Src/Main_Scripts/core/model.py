@@ -136,9 +136,12 @@ def estimate_parameters(config) -> int:
     embed_params = config.vocab_size * config.hidden_size
     
     # Attention parameters (always dense)
+    head_dim = config.hidden_size // config.num_heads
+    kv_dim = head_dim * config.num_kv_heads
     attn_params_per_layer = (
-        config.hidden_size * config.hidden_size * 3 +  # Q, K, V
-        config.hidden_size * config.hidden_size         # Output projection
+        (config.hidden_size * config.hidden_size) +      # Q
+        (config.hidden_size * kv_dim * 2) +              # K, V
+        (config.hidden_size * config.hidden_size)        # Output projection
     )
     
     # Normalization parameters
@@ -329,7 +332,8 @@ class RMSNorm(nn.Module):
         
     def extra_repr(self) -> str:
         """String representation for debugging."""
-        cuda_status = "CUDA" if self._cuda_impl is not None else "PyTorch"
+        is_cuda = (self._cuda_impl is not None) if hasattr(self, '_cuda_impl') else (USE_UNIFIED_BACKEND and hasattr(self, '_impl') and self._impl is not None)
+        cuda_status = "CUDA" if is_cuda else "PyTorch"
         return f'dim={self.dim}, eps={self.eps}, elementwise_affine={self.elementwise_affine}, backend={cuda_status}'
 
 
@@ -584,16 +588,6 @@ def apply_rotary_pos_emb(
     Returns:
         Rotated (q, k) tensors
     """
-    # Try CUDA implementation if available
-    if HAS_TRANSFORMER_CUDA and q.is_cuda:
-        try:
-            from Main_Scripts.core.wrappers.cuda_opt_wrapper import FusedRoPE
-            # Note: This requires cos/sin to be from FusedRoPE's cache
-            # For now, fall back to PyTorch since we're using separate cos/sin
-            pass
-        except:
-            pass
-    
     # PyTorch implementation (JIT-compiled for speed)
     return apply_rotary_pos_emb_optimized(q, k, cos, sin)
 
@@ -2554,7 +2548,7 @@ class DeepSeekConfig:
     scale_lm_head_output: bool = False
     
     # CUDA Optimization toggles
-    use_fused_rmsnorm: bool = False
+    use_fused_rmsnorm: bool = True
     use_fused_rope: bool = True
     use_fused_swiglu: bool = True
     use_fused_moe: bool = True
@@ -2595,7 +2589,7 @@ class DeepSeekConfig:
         if self.use_moe:
             assert self.moe_top_k <= self.num_experts, \
                 "moe_top_k must be <= num_experts"
-            assert self.moe_pattern in ['all', 'every_3rd', 'every_4th', 'sandwich', 'none'], \
+            assert self.moe_pattern in ['all', 'every_3rd', 'every_4th', 'sandwich', 'none', 'alternating'], \
                 f"Invalid moe_pattern: {self.moe_pattern}"
         
         if self.use_mod:

@@ -22,7 +22,6 @@ import os
 import copy
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict
 
 def _safe_cuda_is_available() -> bool:
@@ -1826,12 +1825,10 @@ class EnhancedConversationTrainer:
         Args:
             reduction_factor: Factor to reduce LR by (default: 10x reduction)
         """
-        old_lr = self.config.learning_rate
+        old_lr = self.optimizer.param_groups[0]['lr'] if not self.use_deepspeed else self.deepspeed_engine.optimizer.param_groups[0]['lr']
         new_lr = old_lr / reduction_factor
         
         logging.warning(f"EMERGENCY LR REDUCTION: {old_lr:.2e} -> {new_lr:.2e}")
-        
-        self.config.learning_rate = new_lr
         
         if self.use_deepspeed:
             # Update DeepSpeed learning rate
@@ -2580,9 +2577,9 @@ class EnhancedConversationTrainer:
             step_throughput = 0.0
             if compute_time > 0:
                 # We can't divide tensor by float easily without sync or keeping it as tensor
-                # For basic monitoring, we'll let the orchestrator handle this
-                pass
-            
+                # Let's compute it as a tensor calculation
+                step_throughput = num_tokens / compute_time
+                
             return {
                 'loss': loss,
                 'raw_loss': loss_dict['raw_loss'],
@@ -2590,7 +2587,7 @@ class EnhancedConversationTrainer:
                 'valid_tokens': num_tokens,
                 'accuracy': loss_dict['accuracy'],
                 'compute_time_ms': compute_time * 1000,
-                'throughput': 0.0 # Will be calculated by orchestrator from tokens and time
+                'throughput': step_throughput
             }
             
         except Exception as e:

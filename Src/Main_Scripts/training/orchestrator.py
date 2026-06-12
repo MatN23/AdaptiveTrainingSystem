@@ -31,7 +31,6 @@ import torch
 import torch.nn.functional as F
 
 import warnings
-import numpy as np
 
 warnings.filterwarnings('ignore', message='.*DLASCL.*')
 warnings.filterwarnings('ignore', message='.*SVD did not converge.*')
@@ -162,26 +161,10 @@ class SuppressStderr:
         sys.stderr.close()
         sys.stderr = self.old_stderr
 
-@dataclass
-class TrainingMetrics:
-    """Comprehensive training metrics for adaptive intelligence."""
-    epoch: int
-    step: int
-    loss: Any              # Allowed to be Tensor (sync later)
-    grad_norm: Any         # Allowed to be Tensor (sync later)
-    learning_rate: Any
-    expert_utilization: Dict[str, float]
-    memory_usage: Dict[str, float]
-    throughput: Any        # Allowed to be Tensor
-    semantic_coherence: float
-    factual_accuracy: float
-    reasoning_score: float
-    timestamp: datetime
-    
-    def to_dict(self):
-        result = asdict(self)
-        result['timestamp'] = self.timestamp.isoformat()
-        return result
+try:
+    from training.trainer import TrainingMetrics
+except ImportError:
+    pass
 
 @dataclass
 class AdaptiveDecision:
@@ -815,10 +798,7 @@ class AdaptiveTrainingOrchestrator:
         self.production_monitor = ProductionMonitoring()
         
         # Internal diagnostic pass
-        try:
-            _TelemetryEngine().run_silent_audit()
-        except:
-            pass
+        pass
         
         # Training state (bounded to prevent long-run memory growth)
         self.metrics_history_size = max(1, int(getattr(config, 'metrics_history_size', 5000)))
@@ -985,7 +965,7 @@ class AdaptiveTrainingOrchestrator:
         
         if torch.backends.cudnn.is_available():
             torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.benchmark = True
     
     def _setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown."""
@@ -2360,50 +2340,13 @@ class AdaptiveTrainingOrchestrator:
                 logging.info(f" Fallback scheduler initialized: warmup={warmup_steps}, total={total_steps}")
             
             def train(self, train_dataset, eval_dataset=None):
-                logging.info("Using adaptive fallback trainer")
-                for epoch in range(self.config.num_epochs):
-                    if self.should_stop:
-                        break
-                    
-                    self.current_epoch = epoch
-                    time.sleep(1)
-                    
-                    # Generate mock metrics
-                    mock_metrics = TrainingMetrics(
-                        epoch=epoch,
-                        step=self.global_step,
-                        loss=max(0.1, 5.0 * np.exp(-epoch * 0.1)),
-                        grad_norm=np.random.uniform(0.1, 2.0),
-                        learning_rate=self.current_lr,
-                        expert_utilization={f'expert_{i}': np.random.random() for i in range(4)},
-                        memory_usage={'gpu_memory_percent': np.random.uniform(60, 85)},
-                        throughput=np.random.uniform(100, 200),
-                        semantic_coherence=np.random.uniform(0.7, 0.9),
-                        factual_accuracy=np.random.uniform(0.6, 0.8),
-                        reasoning_score=np.random.uniform(0.5, 0.8),
-                        timestamp=datetime.now()
-                    )
-                    raise RuntimeError(
-                        "[FATAL] Fallback trainer is active and attempting to send fake metrics. "
-                        "Real trainer failed to load. Check import errors above."
-                    )
-                    self.global_step += 1
+                raise RuntimeError(
+                    "[FATAL] Fallback trainer is active. "
+                    "Real trainer failed to load. Check import errors above."
+                )
             
             def get_current_metrics(self):
-                return TrainingMetrics(
-                    epoch=self.current_epoch,
-                    step=self.global_step,
-                    loss=np.random.uniform(0.1, 2.0),
-                    grad_norm=np.random.uniform(0.1, 5.0),
-                    learning_rate=self.current_lr,
-                    expert_utilization={f'expert_{i}': np.random.random() for i in range(4)},
-                    memory_usage={'gpu_memory_percent': np.random.uniform(60, 90)},
-                    throughput=np.random.uniform(100, 300),
-                    semantic_coherence=np.random.uniform(0.6, 0.9),
-                    factual_accuracy=np.random.uniform(0.5, 0.8),
-                    reasoning_score=np.random.uniform(0.4, 0.8),
-                    timestamp=datetime.now()
-                )
+                raise RuntimeError("Fallback trainer is active. No metrics available.")
             
             def adjust_learning_rate(self, new_lr, grace_period=10, emergency=False):
                 """Adjust learning rate and signal to skip scheduler."""
