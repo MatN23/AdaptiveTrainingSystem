@@ -164,25 +164,41 @@ class SuppressStderr:
 try:
     from training.trainer import TrainingMetrics
 except ImportError:
-    from dataclasses import dataclass as _dataclass
-    from typing import Dict as _Dict
-    from datetime import datetime as _datetime
-
-    @_dataclass
+    @dataclass
     class TrainingMetrics:
-        """Fallback definition when training.trainer cannot be imported."""
-        epoch: int = 0
-        step: int = 0
-        loss: float = 0.0
-        grad_norm: float = 0.0
-        learning_rate: float = 0.0
-        expert_utilization: _Dict[str, float] = None
-        memory_usage: _Dict[str, float] = None
-        throughput: float = 0.0
-        semantic_coherence: float = 0.0
-        factual_accuracy: float = 0.0
-        reasoning_score: float = 0.0
-        timestamp: _datetime = None
+        """Fallback definition used when training.trainer cannot be imported.
+        Mirrors the canonical TrainingMetrics in trainer.py exactly so that
+        any code importing this name from orchestrator works correctly.
+        """
+        epoch: int
+        step: int
+        loss: float
+        grad_norm: float
+        learning_rate: float
+        expert_utilization: Dict[str, float]
+        memory_usage: Dict[str, float]
+        throughput: float
+        semantic_coherence: float
+        factual_accuracy: float
+        reasoning_score: float
+        timestamp: datetime
+
+        def to_dict(self):
+            """Convert to dictionary with proper serialization."""
+            return {
+                'epoch': self.epoch,
+                'step': self.step,
+                'loss': self.loss,
+                'grad_norm': self.grad_norm,
+                'learning_rate': self.learning_rate,
+                'expert_utilization': self.expert_utilization,
+                'memory_usage': self.memory_usage,
+                'throughput': self.throughput,
+                'semantic_coherence': self.semantic_coherence,
+                'factual_accuracy': self.factual_accuracy,
+                'reasoning_score': self.reasoning_score,
+                'timestamp': self.timestamp.isoformat(),
+            }
 
 @dataclass
 class AdaptiveDecision:
