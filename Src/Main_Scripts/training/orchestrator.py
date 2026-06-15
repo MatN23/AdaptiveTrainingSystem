@@ -164,7 +164,25 @@ class SuppressStderr:
 try:
     from training.trainer import TrainingMetrics
 except ImportError:
-    pass
+    from dataclasses import dataclass as _dataclass
+    from typing import Dict as _Dict
+    from datetime import datetime as _datetime
+
+    @_dataclass
+    class TrainingMetrics:
+        """Fallback definition when training.trainer cannot be imported."""
+        epoch: int = 0
+        step: int = 0
+        loss: float = 0.0
+        grad_norm: float = 0.0
+        learning_rate: float = 0.0
+        expert_utilization: _Dict[str, float] = None
+        memory_usage: _Dict[str, float] = None
+        throughput: float = 0.0
+        semantic_coherence: float = 0.0
+        factual_accuracy: float = 0.0
+        reasoning_score: float = 0.0
+        timestamp: _datetime = None
 
 @dataclass
 class AdaptiveDecision:
