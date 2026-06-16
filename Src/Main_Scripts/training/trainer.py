@@ -21,9 +21,6 @@ import json
 import os
 import copy
 
-from dataclasses import dataclass
-from typing import Dict
-
 def _safe_cuda_is_available() -> bool:
     """Return CUDA availability without crashing on CPU-only builds."""
     try:
@@ -118,7 +115,10 @@ else:
 if _safe_cuda_is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
-    torch.backends.cudnn.benchmark = True
+    # NOTE: cudnn.benchmark is intentionally NOT set here at module level.
+    # It is set per-precision in _setup_device_optimizations() so that the
+    # orchestrator's cudnn.benchmark = False (set in _set_seeds) is not
+    # silently overwritten by a module-level import side-effect.
 
 try:
     from core.dataset import create_dataloader
@@ -448,8 +448,15 @@ class PrecisionManager:
             logging.info("TF32 enabled for matmul and cuDNN operations")
         
         if self.train_precision in ['fp16', 'bf16', 'mixed_fp16', 'mixed_bf16']:
-            torch.backends.cudnn.benchmark = True
-            logging.info("cuDNN benchmark mode enabled for faster training")
+            # Only enable benchmark mode if deterministic mode is not already active.
+            # deterministic=True (set by the orchestrator's _set_seeds) and
+            # benchmark=True are mutually exclusive; benchmark wins in some PyTorch
+            # versions, silently breaking reproducibility.
+            if not torch.backends.cudnn.deterministic:
+                torch.backends.cudnn.benchmark = True
+                logging.info("cuDNN benchmark mode enabled for faster training")
+            else:
+                logging.info("cuDNN benchmark mode skipped (deterministic mode is active)")
         
         if 'fp8' in self.train_precision:
             try:
@@ -1819,31 +1826,54 @@ class EnhancedConversationTrainer:
     def emergency_lr_reduction(self, reduction_factor: float = 10.0):
         """
          Emergency learning rate reduction for gradient explosion.
-        
-        Reduces LR by specified factor when training becomes unstable.
-        
+
+        Reduces optimizer LR by the given factor when training becomes unstable.
+
+        IMPORTANT: this deliberately does NOT write to self.config.learning_rate.
+        config.learning_rate is the authoritative "intended" LR read when
+        rebuilding the optimizer/scheduler after a checkpoint restore.  Mutating
+        it here would cause the wrong (post-emergency) LR to be used on restart.
+        The pre-emergency LR is stashed in self._pre_emergency_lr for reference
+        and for the optional restore_lr_after_emergency() helper below.
+
         Args:
             reduction_factor: Factor to reduce LR by (default: 10x reduction)
         """
-        old_lr = self.optimizer.param_groups[0]['lr'] if not self.use_deepspeed else self.deepspeed_engine.optimizer.param_groups[0]['lr']
+        opt = self.deepspeed_engine.optimizer if self.use_deepspeed else self.optimizer
+        old_lr = opt.param_groups[0]['lr']
         new_lr = old_lr / reduction_factor
-        
-        logging.warning(f"EMERGENCY LR REDUCTION: {old_lr:.2e} -> {new_lr:.2e}")
-        
-        if self.use_deepspeed:
-            # Update DeepSpeed learning rate
-            for param_group in self.deepspeed_engine.optimizer.param_groups:
-                param_group['lr'] = new_lr
-        else:
-            # Update standard optimizer
-            for param_group in self.optimizer.param_groups:
-                param_group['lr'] = new_lr
-        
-        # Reset scheduler if it exists
+
+        # Stash the pre-emergency LR so callers can restore it if desired.
+        # We do NOT touch self.config.learning_rate.
+        self._pre_emergency_lr = old_lr
+
+        logging.warning(f"EMERGENCY LR REDUCTION: {old_lr:.2e} -> {new_lr:.2e} "
+                        f"(config.learning_rate={self.config.learning_rate:.2e} unchanged)")
+
+        for param_group in opt.param_groups:
+            param_group['lr'] = new_lr
+
+        # Update scheduler's base_lrs so it doesn't immediately undo the cut,
+        # but only for the duration of this run — a fresh restore will rebuild
+        # the scheduler from config.learning_rate as intended.
         if self.scheduler is not None and hasattr(self.scheduler, 'base_lrs'):
             self.scheduler.base_lrs = [new_lr for _ in self.scheduler.base_lrs]
-        
+
         logging.info("Emergency LR reduction complete")
+
+    def restore_lr_after_emergency(self):
+        """Restore the LR that was active before the last emergency_lr_reduction call."""
+        if not hasattr(self, '_pre_emergency_lr'):
+            logging.warning("restore_lr_after_emergency called but no emergency reduction recorded")
+            return
+        restore_lr = self._pre_emergency_lr
+        opt = self.deepspeed_engine.optimizer if self.use_deepspeed else self.optimizer
+        for param_group in opt.param_groups:
+            param_group['lr'] = restore_lr
+        if self.scheduler is not None and hasattr(self.scheduler, 'base_lrs'):
+            self.scheduler.base_lrs = [restore_lr for _ in self.scheduler.base_lrs]
+        logging.info(f"LR restored to pre-emergency value: {restore_lr:.2e}")
+        del self._pre_emergency_lr
     
     def rollback_steps(self, num_steps: int = 100):
         """
@@ -2591,13 +2621,14 @@ class EnhancedConversationTrainer:
             }
             
         except Exception as e:
-            print(f"DeepSpeed training step error: {e}")
+            logging.error(f"DeepSpeed training step error: {e}")
             return {
                 'loss': 0.0,
                 'raw_loss': 0.0,
                 'perplexity': float('inf'),
                 'valid_tokens': 0,
-                'accuracy': 0.0
+                'accuracy': 0.0,
+                'throughput': 0.0,   # keep parity with the success path
             }
         
     def _standard_train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:

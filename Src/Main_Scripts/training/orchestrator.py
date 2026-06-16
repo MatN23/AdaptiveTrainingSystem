@@ -998,8 +998,14 @@ class AdaptiveTrainingOrchestrator:
         random.seed(seed)
         
         if torch.backends.cudnn.is_available():
+            # deterministic=True requires benchmark=False — they are mutually exclusive.
+            # benchmark=True dynamically selects the fastest cuDNN algorithm per input
+            # shape, which involves non-deterministic kernel selection.  Setting both
+            # True causes unpredictable behaviour: which flag "wins" depends on PyTorch
+            # version and driver.  For reproducibility (the purpose of _set_seeds) we
+            # want deterministic execution.
             torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.benchmark = False
     
     def _setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown."""

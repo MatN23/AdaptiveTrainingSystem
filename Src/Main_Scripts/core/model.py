@@ -135,12 +135,14 @@ def estimate_parameters(config) -> int:
     # Dense components
     embed_params = config.vocab_size * config.hidden_size
     
-    # Attention parameters (always dense)
+    # Attention parameters (GQA-aware)
+    # Q projects hidden_size -> num_heads * head_dim  (= hidden_size when no GQA change)
+    # K, V project hidden_size -> num_kv_heads * head_dim  (smaller under GQA)
     head_dim = config.hidden_size // config.num_heads
-    kv_dim = head_dim * config.num_kv_heads
+    kv_hidden = head_dim * config.num_kv_heads  # actual K/V projection output dim
     attn_params_per_layer = (
-        (config.hidden_size * config.hidden_size) +      # Q
-        (config.hidden_size * kv_dim * 2) +              # K, V
+        (config.hidden_size * config.hidden_size) +      # Q: hidden -> num_heads * head_dim
+        (config.hidden_size * kv_hidden * 2) +           # K, V: hidden -> num_kv_heads * head_dim
         (config.hidden_size * config.hidden_size)        # Output projection
     )
     
@@ -569,26 +571,40 @@ def apply_rotary_pos_emb_optimized(
 
 
 def apply_rotary_pos_emb(
-    q: torch.Tensor, 
-    k: torch.Tensor, 
-    cos: torch.Tensor, 
+    q: torch.Tensor,
+    k: torch.Tensor,
+    cos: torch.Tensor,
     sin: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary position embeddings with automatic CUDA/PyTorch selection.
-    
-    Uses CUDA kernels when available (3-5x faster), falls back to PyTorch.
-    
+
+    Priority when not using the unified backend:
+      1. FusedRoPE CUDA kernel (when q is on CUDA and CUDA ops are available)
+      2. JIT-compiled PyTorch fallback
+
+    When the unified backend is active, RotaryEmbedding.forward() already
+    returns the correct cos/sin via get_rope(); this function only needs to
+    apply them to q and k, so we go straight to the PyTorch path.
+
     Args:
         q: Query tensor [batch, heads, seq_len, head_dim]
         k: Key tensor [batch, heads, seq_len, head_dim]
         cos: Cosine embeddings [seq_len, head_dim]
         sin: Sine embeddings [seq_len, head_dim]
-        
+
     Returns:
         Rotated (q, k) tensors
     """
-    # PyTorch implementation (JIT-compiled for speed)
+    # Attempt the direct FusedRoPE kernel (non-unified path only).
+    # Previously this block was absent, causing CUDA RoPE to be silently skipped.
+    if not USE_UNIFIED_BACKEND and HAS_TRANSFORMER_CUDA and q.is_cuda:
+        try:
+            return FusedRoPE.apply(q, k, cos, sin)
+        except Exception as e:
+            logging.debug(f"FusedRoPE.apply failed: {e}, falling back to PyTorch")
+
+    # JIT-compiled PyTorch fallback (CPU / Metal / unified-backend).
     return apply_rotary_pos_emb_optimized(q, k, cos, sin)
 
 
@@ -1648,6 +1664,9 @@ class TransformerBlock(nn.Module):
             dense_end = getattr(config, 'dense_end_layers', 2)
             return not (layer_idx < dense_start or 
                        layer_idx >= config.num_layers - dense_end)
+        elif pattern == 'alternating':
+            # Every even-indexed layer is a MoE layer (0-based)
+            return layer_idx % 2 == 0
         elif pattern == 'none':
             return False
         else:
