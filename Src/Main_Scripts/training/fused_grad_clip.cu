@@ -50,9 +50,9 @@ __global__ void fused_grad_clip_kernel(
   }
 
   // ------------------------------------------------------------------
-  // Phase 2: block reduction  (warp shuffle  shared mem  atomicAdd)
+  // Phase 2: block reduction  (warp shuffle -> shared mem -> atomicAdd)
   // ------------------------------------------------------------------
-  __shared__ double smem[NUM_WARPS]; // 8 doubles  correctly sized
+  __shared__ double smem[NUM_WARPS]; // 8 doubles
 
   int lane = threadIdx.x % WARP_SIZE;
   int wid = threadIdx.x / WARP_SIZE;
@@ -70,7 +70,7 @@ __global__ void fused_grad_clip_kernel(
   }
 
   // ------------------------------------------------------------------
-  // Phase 3: grid sync  compute clip coef (thread 0 only)
+  // Phase 3: grid sync -> compute clip coef (thread 0 only)
   // ------------------------------------------------------------------
   grid.sync();
 
@@ -101,15 +101,15 @@ __global__ void fused_grad_clip_kernel(
 }
 
 // ---------------------------------------------------------------------------
-// Compute safe block count for cooperative launch
+// FIX: Takes device_idx so multi-GPU setups query the correct device
 // ---------------------------------------------------------------------------
-template <typename scalar_t> static int safe_num_blocks() {
+template <typename scalar_t> static int safe_num_blocks(int device_idx = 0) {
   int num_sms = 0, bpsm = 0;
-  cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, 0);
+  cudaDeviceGetAttribute(&num_sms, cudaDevAttrMultiProcessorCount, device_idx);
   cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       &bpsm, fused_grad_clip_kernel<scalar_t>, BLOCK_SIZE, 0);
   int n = num_sms * bpsm;
-  return (n < 1) ? 1 : (n > 512 ? 512 : n); // cap at 512 for safety
+  return (n < 1) ? 1 : (n > 512 ? 512 : n);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,12 +123,16 @@ do_launch(scalar_t **ptrs, int *sizes, int num_tensors, float max_norm,
   if (!norm_buffer || !ptrs || !sizes || num_tensors <= 0)
     return cudaErrorInvalidValue;
 
+  // FIX: Query the actual current device instead of hardcoding 0
+  int device_idx = 0;
+  cudaGetDevice(&device_idx);
+
   // Verify cooperative launch is supported on this device
   int coop = 0;
-  cudaDeviceGetAttribute(&coop, cudaDevAttrCooperativeLaunch, 0);
+  cudaDeviceGetAttribute(&coop, cudaDevAttrCooperativeLaunch, device_idx);
   if (!coop) {
-    fprintf(stderr, "[fused_grad_clip] ERROR: device does not support "
-                    "cooperative launch\n");
+    fprintf(stderr, "[fused_grad_clip] ERROR: device %d does not support "
+                    "cooperative launch\n", device_idx);
     return cudaErrorNotSupported;
   }
 
@@ -144,7 +148,7 @@ do_launch(scalar_t **ptrs, int *sizes, int num_tensors, float max_norm,
   float *clip_coef_out = reinterpret_cast<float *>(buf + 8);
   float *final_norm = reinterpret_cast<float *>(buf + 12);
 
-  int num_blocks = safe_num_blocks<scalar_t>();
+  int num_blocks = safe_num_blocks<scalar_t>(device_idx);
 
   void *args[] = {&ptrs,        &sizes,         &num_tensors, &max_norm,
                   &norm_sq_acc, &clip_coef_out, &final_norm};
@@ -159,10 +163,6 @@ do_launch(scalar_t **ptrs, int *sizes, int num_tensors, float max_norm,
 // ---------------------------------------------------------------------------
 extern "C" {
 
-// Unified launcher  called from Python
-// use_fp16: 0 = float32, 1 = float16
-// norm_buffer: device ptr to 32 bytes, malloc'd with cudaMalloc (8-byte
-// aligned)
 int fused_grad_clip_launcher(void **grad_ptrs_device, int *grad_sizes_device,
                              int num_tensors, float max_norm, void *norm_buffer,
                              int use_fp16, cudaStream_t stream) {
@@ -180,7 +180,6 @@ int fused_grad_clip_launcher(void **grad_ptrs_device, int *grad_sizes_device,
   return (int)err;
 }
 
-// FP32 convenience
 int fused_grad_clip_launcher_fp32(float **grad_ptrs_device,
                                   int *grad_sizes_device, int num_tensors,
                                   float max_norm, void *norm_buffer,
@@ -194,7 +193,6 @@ int fused_grad_clip_launcher_fp32(float **grad_ptrs_device,
   return (int)err;
 }
 
-// FP16 convenience
 int fused_grad_clip_launcher_fp16(__half **grad_ptrs_device,
                                   int *grad_sizes_device, int num_tensors,
                                   float max_norm, void *norm_buffer,

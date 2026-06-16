@@ -83,7 +83,7 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   state.argmax_idx = 0;
 
   float label_logit = 0.0f;
-  bool found_label = false; //  FIX: Track if we found the label
+  bool found_label = false;
 
   // Reinterpret row as float4 vectors for perfect coalescing
   const int num_vecs = vocab_size / 4;
@@ -110,7 +110,6 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
         state.argmax_idx = idx;
       }
 
-      //  FIX: Mark that we found the label
       if (idx == (int)label) {
         label_logit = x;
         found_label = true;
@@ -131,7 +130,6 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
       state.argmax_idx = i;
     }
 
-    //  FIX: Mark that we found the label
     if (i == (int)label) {
       label_logit = x;
       found_label = true;
@@ -147,8 +145,8 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
   __shared__ float smem_d[32];
   __shared__ float smem_argmax_val[32];
   __shared__ int smem_argmax_idx[32];
-  __shared__ float smem_label_logit_value; //  BULLETPROOF: Single value
-  __shared__ int smem_label_found_flag;    //  BULLETPROOF: Atomic flag
+  __shared__ float smem_label_logit_value;
+  __shared__ int smem_label_found_flag;
 
   const int lane = threadIdx.x & 31;
   const int wid = threadIdx.x >> 5;
@@ -165,6 +163,10 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
     atomicExch(&smem_label_logit_value, label_logit);
     atomicExch(&smem_label_found_flag, 1);
   }
+
+  // FIX: Synchronize before warp-reduction smem writes so label atomics
+  // above are fully visible to thread 0 at the final computation step.
+  __syncthreads();
 
   if (lane == 0) {
     smem_m[wid] = state.m;
@@ -208,7 +210,6 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_single_pass(
     const float sum_exp = smem_d[0];
     const int pred_idx = smem_argmax_idx[0];
 
-    //  BULLETPROOF: Read atomic flag
     float final_label_logit;
     if (smem_label_found_flag == 1) {
       final_label_logit = smem_label_logit_value;
@@ -273,9 +274,9 @@ void fused_cross_entropy_accuracy_launcher(
 __global__ void __launch_bounds__(256, 4) fused_cross_entropy_backward(
     const float *__restrict__ logits, const int64_t *__restrict__ labels,
     const float *__restrict__ loss_weights, const int64_t pad_token_id,
-    const float grad_output,      // Scalar upstream gradient (typically 1.0)
-    const float inv_valid_tokens, // 1.0 / valid_token_count for mean reduction
-    float *__restrict__ grad_logits, // Output: gradient w.r.t. logits
+    const float grad_output,
+    const float inv_valid_tokens,
+    float *__restrict__ grad_logits,
     const int total_tokens, const int vocab_size) {
 
   const int token_idx = blockIdx.x;
@@ -299,15 +300,12 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_backward(
 
   const float *logit_row = logits + (int64_t)token_idx * vocab_size;
 
-  // ===========================================================================
-  // Pass 1: Find max logit for numerical stability (parallel reduction)
-  // ===========================================================================
+  // Pass 1: Find max logit for numerical stability
   float local_max = -FLT_MAX;
   for (int i = threadIdx.x; i < vocab_size; i += blockDim.x) {
     local_max = fmaxf(local_max, __ldg(&logit_row[i]));
   }
 
-// Warp reduction for max
 #pragma unroll
   for (int offset = 16; offset > 0; offset >>= 1) {
     local_max = fmaxf(local_max, __shfl_xor_sync(FULL_MASK, local_max, offset));
@@ -335,15 +333,12 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_backward(
 
   const float max_logit = smem_max[0];
 
-  // ===========================================================================
-  // Pass 2: Compute sum of exp(logit - max) for softmax denominator
-  // ===========================================================================
+  // Pass 2: Compute sum of exp(logit - max)
   float local_sum = 0.0f;
   for (int i = threadIdx.x; i < vocab_size; i += blockDim.x) {
     local_sum += __expf(__ldg(&logit_row[i]) - max_logit);
   }
 
-// Warp reduction for sum
 #pragma unroll
   for (int offset = 16; offset > 0; offset >>= 1) {
     local_sum += __shfl_xor_sync(FULL_MASK, local_sum, offset);
@@ -368,13 +363,9 @@ __global__ void __launch_bounds__(256, 4) fused_cross_entropy_backward(
   const float sum_exp = smem_sum[0];
   const float inv_sum = 1.0f / (sum_exp + 1e-10f);
 
-  // ===========================================================================
-  // Pass 3: Compute gradient: grad = (softmax - one_hot) * weight * grad_out /
-  // N
-  // ===========================================================================
+  // Pass 3: Compute gradient
   const float scale = grad_output * weight * inv_valid_tokens;
 
-  // Vectorized writes for perfect coalescing
   const int num_vecs = vocab_size / 4;
   float4 *grad_row_vec = reinterpret_cast<float4 *>(grad_row);
 

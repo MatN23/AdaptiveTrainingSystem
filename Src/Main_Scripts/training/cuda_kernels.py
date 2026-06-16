@@ -33,8 +33,13 @@ def _compile_so() -> bool:
                f"--generate-code=arch={arch},code={sm}", "-o", _SO_FILE, _CU_FILE]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-            if res.returncode != 0: success = False
-        except Exception: success = False
+            if res.returncode != 0:
+                logger.error("nvcc failed for %s (exit %d):\n%s",
+                             _CU_FILE, res.returncode, res.stderr)
+                success = False
+        except Exception as exc:
+            logger.error("nvcc subprocess error for %s: %s", _CU_FILE, exc)
+            success = False
 
     # Compile fused_loss
     if not os.path.exists(_CU_LOSS_FILE):
@@ -48,18 +53,24 @@ def _compile_so() -> bool:
                f"--generate-code=arch={arch},code={sm}", "-o", _SO_LOSS_FILE, _CU_LOSS_FILE]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-            if res.returncode != 0: success = False
-        except Exception: success = False
+            if res.returncode != 0:
+                logger.error("nvcc failed for %s (exit %d):\n%s",
+                             _CU_LOSS_FILE, res.returncode, res.stderr)
+                success = False
+        except Exception as exc:
+            logger.error("nvcc subprocess error for %s: %s", _CU_LOSS_FILE, exc)
+            success = False
         
     return success
 
 
 _lib        = None
+_lib_loss   = None  # Must be module-level; local var would be GC'd after _load_lib() returns
 _NORM_BYTES = 32          # 8-byte aligned, covers double + 2 floats + padding
 
 
 def _load_lib() -> bool:
-    global _lib
+    global _lib, _lib_loss
     if _lib is not None:
         return True
     if not _compile_so():

@@ -26,7 +26,8 @@ class RouterGateAdapter(nn.Module):
     def __init__(self, router_checkpoint_path: str, device: str = 'cuda'):
         super().__init__()
         
-        cache_key = str(router_checkpoint_path)
+        # Resolve to absolute path so relative vs absolute refs hit the same cache entry
+        cache_key = str(Path(router_checkpoint_path).resolve())
         
         if cache_key not in _GLOBAL_ROUTER_CACHE:
             print(f" Loading router model (first time)...")
@@ -178,6 +179,17 @@ class RoutingDataCollector:
     
     def _save_final_dataset(self):
         """Save final routing dataset"""
+        if not self.routing_examples:
+            logger.error(
+                "No routing examples were collected. "
+                "Check that your MoE layer outputs have 'expert_indices' and "
+                "'routing_weights' attributes — hooks registered but never fired."
+            )
+            raise RuntimeError(
+                "Routing data collection produced 0 examples. "
+                "Ensure MoE layer output objects expose .expert_indices and .routing_weights."
+            )
+
         dataset_path = self.save_dir / "routing_dataset.pt"
         torch.save({
             'routing_examples': self.routing_examples,
@@ -674,7 +686,18 @@ def replace_gates_with_router(model, router_model_path: str):
         replace_gates_with_router(your_model, trained_router)
     """
     checkpoint = torch.load(router_model_path)
-    router_model = SmallRouterModel(**checkpoint['config'])
+
+    # Filter to only the keys SmallRouterModel.__init__ accepts.
+    # The saved config may contain extra training keys (e.g. 'collection_batches',
+    # 'learning_rate') that would cause an unexpected keyword argument error.
+    _ROUTER_MODEL_KEYS = {
+        'hidden_size', 'num_experts', 'top_k',
+        'router_hidden', 'num_layers', 'num_heads',
+    }
+    model_config = {k: v for k, v in checkpoint['config'].items()
+                    if k in _ROUTER_MODEL_KEYS}
+
+    router_model = SmallRouterModel(**model_config)
     router_model.load_state_dict(checkpoint['model_state_dict'])
     router_model.eval()
     
