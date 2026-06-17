@@ -50,21 +50,21 @@ try:
     from bitsandbytes.optim import AdamW8bit, Lion8bit
     BNB_AVAILABLE = True
     logging.info("BitsAndBytes available for 8-bit quantization")
-except ImportError:
+except Exception:
     BNB_AVAILABLE = False
     logging.warning("BitsAndBytes not available - 8-bit quantization disabled")
 
 try:
     from transformers import BitsAndBytesConfig
     HF_BNB_AVAILABLE = True
-except ImportError:
+except Exception:
     HF_BNB_AVAILABLE = False
 
 try:
     import wandb
     WANDB_AVAILABLE = True
     logging.info("WandB available for experiment tracking")
-except ImportError:
+except Exception:
     WANDB_AVAILABLE = False
     logging.warning("WandB not available - install with: pip install wandb")
 
@@ -72,14 +72,14 @@ try:
     import auto_gptq
     GPTQ_AVAILABLE = True
     logging.info("AutoGPTQ available for 4-bit quantization")
-except ImportError:
+except Exception:
     GPTQ_AVAILABLE = False
 
 try:
     from optimum.quanto import quantize, freeze
     QUANTO_AVAILABLE = True
     logging.info("Optimum Quanto available for quantization")
-except ImportError:
+except Exception:
     QUANTO_AVAILABLE = False
 
 # DeepSpeed imports with fallback
@@ -150,7 +150,7 @@ if _safe_cuda_is_available():
 
 try:
     from core.dataset import create_dataloader
-except ImportError:
+except Exception:
     from torch.utils.data import DataLoader
     def create_dataloader(dataset, config, shuffle=True):
         num_workers = max(0, int(getattr(config, 'num_workers', 0) or 0))
@@ -190,6 +190,14 @@ except Exception:
             pass
         def save_checkpoint(self, *args, **kwargs):
             pass
+
+# Safety net: if any import above partially failed, dataclass may not be
+# in scope despite being imported at the top of the file. Re-import here
+# to guarantee it is always available at module level before use.
+try:
+    dataclass  # noqa: F821 - test if already in scope
+except NameError:
+    from dataclasses import dataclass  # re-import if lost due to import error cascade
 
 @dataclass
 class TrainingMetrics:
