@@ -91,11 +91,20 @@ try:
     from deepspeed.runtime.utils import see_memory_usage
     DEEPSPEED_AVAILABLE = True
     logging.info("DeepSpeed available")
-except ImportError:
+except Exception:
+    # Catch ImportError AND linker/build failures (e.g. missing libaio in CI).
+    # Using bare Exception prevents a half-imported DeepSpeed from propagating
+    # a linker error that would crash the entire trainer module load.
     DEEPSPEED_AVAILABLE = False
     logging.warning("DeepSpeed not available - falling back to standard training")
     class DeepSpeedEngine:
         pass
+# Always define these at module level so downstream code can reference them
+# unconditionally without NameError when CUDA is unavailable or kernels fail.
+FusedLoss = None
+FusedGradClip = None
+CUSTOM_KERNELS_AVAILABLE = False
+
 if _safe_cuda_is_available():
     try:
         from training.cuda_kernels import (
@@ -108,9 +117,9 @@ if _safe_cuda_is_available():
             logging.warning("Custom CUDA kernels module loaded, but kernels are not ready - using PyTorch fallback")
     except Exception as e:
         CUSTOM_KERNELS_AVAILABLE = False
+        FusedLoss = None
+        FusedGradClip = None
         logging.warning(f"Custom CUDA kernels unavailable - using PyTorch fallback: {e}")
-else:
-    CUSTOM_KERNELS_AVAILABLE = False
 
 if _safe_cuda_is_available():
     torch.backends.cuda.matmul.allow_tf32 = True
