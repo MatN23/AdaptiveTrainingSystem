@@ -83,7 +83,17 @@ except ImportError:
     QUANTO_AVAILABLE = False
 
 # DeepSpeed imports with fallback
+import io, sys as _sys
+
+# DeepSpeed builds C extensions on import (e.g. CPU Adam requires libaio).
+# In CI / CPU-only environments the linker fails and prints to stderr, then
+# raises a generic Exception (not ImportError).  We suppress the stderr noise
+# and catch everything so a missing libaio cannot cascade into a NameError
+# further down the module.
+_ds_stderr = io.StringIO()
 try:
+    _saved_stderr = _sys.stderr
+    _sys.stderr = _ds_stderr
     import deepspeed
     from deepspeed import DeepSpeedEngine
     from deepspeed.runtime.zero.stage3 import estimate_zero3_model_states_mem_needs_all_live
@@ -91,14 +101,23 @@ try:
     from deepspeed.runtime.utils import see_memory_usage
     DEEPSPEED_AVAILABLE = True
     logging.info("DeepSpeed available")
-except Exception:
-    # Catch ImportError AND linker/build failures (e.g. missing libaio in CI).
-    # Using bare Exception prevents a half-imported DeepSpeed from propagating
-    # a linker error that would crash the entire trainer module load.
+except Exception as _ds_err:
     DEEPSPEED_AVAILABLE = False
-    logging.warning("DeepSpeed not available - falling back to standard training")
+    logging.warning(f"DeepSpeed not available - falling back to standard training: {_ds_err}")
     class DeepSpeedEngine:
         pass
+finally:
+    _sys.stderr = _saved_stderr
+    _ds_noise = _ds_stderr.getvalue()
+    if _ds_noise.strip():
+        logging.debug(f"DeepSpeed import stderr: {_ds_noise.strip()}")
+# Clean up temporary import helpers from module namespace
+for _name in ('_ds_stderr', '_ds_noise', '_saved_stderr', '_ds_err'):
+    try:
+        del globals()[_name]
+    except KeyError:
+        pass
+del _name
 # Always define these at module level so downstream code can reference them
 # unconditionally without NameError when CUDA is unavailable or kernels fail.
 FusedLoss = None
@@ -154,7 +173,7 @@ except ImportError:
 
 try:
     from monitoring.logger import TrainingHealthMonitor
-except ImportError:
+except Exception:
     class TrainingHealthMonitor:
         def __init__(self, *args, **kwargs):
             pass
@@ -163,7 +182,9 @@ except ImportError:
 
 try:
     from training.checkpoint import CheckpointManager
-except ImportError:
+except Exception:
+    # Broad catch: CheckpointManager may transitively import DeepSpeed,
+    # which can raise a linker error (not just ImportError) in CPU-only CI.
     class CheckpointManager:
         def __init__(self, *args, **kwargs):
             pass
