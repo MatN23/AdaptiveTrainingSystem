@@ -19,7 +19,7 @@ auto-gptq>=0.4.1
 
 # DeepSpeed & Performance
 deepspeed>=0.11.0
-triton>=2.1.0
+triton>=3.7.1
 
 # Experiment Tracking / Logging
 wandb>=0.15.0
