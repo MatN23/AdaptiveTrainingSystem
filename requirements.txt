@@ -23,7 +23,7 @@ triton>=2.1.0
 
 # Experiment Tracking / Logging
 wandb>=0.15.0
-PyYAML>=6.0
+PyYAML>=6.0.3
 tqdm>=4.65.0
 loguru>=0.7.0
 
