@@ -21,7 +21,7 @@ bitsandbytes>=0.41.1
 deepspeed>=0.11.0
 # Experiment Tracking / Logging
 wandb>=0.15.0
-PyYAML>=6.0
+PyYAML>=6.0.3
 tqdm>=4.65.0
 loguru>=0.7.0
 
